@@ -38,6 +38,8 @@ For more detail, see [docs/architecture.md](docs/architecture.md).
 
 For the upstream PyTorch baseline workflow used to compare future MLX work, see [docs/baseline.md](docs/baseline.md).
 
+For checkpoint metadata and state_dict layout notes that will guide weight conversion, see [docs/weight_mapping.md](docs/weight_mapping.md).
+
 ## Public API direction
 
 The first user-facing interface should be CLI-first, with a small Python API underneath it.

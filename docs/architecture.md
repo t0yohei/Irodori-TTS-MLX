@@ -103,7 +103,7 @@ No stable API should be promised until the first end-to-end prototype works and 
 ## Implementation sequence
 
 1. Reproduce upstream PyTorch inference on Apple Silicon.
-2. Inspect checkpoint metadata and tensor layout.
+2. Inspect checkpoint metadata and tensor layout. See [weight_mapping.md](weight_mapping.md) for the current checkpoint overview.
 3. Implement checkpoint inspection and conversion tooling.
 4. Port reusable MLX layers and validate layer-level parity.
 5. Port encoders and RF-DiT forward pass.
