@@ -20,8 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-import numpy as np
-
 try:
     from inspect_checkpoint import InspectionError, inspect_local_safetensors
 except ImportError:  # pragma: no cover - fallback for unusual invocation paths
@@ -62,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Convert a local base Irodori-TTS safetensors checkpoint into an MLX-friendly .npz archive."
     )
-    parser.add_argument("source", help="Local base-v2 .safetensors checkpoint path.")
+    parser.add_argument("source", nargs="?", help="Local base-v2 .safetensors checkpoint path.")
     parser.add_argument(
         "output",
         nargs="?",
@@ -165,9 +163,21 @@ def has_module(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
 
+def import_numpy() -> Any:
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise ConversionError(
+            "Writing converted weights requires the optional 'numpy' package. "
+            "Install it or run --dry-run for header-only validation."
+        ) from exc
+    return np
+
+
 def dtype_name(value: Any) -> str:
-    if isinstance(value, np.dtype):
-        return value.name
+    name = getattr(value, "name", None)
+    if isinstance(name, str):
+        return name
     return str(value).replace("numpy.", "")
 
 
@@ -185,6 +195,7 @@ def load_safetensors_header(path: Path) -> tuple[dict[str, Any] | None, dict[str
 
 
 def load_safetensors_arrays(path: Path) -> dict[str, TensorRecord]:
+    import_numpy()
     if not has_module("safetensors"):
         raise ConversionError(
             "Converting .safetensors requires the optional 'safetensors' package. "
@@ -205,7 +216,7 @@ def load_safetensors_arrays(path: Path) -> dict[str, TensorRecord]:
     return records
 
 
-def load_checkpoint(path: Path, *, load_arrays: bool) -> tuple[dict[str, Any] | None, dict[str, TensorRecord]]:
+def validate_source_path(path: Path) -> None:
     if not path.exists():
         raise ConversionError(f"Source checkpoint does not exist: {path}")
     if not path.is_file():
@@ -214,6 +225,10 @@ def load_checkpoint(path: Path, *, load_arrays: bool) -> tuple[dict[str, Any] | 
         raise ConversionError(
             f"Only local {SUPPORTED_SOURCE_SUFFIX} checkpoints are supported in the initial converter: {path}"
         )
+
+
+def load_checkpoint(path: Path, *, load_arrays: bool) -> tuple[dict[str, Any] | None, dict[str, TensorRecord]]:
+    validate_source_path(path)
     config, header_records = load_safetensors_header(path)
     if not load_arrays:
         return config, header_records
@@ -300,8 +315,9 @@ def validation_error_message(validation: Mapping[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def records_to_arrays(records: Mapping[str, TensorRecord]) -> dict[str, np.ndarray]:
-    arrays: dict[str, np.ndarray] = {}
+def records_to_arrays(records: Mapping[str, TensorRecord]) -> dict[str, Any]:
+    np = import_numpy()
+    arrays: dict[str, Any] = {}
     for key in sorted(EXPECTED_SHAPES):
         array = records[key].array
         if array is None:
@@ -319,7 +335,8 @@ def validate_output_target(source: Path, output: Path) -> None:
         )
 
 
-def write_npz_atomic(output: Path, arrays: Mapping[str, np.ndarray]) -> None:
+def write_npz_atomic(output: Path, arrays: Mapping[str, Any]) -> None:
+    np = import_numpy()
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=str(output.parent))
     try:
@@ -414,11 +431,15 @@ def main() -> int:
         run_self_tests()
         return 0
 
+    if args.source is None:
+        raise ConversionError("source path is required unless --self-test is used")
+
     source = Path(args.source).expanduser()
     output = Path(args.output).expanduser() if args.output else None
     if output is None and not args.dry_run:
         raise ConversionError("output path is required unless --dry-run is used")
 
+    validate_source_path(source)
     if output is not None and not args.dry_run:
         validate_output_target(source, output)
 
