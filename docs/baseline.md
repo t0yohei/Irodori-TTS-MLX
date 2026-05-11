@@ -2,6 +2,8 @@
 
 Issue: [#2 Reproduce upstream PyTorch inference on Apple Silicon](https://github.com/t0yohei/irodori-tts-mlx/issues/2)
 
+Measured report: [2026-05-11 Apple Silicon PyTorch baseline](baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md)
+
 This document defines the first reproducible baseline for comparing future MLX work against upstream Irodori-TTS PyTorch inference.
 
 The baseline target is upstream `Aratako/Irodori-TTS` v2 inference with:
