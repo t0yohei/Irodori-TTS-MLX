@@ -66,6 +66,19 @@ The initial converter supports the base `Aratako/Irodori-TTS-500M-v2` layout onl
 
 The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
 
+## Core MLX layers
+
+The `irodori_mlx.layers` module contains the first reusable MLX primitives for model parity work:
+
+- `RMSNorm`
+- RoPE frequency generation and application helpers
+- sinusoidal timestep embeddings
+- `SwiGLU`
+- low-rank AdaLN modulation
+- latent sequence patch/unpatch helpers
+
+These implementations follow the upstream PyTorch formulas used by Irodori-TTS and keep normalization/embedding math in `float32` where practical. Floating-point inputs are cast back to their original dtype after operations such as RMSNorm and RoPE application, so future bf16 inference paths can keep bf16 activations while still using fp32 statistics for numerically sensitive steps.
+
 ## Public API direction
 
 The first user-facing interface should be CLI-first, with a small Python API underneath it.
