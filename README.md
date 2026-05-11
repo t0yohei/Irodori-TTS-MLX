@@ -40,6 +40,18 @@ For the upstream PyTorch baseline workflow used to compare future MLX work, see 
 
 For checkpoint metadata and state_dict layout notes that will guide weight conversion, see [docs/weight_mapping.md](docs/weight_mapping.md).
 
+## Checkpoint inspection
+
+Use `scripts/inspect_checkpoint.py` to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
+
+```bash
+python3 scripts/inspect_checkpoint.py Aratako/Irodori-TTS-500M-v2
+python3 scripts/inspect_checkpoint.py Aratako/Irodori-TTS-500M-v2 --json > checkpoint.json
+python3 scripts/inspect_checkpoint.py /path/to/model.safetensors --all-tensors
+```
+
+The script prints metadata/config, tensor names, shapes, dtypes, and parameter totals for weight-converter planning.
+
 ## Public API direction
 
 The first user-facing interface should be CLI-first, with a small Python API underneath it.
