@@ -268,37 +268,117 @@ The main differences are:
 
 The raw key-set comparison reports 123 base-only tensor names and 146 VoiceDesign-only tensor names. The count difference is expected because the 10-block caption encoder has more tensors than the 8-block speaker encoder it replaces.
 
-## Initial MLX mapping notes
+## Deterministic PyTorch-to-MLX mapping
 
-The converter should initially preserve the checkpoint hierarchy closely, because the names already separate the major runtime components:
+Issue [#5](https://github.com/t0yohei/irodori-tts-mlx/issues/5) fixes the first converter contract for the base v2 checkpoint.
 
-| PyTorch/safetensors prefix | Initial MLX target |
-| --- | --- |
-| `text_encoder.*` | MLX text encoder module. |
-| `speaker_encoder.*` | Base-checkpoint reference latent encoder. |
-| `caption_encoder.*` | VoiceDesign caption encoder; can be staged after base support. |
-| `blocks.*` | RF-DiT block stack. |
-| `cond_module.*` | Timestep/conditioning MLP. |
-| `in_proj.*` | Latent input projection. |
-| `out_norm.*`, `out_proj.*` | Final normalization and latent output projection. |
-| `*_norm.weight` | RMSNorm or equivalent upstream norm weights; confirm in upstream source before implementation. |
+### Supported checkpoint family
 
-Shape orientation should not be changed blindly. MLX layer conventions may differ from PyTorch, so issue #5 should decide whether to transpose linear weights during conversion or load them as-is and adapt the MLX module definitions.
+The first converter should support exactly the base checkpoint layout from `Aratako/Irodori-TTS-500M-v2`:
 
-## Unknown or ambiguous tensors
+- expected tensor count: `613`
+- expected dtype for all inspected tensors: `F32`
+- expected conditioning path: text + speaker/reference-latent conditioning
 
-These items need explicit confirmation in follow-up work:
+The VoiceDesign checkpoint should be rejected by the first converter with a clear unsupported-checkpoint message, because it replaces the speaker path with caption tensors. Caption support can be added later after base checkpoint parity is proven.
 
-- Whether `gate.weight` in attention modules is a learned output gate, a linear projection, or another upstream-specific operation.
-- Exact upstream norm type for `*_norm.weight`, `attention_norm.weight`, `mlp_norm.weight`, `q_norm.weight`, and `k_norm.weight`.
-- Exact `cond_module` activation/function order, since safetensors records only the three weight matrices.
-- Whether any linear weights require transposition for MLX, or whether MLX modules should mirror PyTorch weight orientation.
-- How upstream maps DACVAE latents into `speaker_encoder.in_proj` and `in_proj`, including expected tensor layout/order.
-- Whether VoiceDesign should be supported in the first converter or intentionally staged after base checkpoint parity.
+### MLX naming convention
+
+Use hierarchy-preserving MLX parameter names. For supported base tensors, the PyTorch/safetensors key is also the MLX destination key.
+
+This deliberately keeps converter logic simple and makes missing/unexpected-key diagnostics line up with the source checkpoint:
+
+```text
+text_encoder.blocks.0.attention.wq.weight
+  -> text_encoder.blocks.0.attention.wq.weight
+blocks.11.mlp_adaln.gate_up.bias
+  -> blocks.11.mlp_adaln.gate_up.bias
+out_proj.bias
+  -> out_proj.bias
+```
+
+If a future MLX module implementation intentionally renames attributes, that change should update this mapping table and the converter at the same time. Do not add silent aliases in the converter.
+
+### Tensor transform policy
+
+The first converter should not transpose or reshape checkpoint tensors. It should validate the source shape and write the same array under the MLX key.
+
+| Tensor kind | Examples | Transform | Reason |
+| --- | --- | --- | --- |
+| Linear weights | `*.wq.weight`, `*.mlp.w1.weight`, `in_proj.weight`, `cond_module.0.weight` | Copy as-is | Upstream PyTorch `nn.Linear` stores `[out_features, in_features]`; MLX modules should mirror that parameter storage and perform the runtime matmul accordingly. |
+| Linear biases | `in_proj.bias`, `out_proj.bias`, `*_up.bias` | Copy as-is | Bias vectors are already one-dimensional destination features. |
+| Embeddings | `text_encoder.text_embedding.weight` | Copy as-is | Shape is `[vocab_size, dim]`. |
+| RMSNorm weights | `*_norm.weight`, `q_norm.weight`, `k_norm.weight` | Copy as-is | Upstream uses RMSNorm. `q_norm`/`k_norm` intentionally store `[heads, head_dim]`. |
+| SwiGLU weights | `mlp.w1.weight`, `mlp.w2.weight`, `mlp.w3.weight` | Copy as-is | Runtime implements `w2(silu(w1(x)) * w3(x))`; no packing is needed for the first converter. |
+| Low-rank AdaLN weights | `*_adaln.*_{down,up}.weight` | Copy as-is | Upstream is two linear projections per shift/scale/gate branch. |
+
+Runtime reshapes are model responsibilities, not converter responsibilities:
+
+- attention projections reshape q/k/v from `[batch, seq, dim]` to `[batch, seq, heads, head_dim]` after projection;
+- RF-DiT joint attention applies half-RoPE to latent self-attention q/k only;
+- text/speaker encoder self-attention applies full RoPE to q/k;
+- speaker reference latents are patched before `speaker_encoder.in_proj` when `speaker_patch_size > 1`.
+
+### Upstream module semantics confirmed
+
+The upstream PyTorch model defines these checkpoint-backed modules:
+
+| Checkpoint tensors | Upstream module behavior | Converter implication |
+| --- | --- | --- |
+| `*.attention.gate.weight` | `nn.Linear(..., bias=False)` followed by `sigmoid(gate)` and elementwise attention-output gating. | Treat as an ordinary linear weight, copied as-is. |
+| `*_norm.weight`, `attention_norm.weight`, `mlp_norm.weight`, `q_norm.weight`, `k_norm.weight` | Custom `RMSNorm`; q/k norms use `RMSNorm((heads, head_dim))`. | Copy norm weights as-is and require exact shapes. |
+| `cond_module.0.weight`, `cond_module.2.weight`, `cond_module.4.weight` | `Linear(timestep_embed_dim, model_dim, bias=False)`, `SiLU`, `Linear(model_dim, model_dim, bias=False)`, `SiLU`, `Linear(model_dim, model_dim * 3, bias=False)`. | Expect exactly these three weight tensors and no cond-module biases. |
+| `speaker_encoder.in_proj.*` | Linear projection from patched DACVAE reference latents to `speaker_dim`, followed by division by `6.0`. | Copy weights/bias as-is; the `/ 6.0` scale belongs in model forward code, not conversion. |
+| `in_proj.*`, `out_proj.*` | Linear projections between patched DACVAE latents and model dimension. | Copy weights/bias as-is; latent patching/unpatching belongs in model code. |
+
+### Base checkpoint mapping summary
+
+The following pattern table covers all `613` tensors in `Aratako/Irodori-TTS-500M-v2`. `{i}` ranges are inclusive and every expanded key maps to the same destination key.
+
+| PyTorch/safetensors key pattern | Range/count | MLX destination | Transform |
+| --- | ---: | --- | --- |
+| `blocks.{i}.attention.{gate,wk,wk_speaker,wk_text,wo,wq,wv,wv_speaker,wv_text}.weight` | `i=0..11`, 108 tensors | same key | copy |
+| `blocks.{i}.attention.{k_norm,q_norm}.weight` | `i=0..11`, 24 tensors | same key | copy |
+| `blocks.{i}.mlp.{w1,w2,w3}.weight` | `i=0..11`, 36 tensors | same key | copy |
+| `blocks.{i}.{attention_adaln,mlp_adaln}.{gate,scale,shift}_down.weight` | `i=0..11`, 72 tensors | same key | copy |
+| `blocks.{i}.{attention_adaln,mlp_adaln}.{gate,scale,shift}_up.weight` | `i=0..11`, 72 tensors | same key | copy |
+| `blocks.{i}.{attention_adaln,mlp_adaln}.{gate,scale,shift}_up.bias` | `i=0..11`, 72 tensors | same key | copy |
+| `text_encoder.text_embedding.weight` | 1 tensor | same key | copy |
+| `text_encoder.blocks.{i}.attention.{gate,wk,wo,wq,wv}.weight` | `i=0..9`, 50 tensors | same key | copy |
+| `text_encoder.blocks.{i}.attention.{k_norm,q_norm}.weight` | `i=0..9`, 20 tensors | same key | copy |
+| `text_encoder.blocks.{i}.{attention_norm,mlp_norm}.weight` | `i=0..9`, 20 tensors | same key | copy |
+| `text_encoder.blocks.{i}.mlp.{w1,w2,w3}.weight` | `i=0..9`, 30 tensors | same key | copy |
+| `text_norm.weight` | 1 tensor | same key | copy |
+| `speaker_encoder.in_proj.{weight,bias}` | 2 tensors | same key | copy |
+| `speaker_encoder.blocks.{i}.attention.{gate,wk,wo,wq,wv}.weight` | `i=0..7`, 40 tensors | same key | copy |
+| `speaker_encoder.blocks.{i}.attention.{k_norm,q_norm}.weight` | `i=0..7`, 16 tensors | same key | copy |
+| `speaker_encoder.blocks.{i}.{attention_norm,mlp_norm}.weight` | `i=0..7`, 16 tensors | same key | copy |
+| `speaker_encoder.blocks.{i}.mlp.{w1,w2,w3}.weight` | `i=0..7`, 24 tensors | same key | copy |
+| `speaker_norm.weight` | 1 tensor | same key | copy |
+| `cond_module.{0,2,4}.weight` | 3 tensors | same key | copy |
+| `in_proj.{weight,bias}` | 2 tensors | same key | copy |
+| `out_norm.weight` | 1 tensor | same key | copy |
+| `out_proj.{weight,bias}` | 2 tensors | same key | copy |
+
+### Converter validation requirements
+
+The issue #6 converter should fail closed:
+
+1. Inspect the checkpoint header and parse `metadata.config_json` before writing output.
+2. Confirm base-checkpoint identity from config:
+   - `use_speaker_condition` is true or speaker fields are present;
+   - `use_caption_condition` is absent/false;
+   - `latent_dim=32`, `model_dim=1280`, `num_layers=12`, `text_layers=10`, `speaker_layers=8`.
+3. Expand the base mapping table and require the checkpoint key set to match exactly.
+4. Report missing keys, unexpected keys, and shape mismatches separately.
+5. Require all supported tensors to be numeric arrays with dtype `F32` initially. Optional dtype conversion can be a later explicit flag.
+6. Reject VoiceDesign-only keys such as `caption_encoder.*`, `caption_norm.weight`, `blocks.{i}.attention.wk_caption.weight`, and `blocks.{i}.attention.wv_caption.weight` until caption support is implemented.
+7. Write no partial output on validation failure.
+
+## Remaining follow-up notes
+
+These items remain outside issue #5 and should be handled by implementation/parity work:
+
 - The DACVAE codec checkpoint `Aratako/Semantic-DACVAE-Japanese-32dim` uses `weights.pth`, not `model.safetensors`; it needs a separate inspection path if DACVAE conversion is ever in scope.
-
-## Follow-up issues
-
-- Issue #4 should turn this ad-hoc header inspection into a reusable checkpoint inspection script.
-- Issue #5 should define the PyTorch-to-MLX mapping rules, including transpose policy and unsupported tensor handling.
-- Issue #6 should implement the first converter using those mapping rules.
+- Issue #6 should implement the first converter using the mapping rules above.
+- Later MLX model parity work should validate numerical behavior for RoPE, RMSNorm, LowRankAdaLN, masking, and speaker latent patching.
