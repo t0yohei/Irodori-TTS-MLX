@@ -36,6 +36,8 @@ caption/style text ────────┐               │
 
 For more detail, see [docs/architecture.md](docs/architecture.md).
 
+For the upstream PyTorch baseline workflow used to compare future MLX work, see [docs/baseline.md](docs/baseline.md).
+
 ## Public API direction
 
 The first user-facing interface should be CLI-first, with a small Python API underneath it.
