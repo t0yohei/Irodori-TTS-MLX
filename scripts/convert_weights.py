@@ -222,7 +222,7 @@ def load_checkpoint(path: Path, *, load_arrays: bool) -> tuple[dict[str, Any] | 
 
 def validate_base_config(config: dict[str, Any] | None) -> list[str]:
     if config is None:
-        return []
+        return ["metadata.config_json is required to confirm the base v2 checkpoint identity"]
     errors: list[str] = []
     expected_values = {
         "latent_dim": 32,
@@ -310,6 +310,15 @@ def records_to_arrays(records: Mapping[str, TensorRecord]) -> dict[str, np.ndarr
     return arrays
 
 
+def validate_output_target(source: Path, output: Path) -> None:
+    source_resolved = source.resolve(strict=True)
+    output_resolved = output.resolve(strict=False)
+    if source_resolved == output_resolved:
+        raise ConversionError(
+            "Output path must not be the source checkpoint path; refusing to overwrite input weights"
+        )
+
+
 def write_npz_atomic(output: Path, arrays: Mapping[str, np.ndarray]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=str(output.parent))
@@ -381,6 +390,9 @@ def run_self_tests() -> None:
     }
     validation = validate_records(records, {"latent_dim": 32, "model_dim": 1280, "num_layers": 12, "text_layers": 10, "speaker_layers": 8, "speaker_dim": 768})
     assert validation["ok"], validation
+    missing_config = validate_records(records, None)
+    assert not missing_config["ok"]
+    assert missing_config["config_errors"]
 
     bad_records = dict(records)
     bad_records.pop("out_proj.bias")
@@ -406,6 +418,9 @@ def main() -> int:
     output = Path(args.output).expanduser() if args.output else None
     if output is None and not args.dry_run:
         raise ConversionError("output path is required unless --dry-run is used")
+
+    if output is not None and not args.dry_run:
+        validate_output_target(source, output)
 
     config, records = load_checkpoint(source, load_arrays=not args.dry_run)
     validation = validate_records(records, config)
