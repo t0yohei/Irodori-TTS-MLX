@@ -1,0 +1,12 @@
+# Local upstream checkouts and generated baseline artifacts
+external/
+outputs/
+baseline-runs/
+*.wav
+*.pt
+*.safetensors
+
+# Python local state
+__pycache__/
+*.py[cod]
+.venv/
