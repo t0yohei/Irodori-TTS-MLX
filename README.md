@@ -52,6 +52,20 @@ python3 scripts/inspect_checkpoint.py /path/to/model.safetensors --all-tensors
 
 The script prints metadata/config, tensor names, shapes, dtypes, and parameter totals for weight-converter planning.
 
+## Weight conversion
+
+Use `scripts/convert_weights.py` to convert a local base v2 checkpoint into an MLX-friendly `.npz` archive:
+
+```bash
+python3 scripts/convert_weights.py /path/to/model.safetensors /path/to/irodori-tts-500m-v2.npz
+python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run
+python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run --json
+```
+
+The initial converter supports the base `Aratako/Irodori-TTS-500M-v2` layout only. It validates the documented key mapping, shape expectations, float32 dtypes, and base speaker-conditioning config before writing output. The VoiceDesign/caption checkpoint is rejected until caption conversion support is implemented.
+
+The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
+
 ## Public API direction
 
 The first user-facing interface should be CLI-first, with a small Python API underneath it.
