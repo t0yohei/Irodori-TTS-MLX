@@ -79,6 +79,20 @@ The `irodori_mlx.layers` module contains the first reusable MLX primitives for m
 
 These implementations follow the upstream PyTorch formulas used by Irodori-TTS and keep normalization/embedding math in `float32` where practical. Floating-point inputs are cast back to their original dtype after operations such as RMSNorm and RoPE application, so future bf16 inference paths can keep bf16 activations while still using fp32 statistics for numerically sensitive steps.
 
+## Condition encoders
+
+The `irodori_mlx.encoders` module contains the first MLX conditioning stack:
+
+- token `TextEncoder` for prompt text
+- `ReferenceLatentEncoder` for base-checkpoint speaker/reference latent conditioning
+- optional caption encoder wiring for VoiceDesign-style checkpoints
+- `ConditionEncoders` wrapper for text, speaker, and caption masks/dropout
+- narrow `.npz` weight assignment helpers for converted upstream encoder weights
+
+Masked positions are hard-zeroed after embedding and after each residual block so fully masked conditioning becomes an unconditional path. Speaker/reference conditioning also patches the latent sequence when configured and prepends the upstream-style masked-mean summary token.
+
+This is still a layer-level/model-component API, not a stable public generation interface. End-to-end RF-DiT forward, sampling, tokenization, and the PyTorch DACVAE bridge remain later milestones.
+
 ## Public API direction
 
 The first user-facing interface should be CLI-first, with a small Python API underneath it.
