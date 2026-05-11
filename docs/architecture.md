@@ -40,28 +40,20 @@ These may be revisited after the first end-to-end prototype is working and bench
 ## High-level data flow
 
 ```text
-                   ┌──────────────────────┐
-                   │ text / caption input │
-                   └──────────┬───────────┘
-                              │
-                              ▼
-                    MLX text/caption path
-                              │
-                              ▼
-reference WAV ──► PyTorch DACVAE encode ──► reference latents
-                              │                    │
-                              └──────────┬─────────┘
-                                         ▼
-                              MLX RF-DiT sampler
-                                         │
-                                         ▼
-                              generated DACVAE latents
-                                         │
-                                         ▼
-                              PyTorch DACVAE decode
-                                         │
-                                         ▼
-                                    output WAV
+text / caption input ──► MLX text/caption path ───────┐
+                                                       │
+reference WAV ────────► PyTorch DACVAE encode ────────┤
+                                                       ▼
+                                             MLX RF-DiT sampler
+                                                       │
+                                                       ▼
+                                             generated DACVAE latents
+                                                       │
+                                                       ▼
+                                             PyTorch DACVAE decode
+                                                       │
+                                                       ▼
+                                                   output WAV
 ```
 
 ## Component boundary
