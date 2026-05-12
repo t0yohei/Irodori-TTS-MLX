@@ -140,7 +140,7 @@ The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available fo
 
 `irodori_mlx.sampling.sample_euler_rf_cfg` adds the first RF Euler sampling loop on top of the MLX model path. It can generate patched latent sequences with fixed-seed noise, upstream-style timesteps, optional context K/V cache, and text/speaker/caption CFG modes.
 
-`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies and boundary notes.
+`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, and boundary notes.
 
 ## Public API direction
 

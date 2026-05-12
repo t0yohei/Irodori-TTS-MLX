@@ -37,13 +37,39 @@ python3 scripts/generate_wav.py \
   --codec-runtime-mode persistent
 ```
 
+For repeatable local workflows, put common arguments in a JSON preset and only
+override the per-run fields on the CLI:
+
+```json
+{
+  "weights": "/path/to/irodori-tts-500m-v2.npz",
+  "reference_wav": "/path/to/reference.wav",
+  "output": "/tmp/irodori.wav",
+  "seconds": 5.0,
+  "num_steps": 40,
+  "codec_device": "cpu"
+}
+```
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:$PYTHONPATH \
+python3 scripts/generate_wav.py \
+  --config-json /path/to/generate-base.json \
+  --text "こんにちは。今日は良い天気です。"
+```
+
+For automation, use `--json` to emit a machine-readable payload to stdout or
+`--metadata-json /path/to/result.json` to save the same generation metadata,
+timings, request fields, and runtime boundary description to disk.
+
 Use `--model-config-json` when the converted weights do not match the default
 base-v2 `ModelConfig`. The default tokenizer repo is
 `sbintuitions/sarashina2.2-0.5b`, matching the base config.
 
 For smoke tests without speaker conditioning, pass `--no-reference`; this builds
 an unconditional speaker mask. Normal base-v2 generation should pass
-`--reference-wav`.
+`--reference-wav`. The CLI now reports clearer validation errors when
+`--reference-wav` / `--no-reference` are misused.
 
 `--codec-runtime-mode` controls how the PyTorch DACVAE boundary is hosted:
 
