@@ -12,6 +12,21 @@ from .encoders import (
 )
 from .model import DiffusionBlock, JointAttention, TextToLatentRFDiT
 from .sampling import euler_timestep_schedule, sample_euler_rf_cfg
+from .runtime import (
+    DACVAEBridgeConfig,
+    GenerationRequest,
+    GenerationResult,
+    MLXDACVAERuntime,
+    MLXRuntimeConfig,
+    PretrainedTextTokenizer,
+    PyTorchDACVAEBridge,
+    iter_messages,
+    load_mlx_model,
+    load_model_config_json,
+    mlx_to_torch_latents,
+    save_wav,
+    torch_to_mlx_latents,
+)
 from .layers import (
     LowRankAdaLN,
     RMSNorm,
@@ -27,11 +42,18 @@ from .weights import WeightLoadReport, assign_named_weights, encoder_required_ke
 
 __all__ = [
     "ConditionEncoders",
+    "DACVAEBridgeConfig",
     "DiffusionBlock",
     "EncodedConditions",
+    "GenerationRequest",
+    "GenerationResult",
     "JointAttention",
     "LowRankAdaLN",
+    "MLXDACVAERuntime",
+    "MLXRuntimeConfig",
     "ModelConfig",
+    "PretrainedTextTokenizer",
+    "PyTorchDACVAEBridge",
     "RMSNorm",
     "ReferenceLatentEncoder",
     "SelfAttention",
@@ -45,12 +67,18 @@ __all__ = [
     "encoder_required_keys",
     "euler_timestep_schedule",
     "get_timestep_embedding",
+    "iter_messages",
+    "load_mlx_model",
+    "load_model_config_json",
     "load_npz_weights",
     "masked_mean_token",
+    "mlx_to_torch_latents",
     "patch_latents",
     "patch_sequence_with_mask",
     "precompute_freqs_cis",
     "rf_dit_required_keys",
     "sample_euler_rf_cfg",
+    "save_wav",
+    "torch_to_mlx_latents",
     "unpatch_latents",
 ]

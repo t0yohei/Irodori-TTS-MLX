@@ -44,6 +44,8 @@ For optional upstream PyTorch vs MLX deterministic component parity tests, see [
 
 For the initial MLX rectified-flow Euler sampler and CFG behavior, see [docs/rf_sampler.md](docs/rf_sampler.md).
 
+For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
+
 ## Checkpoint inspection
 
 Use `scripts/inspect_checkpoint.py` to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
@@ -97,7 +99,9 @@ Masked positions are hard-zeroed after embedding and after each residual block s
 
 The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available for MLX model-parity work. It wires the condition encoders into joint RF-DiT attention, timestep-conditioned AdaLN blocks, static conditioning K/V projection caches, and final latent velocity projection. See [docs/rf_dit_forward.md](docs/rf_dit_forward.md) for implementation and numerical-comparison notes.
 
-`irodori_mlx.sampling.sample_euler_rf_cfg` adds the first RF Euler sampling loop on top of the MLX model path. It can generate patched latent sequences with fixed-seed noise, upstream-style timesteps, optional context K/V cache, and text/speaker/caption CFG modes. This is still a model-component API, not a stable public generation interface: tokenization and the PyTorch DACVAE bridge remain later milestones.
+`irodori_mlx.sampling.sample_euler_rf_cfg` adds the first RF Euler sampling loop on top of the MLX model path. It can generate patched latent sequences with fixed-seed noise, upstream-style timesteps, optional context K/V cache, and text/speaker/caption CFG modes.
+
+`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies and boundary notes.
 
 ## Public API direction
 
