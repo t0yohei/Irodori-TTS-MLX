@@ -1,4 +1,4 @@
-# Apple Silicon benchmark workflow and initial report
+# Apple Silicon benchmark workflow and report
 
 Issue: [#13 Add benchmark script and baseline report](https://github.com/t0yohei/irodori-tts-mlx/issues/13)
 
@@ -9,14 +9,19 @@ This document has two jobs:
 
 ## Current conclusion
 
-Based on the measured upstream baseline from [docs/baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md](baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md):
+We now have both:
 
-- RF sampling dominates end-to-end latency on Apple Silicon MPS
-- DACVAE decode is meaningful, but clearly secondary
-- the next performance question is whether **MLX RF-DiT + PyTorch DACVAE bridge** materially reduces `sample_rf` and `total_to_decode`
-- therefore, a full MLX DACVAE port is **not yet justified** by the current data alone
+- the measured upstream PyTorch/MPS baseline from [docs/baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md](baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md)
+- the measured MLX bridge report from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md](benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md)
 
-In short: if the MLX bridge cannot beat PyTorch mainly on the sampler/model path, porting DACVAE first is the wrong optimization target.
+Current read:
+
+- MLX RF-DiT + PyTorch DACVAE bridge already reduces `sample_rf` dramatically on Apple Silicon
+- end-to-end `total_to_decode` also improves materially even before a full DACVAE port
+- therefore, a full MLX DACVAE port is still **not** the first latency optimization priority
+- however, reference-path peak RSS increased enough that memory pressure remains a real follow-up question
+
+In short: the bridge architecture is already good enough to justify continued optimization on the MLX model/sampler path first, while keeping DACVAE porting as a later optimization if memory or remaining decode cost becomes dominant.
 
 ## Existing upstream baseline numbers
 
@@ -54,6 +59,49 @@ Derived share of post-load inference time:
 - `prepare_reference`: about **4.5%** of `total_to_decode`
 
 These numbers are enough to set the optimization priority: sampler/model work first, DACVAE later.
+
+## Measured MLX bridge numbers
+
+Full report: [2026-05-12 Apple Silicon MLX bridge benchmark](benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md)
+
+### Run 1: base model, no reference audio
+
+| Stage | Time |
+| --- | ---: |
+| `prepare_text_condition` | 1.4 ms |
+| `prepare_reference_condition` | 0.1 ms |
+| `sample_rf` | 4,227.3 ms |
+| `decode_dacvae` | 1,300.7 ms |
+| `total_to_decode` | 5,529.5 ms |
+| wall clock | 35.72 s |
+
+Compared with the upstream no-reference baseline:
+
+- `sample_rf`: **5.61x faster**
+- `decode`: **4.34x faster**
+- `total_to_decode`: **5.31x faster**
+- max RSS: **1.91 GiB**, about **0.31 GiB higher** than the earlier upstream no-ref baseline
+
+### Run 2: base model, reference audio
+
+| Stage | Time |
+| --- | ---: |
+| `prepare_text_condition` | 3.2 ms |
+| `prepare_reference_condition` | 1,310.7 ms |
+| `sample_rf` | 4,095.8 ms |
+| `decode_dacvae` | 988.4 ms |
+| `total_to_decode` | 6,398.1 ms |
+| wall clock | 15.15 s |
+
+Compared with the upstream reference-audio baseline:
+
+- `prepare_reference`: slightly faster
+- `sample_rf`: **5.93x faster**
+- `decode`: **5.70x faster**
+- `total_to_decode`: **4.90x faster**
+- max RSS: **3.36 GiB**, about **1.30 GiB higher** than the earlier upstream reference-audio baseline
+
+So the latency question is largely answered: the MLX bridge is already a clear win. The open question that remains is memory behavior, especially on the reference path.
 
 ## Benchmark script
 
@@ -151,7 +199,7 @@ This keeps the bridge report aligned with the upstream `--show-timings` conventi
 
 ## Next measurement to collect
 
-The next meaningful report should answer this table with real MLX numbers:
+The next meaningful report should deepen or validate these measured MLX results:
 
 | Question | Why it matters |
 | --- | --- |
