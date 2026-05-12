@@ -14,6 +14,7 @@ We now have both:
 - the measured upstream PyTorch/MPS baseline from [docs/baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md](baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md)
 - the measured MLX bridge report from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md](benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md)
 - the warm-cache / codec-device / memory follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md](benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md)
+- the reference-path memory mitigation follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md](benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md)
 
 Current read:
 
@@ -21,8 +22,9 @@ Current read:
 - end-to-end `total_to_decode` also improves materially even before a full DACVAE port
 - therefore, a full MLX DACVAE port is still **not** the first latency optimization priority
 - warm-cache reruns are even faster than the first MLX report suggested
-- however, reference-path peak RSS increased enough that memory pressure remains a real follow-up question
-- switching `codec-device` from `mps` to `cpu` did not reduce reference-path RSS in this setup, so the likely issue is mixed-runtime residency rather than the codec backend alone
+- switching `codec-device` from `mps` to `cpu` did not reduce reference-path RSS in this setup, so the likely issue was never just the codec backend alone
+- explicit post-stage PyTorch cleanup reduced reference-path peak RSS from about **3.36 GiB** to about **2.10 GiB** in the measured setup
+- an experimental helper-process DACVAE boundary did **not** materially improve memory beyond that cleanup, and it made latency much worse
 
 In short: the bridge architecture is already good enough to justify continued optimization on the MLX model/sampler path first, while keeping DACVAE porting as a later optimization if memory or remaining decode cost becomes dominant.
 
@@ -124,6 +126,31 @@ This sharpens the interpretation:
 - the reference-path memory issue survives warm-cache reruns
 - CPU codec fallback is not a simple memory fix here; it was slower and used more peak memory in this measurement
 
+## Reference-path memory mitigation follow-up
+
+Mitigation report: [2026-05-12 Apple Silicon MLX bridge memory residency follow-up](benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md)
+
+Two hypotheses were tested after the earlier follow-up:
+
+1. would explicit lifecycle cleanup after PyTorch DACVAE encode/decode reduce the persistent bridge RSS?
+2. would a helper-process DACVAE boundary reduce memory more effectively than staying in-process?
+
+Key measured results on the reference path (`codec-device=mps`):
+
+| Variant | `total_to_decode` | max RSS |
+| --- | ---: | ---: |
+| earlier warm-cache persistent bridge | 4,945.2 ms | 3.36 GiB |
+| new persistent bridge + explicit cleanup | 5,162.9 ms | 2.10 GiB |
+| experimental subprocess bridge | 11,854.0 ms | 2.14 GiB |
+
+This changes the interpretation in an important way:
+
+- the largest practical memory win came from **eagerly releasing PyTorch-stage tensors and backend cache state** after encode/decode
+- the helper-process boundary did **not** buy additional memory relief worth its cost
+- the subprocess experiment is still useful as a diagnostic switch, but not as the default runtime shape
+
+So the current best mitigation is a simpler one than the original architectural hypothesis: keep the normal bridge in-process, but end each DACVAE stage with explicit cleanup.
+
 ## Benchmark script
 
 Use `scripts/benchmark.py` to run a reproducible benchmark harness.
@@ -178,6 +205,7 @@ python3 scripts/benchmark.py \
   --upstream-root /path/to/Irodori-TTS \
   --reference-wav /path/to/reference.wav \
   --codec-device cpu \
+  --codec-runtime-mode persistent \
   --output-dir benchmark-runs \
   --report docs/benchmark-latest.md
 ```

@@ -85,6 +85,7 @@ python3 scripts/benchmark.py --mode mlx --weights /path/to/irodori-tts-500m-v2.n
 ```
 
 The MLX bridge runtime emits benchmark-friendly `[timing]` lines for text/reference preparation, RF sampling, DACVAE decode, and total inference time.
+For reference-path memory experiments, `--codec-runtime-mode persistent|subprocess` can compare the normal in-process bridge against a helper-process DACVAE boundary.
 
 ## Core MLX layers
 

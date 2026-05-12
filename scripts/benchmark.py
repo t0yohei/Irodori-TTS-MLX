@@ -78,6 +78,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mlx-python", default="python3", help="Python executable for MLX benchmark.")
     parser.add_argument("--weights", help="Converted MLX .npz weights for MLX bridge benchmark.")
     parser.add_argument("--codec-device", default="cpu", help="Codec device for MLX bridge benchmark.")
+    parser.add_argument(
+        "--codec-runtime-mode",
+        default="persistent",
+        choices=("persistent", "subprocess"),
+        help="How to host the PyTorch DACVAE bridge during MLX runs.",
+    )
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument("--model-config-json", help="Optional inline/path JSON for MLX ModelConfig.")
     parser.add_argument("--text-tokenizer-repo")
@@ -219,6 +225,8 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_dir: Pat
         args.codec_repo,
         "--codec-device",
         args.codec_device,
+        "--codec-runtime-mode",
+        args.codec_runtime_mode,
     ]
     if args.reference_wav:
         argv.extend(["--reference-wav", args.reference_wav])
