@@ -4,7 +4,8 @@
 The script intentionally keeps the orchestration lightweight:
 - it shells out to upstream `infer.py` or this repo's `scripts/generate_wav.py`
 - it parses timing lines and `/usr/bin/time -l` output
-- it can emit a Markdown report that is safe to commit
+- it can repeat runs, label warm/cold phases, and sweep selected parameters
+- it can emit Markdown and JSON summaries that are safe to commit
 
 Heavy model/runtime dependencies are optional. Use `--self-test` to validate the
 parser/report logic without local checkpoints.
@@ -17,8 +18,8 @@ import json
 import os
 import re
 import shlex
+import statistics
 import subprocess
-import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -47,9 +48,27 @@ class CommandResult:
 
 
 @dataclass(frozen=True)
+class BenchmarkCase:
+    name: str
+    slug: str
+    kind: str
+    reference_mode: str
+    seconds: float | None
+    num_steps: int
+
+
+@dataclass(frozen=True)
 class BenchmarkResult:
     name: str
+    case_name: str
     kind: str
+    phase: str
+    run_index: int
+    overall_run_index: int
+    cache_state: str
+    reference_mode: str
+    seconds: float | None
+    num_steps: int
     command: str
     cwd: str
     output_wav: str
@@ -71,20 +90,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text", default=DEFAULT_TEXT)
     parser.add_argument("--seed", type=int, default=20260512)
     parser.add_argument("--seconds", type=float, default=5.0, help="Target output seconds for MLX bridge runs.")
+    parser.add_argument("--seconds-sweep", help="Optional comma-separated MLX output-length sweep, e.g. 3,5,8.")
     parser.add_argument("--num-steps", type=int, default=40)
+    parser.add_argument("--num-steps-sweep", help="Optional comma-separated diffusion-step sweep, e.g. 20,40,60.")
+    parser.add_argument("--repeat", type=int, default=1, help="Number of measured runs per benchmark case.")
+    parser.add_argument(
+        "--warmup-runs",
+        type=int,
+        default=0,
+        help="Optional warmup runs executed before measured runs. Warmups are recorded separately from measured runs.",
+    )
+    parser.add_argument(
+        "--cache-state",
+        choices=("auto", "cold", "warm", "unknown"),
+        default="auto",
+        help="Label cache state for each run. 'auto' uses invocation order heuristics to separate first-run vs steady-state behavior.",
+    )
     parser.add_argument("--reference-wav", help="Reference audio path. Optional for both modes.")
     parser.add_argument("--upstream-root", help="Path to upstream Irodori-TTS checkout.")
     parser.add_argument("--upstream-python", default="python3", help="Python executable for upstream benchmark.")
     parser.add_argument("--mlx-python", default="python3", help="Python executable for MLX benchmark.")
     parser.add_argument("--weights", help="Converted MLX .npz weights for MLX bridge benchmark.")
     parser.add_argument("--codec-device", default="cpu", help="Codec device for MLX bridge benchmark.")
+    parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument(
         "--codec-runtime-mode",
-        default="persistent",
         choices=("persistent", "subprocess"),
-        help="How to host the PyTorch DACVAE bridge during MLX runs.",
+        default="persistent",
+        help="DACVAE bridge runtime mode for MLX benchmark runs.",
     )
-    parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument("--model-config-json", help="Optional inline/path JSON for MLX ModelConfig.")
     parser.add_argument("--text-tokenizer-repo")
     parser.add_argument("--caption-tokenizer-repo")
@@ -149,18 +183,98 @@ def parse_max_rss_bytes(stderr: str) -> int | None:
     return None
 
 
-def write_logs(base_path: Path, result: CommandResult) -> tuple[str, str]:
-    stdout_path = base_path.with_suffix(".stdout.log")
-    stderr_path = base_path.with_suffix(".stderr.log")
-    stdout_path.write_text(result.stdout, encoding="utf-8")
-    stderr_path.write_text(result.stderr, encoding="utf-8")
-    return str(stdout_path), str(stderr_path)
+def parse_number_list(raw: str | None, *, cast, option_name: str) -> list[int] | list[float]:
+    if raw is None:
+        return []
+    values: list[int] | list[float] = []
+    for chunk in raw.split(","):
+        text = chunk.strip()
+        if not text:
+            continue
+        try:
+            values.append(cast(text))
+        except ValueError as exc:
+            raise BenchmarkError(f"{option_name} contains an invalid value: {text!r}") from exc
+    if not values:
+        raise BenchmarkError(f"{option_name} did not contain any usable values")
+    return values
 
 
-def build_upstream_command(args: argparse.Namespace, output_dir: Path) -> tuple[list[str], Path]:
+def slug_token(value: str) -> str:
+    token = value.strip().lower()
+    token = token.replace(" ", "-")
+    token = token.replace(".", "p")
+    return re.sub(r"[^a-z0-9\-]+", "-", token).strip("-")
+
+
+def build_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
+    if args.repeat < 1:
+        raise BenchmarkError("--repeat must be >= 1")
+    if args.warmup_runs < 0:
+        raise BenchmarkError("--warmup-runs must be >= 0")
+
+    seconds_values = [float(args.seconds)]
+    if args.seconds_sweep:
+        seconds_values = [float(v) for v in parse_number_list(args.seconds_sweep, cast=float, option_name="--seconds-sweep")]
+    step_values = [int(args.num_steps)]
+    if args.num_steps_sweep:
+        step_values = [int(v) for v in parse_number_list(args.num_steps_sweep, cast=int, option_name="--num-steps-sweep")]
+
+    if args.mode in {"upstream", "both"} and args.seconds_sweep:
+        raise BenchmarkError("--seconds-sweep is only supported for --mode mlx because upstream infer.py has no output-length flag")
+
+    reference_mode = "reference" if args.reference_wav else "no-reference"
+    cases: list[BenchmarkCase] = []
+
+    if args.mode in {"upstream", "both"}:
+        for steps in step_values:
+            suffix = f"{reference_mode}-steps-{steps}"
+            cases.append(
+                BenchmarkCase(
+                    name=f"upstream-base-{suffix}",
+                    slug=f"upstream-base-{slug_token(suffix)}",
+                    kind="upstream",
+                    reference_mode=reference_mode,
+                    seconds=None,
+                    num_steps=steps,
+                )
+            )
+
+    if args.mode in {"mlx", "both"}:
+        for seconds in seconds_values:
+            for steps in step_values:
+                suffix = f"{reference_mode}-seconds-{seconds:g}-steps-{steps}"
+                cases.append(
+                    BenchmarkCase(
+                        name=f"mlx-bridge-{suffix}",
+                        slug=f"mlx-bridge-{slug_token(suffix)}",
+                        kind="mlx",
+                        reference_mode=reference_mode,
+                        seconds=float(seconds),
+                        num_steps=steps,
+                    )
+                )
+
+    seen_slugs: set[str] = set()
+    duplicates: list[str] = []
+    for case in cases:
+        if case.slug in seen_slugs:
+            duplicates.append(case.slug)
+            continue
+        seen_slugs.add(case.slug)
+    if duplicates:
+        joined = ", ".join(sorted(set(duplicates)))
+        raise BenchmarkError(
+            f"Sweep arguments produced duplicate benchmark cases/log paths: {joined}. "
+            "Deduplicate --seconds-sweep/--num-steps-sweep values before running."
+        )
+
+    return cases
+
+
+def build_upstream_command(args: argparse.Namespace, output_wav: Path, *, num_steps: int) -> list[str]:
     if not args.upstream_root:
         raise BenchmarkError("--upstream-root is required for upstream mode")
-    output_wav = output_dir / ("upstream-ref.wav" if args.reference_wav else "upstream-no-ref.wav")
     argv = [
         TIME_L_BIN,
         "-l",
@@ -181,7 +295,7 @@ def build_upstream_command(args: argparse.Namespace, output_dir: Path) -> tuple[
         "--codec-precision",
         "fp32",
         "--num-steps",
-        str(args.num_steps),
+        str(num_steps),
         "--seed",
         str(args.seed),
         "--show-timings",
@@ -197,13 +311,12 @@ def build_upstream_command(args: argparse.Namespace, output_dir: Path) -> tuple[
         ])
     else:
         argv.append("--no-ref")
-    return argv, output_wav
+    return argv
 
 
-def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_dir: Path) -> tuple[list[str], Path, dict[str, str]]:
+def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Path, *, seconds: float, num_steps: int) -> tuple[list[str], dict[str, str]]:
     if not args.weights:
         raise BenchmarkError("--weights is required for MLX mode")
-    output_wav = output_dir / ("mlx-ref.wav" if args.reference_wav else "mlx-no-ref.wav")
     argv = [
         TIME_L_BIN,
         "-l",
@@ -216,9 +329,9 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_dir: Pat
         "--text",
         args.text,
         "--seconds",
-        str(args.seconds),
+        str(seconds),
         "--num-steps",
-        str(args.num_steps),
+        str(num_steps),
         "--seed",
         str(args.seed),
         "--codec-repo",
@@ -245,10 +358,51 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_dir: Pat
         if env.get("PYTHONPATH"):
             pythonpath_parts.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-    return argv, output_wav, env
+    return argv, env
 
 
-def summarize_result(name: str, kind: str, command_result: CommandResult, output_wav: Path, stdout_log: str, stderr_log: str) -> BenchmarkResult:
+def resolve_case_cwd(case: BenchmarkCase, args: argparse.Namespace, repo_root: Path) -> Path:
+    if case.kind == "upstream":
+        if not args.upstream_root:
+            raise BenchmarkError("--upstream-root is required for upstream mode")
+        return Path(args.upstream_root).resolve()
+    return repo_root
+
+
+def write_logs(base_path: Path, result: CommandResult) -> tuple[str, str]:
+    stdout_path = base_path.with_suffix(".stdout.log")
+    stderr_path = base_path.with_suffix(".stderr.log")
+    stdout_path.write_text(result.stdout, encoding="utf-8")
+    stderr_path.write_text(result.stderr, encoding="utf-8")
+    return str(stdout_path), str(stderr_path)
+
+
+def resolve_cache_state(args: argparse.Namespace, *, phase: str, overall_run_index: int, measured_run_index: int | None) -> str:
+    if args.cache_state != "auto":
+        return str(args.cache_state)
+    if phase == "warmup":
+        return "cold" if overall_run_index == 1 else "warm"
+    if args.warmup_runs > 0:
+        return "warm"
+    if args.repeat == 1:
+        return "unknown"
+    assert measured_run_index is not None
+    return "cold" if measured_run_index == 1 else "warm"
+
+
+def summarize_result(
+    *,
+    case: BenchmarkCase,
+    run_name: str,
+    phase: str,
+    run_index: int,
+    overall_run_index: int,
+    cache_state: str,
+    command_result: CommandResult,
+    output_wav: Path,
+    stdout_log: str,
+    stderr_log: str,
+) -> BenchmarkResult:
     timings_ms = parse_timing_lines(command_result.stdout + "\n" + command_result.stderr)
     wall_seconds = parse_wall_seconds(command_result.stderr)
     max_rss_bytes = parse_max_rss_bytes(command_result.stderr)
@@ -257,8 +411,16 @@ def summarize_result(name: str, kind: str, command_result: CommandResult, output
     if not timings_ms:
         notes.append("No [timing] lines were detected.")
     return BenchmarkResult(
-        name=name,
-        kind=kind,
+        name=run_name,
+        case_name=case.name,
+        kind=case.kind,
+        phase=phase,
+        run_index=run_index,
+        overall_run_index=overall_run_index,
+        cache_state=cache_state,
+        reference_mode=case.reference_mode,
+        seconds=case.seconds,
+        num_steps=case.num_steps,
         command=shell_join(command_result.argv),
         cwd=command_result.cwd,
         output_wav=str(output_wav),
@@ -272,51 +434,80 @@ def summarize_result(name: str, kind: str, command_result: CommandResult, output
     )
 
 
-def run_upstream(args: argparse.Namespace, repo_root: Path, output_dir: Path) -> BenchmarkResult:
-    argv, output_wav = build_upstream_command(args, output_dir)
-    cwd = Path(args.upstream_root).resolve()
-    if args.dry_run:
-        return BenchmarkResult(
-            name="upstream-base",
-            kind="upstream",
-            command=shell_join(argv),
-            cwd=str(cwd),
-            output_wav=str(output_wav),
-            stdout_log="",
-            stderr_log="",
-            status="dry-run",
-            timings_ms={},
-            wall_seconds=None,
-            max_rss_bytes=None,
-        )
-    command_result = run_command(argv, cwd=cwd)
-    stdout_log, stderr_log = write_logs(output_dir / "upstream-base", command_result)
-    if command_result.returncode != 0:
-        raise BenchmarkError(command_result.stderr.strip() or "upstream benchmark failed")
-    return summarize_result("upstream-base", "upstream", command_result, output_wav, stdout_log, stderr_log)
+def run_case(case: BenchmarkCase, args: argparse.Namespace, repo_root: Path, output_dir: Path) -> list[BenchmarkResult]:
+    cwd = resolve_case_cwd(case, args, repo_root)
 
-
-def run_mlx(args: argparse.Namespace, repo_root: Path, output_dir: Path) -> BenchmarkResult:
-    argv, output_wav, env = build_mlx_command(args, repo_root, output_dir)
     if args.dry_run:
-        return BenchmarkResult(
-            name="mlx-bridge",
-            kind="mlx",
-            command=shell_join(argv),
-            cwd=str(repo_root),
-            output_wav=str(output_wav),
-            stdout_log="",
-            stderr_log="",
-            status="dry-run",
-            timings_ms={},
-            wall_seconds=None,
-            max_rss_bytes=None,
+        dry_name = case.name if args.repeat == 1 and args.warmup_runs == 0 else f"{case.name}-measured-run-01"
+        output_wav = output_dir / f"{case.slug}.measured.run-01.wav"
+        if case.kind == "upstream":
+            argv = build_upstream_command(args, output_wav, num_steps=case.num_steps)
+        else:
+            argv, _env = build_mlx_command(args, repo_root, output_wav, seconds=float(case.seconds), num_steps=case.num_steps)
+        return [
+            BenchmarkResult(
+                name=dry_name,
+                case_name=case.name,
+                kind=case.kind,
+                phase="measured",
+                run_index=1,
+                overall_run_index=1,
+                cache_state=resolve_cache_state(args, phase="measured", overall_run_index=1, measured_run_index=1),
+                reference_mode=case.reference_mode,
+                seconds=case.seconds,
+                num_steps=case.num_steps,
+                command=shell_join(argv),
+                cwd=str(cwd),
+                output_wav=str(output_wav),
+                stdout_log="",
+                stderr_log="",
+                status="dry-run",
+                timings_ms={},
+                wall_seconds=None,
+                max_rss_bytes=None,
+            )
+        ]
+
+    results: list[BenchmarkResult] = []
+    total_runs = args.warmup_runs + args.repeat
+    for overall_run_index in range(1, total_runs + 1):
+        is_warmup = overall_run_index <= args.warmup_runs
+        phase = "warmup" if is_warmup else "measured"
+        phase_run_index = overall_run_index if is_warmup else overall_run_index - args.warmup_runs
+        measured_run_index = None if is_warmup else phase_run_index
+        cache_state = resolve_cache_state(
+            args,
+            phase=phase,
+            overall_run_index=overall_run_index,
+            measured_run_index=measured_run_index,
         )
-    command_result = run_command(argv, cwd=repo_root, env=env)
-    stdout_log, stderr_log = write_logs(output_dir / "mlx-bridge", command_result)
-    if command_result.returncode != 0:
-        raise BenchmarkError(command_result.stderr.strip() or command_result.stdout.strip() or "MLX benchmark failed")
-    return summarize_result("mlx-bridge", "mlx", command_result, output_wav, stdout_log, stderr_log)
+        run_slug = f"{case.slug}.{phase}.run-{phase_run_index:02d}"
+        run_name = case.name if total_runs == 1 else f"{case.name}-{phase}-run-{phase_run_index:02d}"
+        output_wav = output_dir / f"{run_slug}.wav"
+        if case.kind == "upstream":
+            argv = build_upstream_command(args, output_wav, num_steps=case.num_steps)
+            env = None
+        else:
+            argv, env = build_mlx_command(args, repo_root, output_wav, seconds=float(case.seconds), num_steps=case.num_steps)
+        command_result = run_command(argv, cwd=cwd, env=env)
+        stdout_log, stderr_log = write_logs(output_dir / run_slug, command_result)
+        results.append(
+            summarize_result(
+                case=case,
+                run_name=run_name,
+                phase=phase,
+                run_index=phase_run_index,
+                overall_run_index=overall_run_index,
+                cache_state=cache_state,
+                command_result=command_result,
+                output_wav=output_wav,
+                stdout_log=stdout_log,
+                stderr_log=stderr_log,
+            )
+        )
+        if command_result.returncode != 0:
+            raise BenchmarkError(command_result.stderr.strip() or command_result.stdout.strip() or f"{case.kind} benchmark failed")
+    return results
 
 
 def format_bytes(value: int | None) -> str:
@@ -332,7 +523,75 @@ def format_ms(value: float | None) -> str:
     return f"{value:.1f} ms"
 
 
-def build_report(results: list[BenchmarkResult], *, text: str, seed: int, num_steps: int) -> str:
+def format_seconds(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"{value:.2f} s"
+
+
+def summarize_numeric(values: list[float | int]) -> dict[str, float | int] | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "min": ordered[0],
+        "median": statistics.median(ordered),
+        "max": ordered[-1],
+    }
+
+
+def build_aggregates(results: list[BenchmarkResult]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str], list[BenchmarkResult]] = {}
+    for result in results:
+        key = (result.case_name, result.kind, result.phase, result.cache_state)
+        grouped.setdefault(key, []).append(result)
+
+    aggregates: list[dict[str, Any]] = []
+    for key in sorted(grouped):
+        bucket = grouped[key]
+        timing_names = sorted({name for result in bucket for name in result.timings_ms})
+        timings_summary: dict[str, dict[str, float | int]] = {}
+        for timing_name in timing_names:
+            values = [result.timings_ms[timing_name] for result in bucket if timing_name in result.timings_ms]
+            summary = summarize_numeric(values)
+            if summary is not None:
+                timings_summary[timing_name] = summary
+        wall_summary = summarize_numeric([result.wall_seconds for result in bucket if result.wall_seconds is not None])
+        rss_summary = summarize_numeric([result.max_rss_bytes for result in bucket if result.max_rss_bytes is not None])
+        status_counts: dict[str, int] = {}
+        for result in bucket:
+            status_counts[result.status] = status_counts.get(result.status, 0) + 1
+        sample = bucket[0]
+        aggregates.append(
+            {
+                "case_name": sample.case_name,
+                "kind": sample.kind,
+                "phase": sample.phase,
+                "cache_state": sample.cache_state,
+                "reference_mode": sample.reference_mode,
+                "seconds": sample.seconds,
+                "num_steps": sample.num_steps,
+                "runs": len(bucket),
+                "status_counts": status_counts,
+                "timings_ms": timings_summary,
+                "wall_seconds": wall_summary,
+                "max_rss_bytes": rss_summary,
+            }
+        )
+    return aggregates
+
+
+def build_report(
+    results: list[BenchmarkResult],
+    *,
+    text: str,
+    seed: int,
+    repeat: int,
+    warmup_runs: int,
+    cache_state_mode: str,
+) -> str:
+    aggregates = build_aggregates(results)
     lines = [
         "# Apple Silicon Benchmark Report",
         "",
@@ -340,97 +599,218 @@ def build_report(results: list[BenchmarkResult], *, text: str, seed: int, num_st
         "",
         f"- Prompt text: `{text}`",
         f"- Seed: `{seed}`",
-        f"- Num steps: `{num_steps}`",
+        f"- Measured repeats per case: `{repeat}`",
+        f"- Warmup runs per case: `{warmup_runs}`",
+        f"- Cache-state labeling mode: `{cache_state_mode}`",
         "",
-        "## Results",
+        "## Aggregate results",
         "",
-        "| Run | Status | sample_rf | decode | total_to_decode | wall clock | max RSS |",
-        "| --- | --- | ---: | ---: | ---: | ---: | --- |",
+        "| Case | Phase | Cache | Runs | sample_rf median | sample_rf min/max | decode median | total median | wall median | max RSS median |",
+        "| --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | --- |",
     ]
-    for result in results:
+    for aggregate in aggregates:
+        sample_rf = aggregate["timings_ms"].get("sample_rf")
+        decode = aggregate["timings_ms"].get("decode_dacvae") or aggregate["timings_ms"].get("decode_latent")
+        total = aggregate["timings_ms"].get("total_to_decode")
+        wall = aggregate["wall_seconds"]
+        rss = aggregate["max_rss_bytes"]
+        sample_rf_range = ""
+        if sample_rf:
+            sample_rf_range = f"{format_ms(float(sample_rf['min']))} / {format_ms(float(sample_rf['max']))}"
         lines.append(
-            "| {name} | {status} | {sample_rf} | {decode} | {total} | {wall} | {rss} |".format(
-                name=result.name,
-                status=result.status,
-                sample_rf=format_ms(result.timings_ms.get("sample_rf")),
-                decode=format_ms(result.timings_ms.get("decode_dacvae") or result.timings_ms.get("decode_latent")),
-                total=format_ms(result.timings_ms.get("total_to_decode")),
-                wall=(f"{result.wall_seconds:.2f} s" if result.wall_seconds is not None else ""),
-                rss=format_bytes(result.max_rss_bytes),
+            "| {case} | {phase} | {cache} | {runs} | {sample_rf_med} | {sample_rf_range} | {decode_med} | {total_med} | {wall_med} | {rss_med} |".format(
+                case=aggregate["case_name"],
+                phase=aggregate["phase"],
+                cache=aggregate["cache_state"],
+                runs=aggregate["runs"],
+                sample_rf_med=format_ms(float(sample_rf["median"])) if sample_rf else "",
+                sample_rf_range=sample_rf_range,
+                decode_med=format_ms(float(decode["median"])) if decode else "",
+                total_med=format_ms(float(total["median"])) if total else "",
+                wall_med=format_seconds(float(wall["median"])) if wall else "",
+                rss_med=format_bytes(int(rss["median"])) if rss else "",
             )
         )
-    for result in results:
+
+    for aggregate in aggregates:
         lines.extend([
             "",
-            f"## {result.name}",
+            f"## {aggregate['case_name']} · {aggregate['phase']} · {aggregate['cache_state']}",
             "",
-            f"- Kind: `{result.kind}`",
-            f"- Status: `{result.status}`",
-            f"- CWD: `{result.cwd}`",
-            f"- Output WAV: `{result.output_wav}`",
-            f"- stdout log: `{result.stdout_log}`" if result.stdout_log else "- stdout log: n/a",
-            f"- stderr log: `{result.stderr_log}`" if result.stderr_log else "- stderr log: n/a",
+            f"- Kind: `{aggregate['kind']}`",
+            f"- Reference mode: `{aggregate['reference_mode']}`",
+            f"- Num steps: `{aggregate['num_steps']}`",
+            f"- Seconds: `{aggregate['seconds']}`" if aggregate["seconds"] is not None else "- Seconds: n/a (upstream)",
+            f"- Runs: `{aggregate['runs']}`",
+            f"- Status counts: `{json.dumps(aggregate['status_counts'], ensure_ascii=False, sort_keys=True)}`",
             "",
-            "Command:",
+            "Aggregate timings:",
             "",
-            "```bash",
-            result.command,
-            "```",
-            "",
-            "Timings:",
-            "",
-            "| Stage | Time |",
-            "| --- | ---: |",
+            "| Metric | Min | Median | Max |",
+            "| --- | ---: | ---: | ---: |",
         ])
-        for key in sorted(result.timings_ms):
-            lines.append(f"| `{key}` | {format_ms(result.timings_ms[key])} |")
-        if not result.timings_ms:
-            lines.append("| _(none parsed)_ | |")
-        if result.notes:
-            lines.extend(["", "Notes:", ""])
-            for note in result.notes:
-                lines.append(f"- {note}")
+        for key, summary in sorted(aggregate["timings_ms"].items()):
+            lines.append(
+                f"| `{key}` | {format_ms(float(summary['min']))} | {format_ms(float(summary['median']))} | {format_ms(float(summary['max']))} |"
+            )
+        if not aggregate["timings_ms"]:
+            lines.append("| _(none parsed)_ | | | |")
+        if aggregate["wall_seconds"]:
+            wall = aggregate["wall_seconds"]
+            lines.append(
+                f"| `wall_seconds` | {format_seconds(float(wall['min']))} | {format_seconds(float(wall['median']))} | {format_seconds(float(wall['max']))} |"
+            )
+        if aggregate["max_rss_bytes"]:
+            rss = aggregate["max_rss_bytes"]
+            lines.append(
+                f"| `max_rss_bytes` | {format_bytes(int(rss['min']))} | {format_bytes(int(rss['median']))} | {format_bytes(int(rss['max']))} |"
+            )
+
+        lines.extend([
+            "",
+            "Raw runs:",
+            "",
+            "| Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |",
+            "| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |",
+        ])
+        matching_results = [
+            result
+            for result in results
+            if result.case_name == aggregate["case_name"]
+            and result.phase == aggregate["phase"]
+            and result.cache_state == aggregate["cache_state"]
+        ]
+        for result in matching_results:
+            lines.append(
+                "| {name} | {status} | {sample_rf} | {decode} | {total} | {wall} | {rss} | `{stdout}` | `{stderr}` |".format(
+                    name=result.name,
+                    status=result.status,
+                    sample_rf=format_ms(result.timings_ms.get("sample_rf")),
+                    decode=format_ms(result.timings_ms.get("decode_dacvae") or result.timings_ms.get("decode_latent")),
+                    total=format_ms(result.timings_ms.get("total_to_decode")),
+                    wall=format_seconds(result.wall_seconds),
+                    rss=format_bytes(result.max_rss_bytes),
+                    stdout=result.stdout_log or "n/a",
+                    stderr=result.stderr_log or "n/a",
+                )
+            )
+        for result in matching_results:
+            lines.extend([
+                "",
+                f"### {result.name}",
+                "",
+                f"- Output WAV: `{result.output_wav}`",
+                f"- CWD: `{result.cwd}`",
+                "",
+                "Command:",
+                "",
+                "```bash",
+                result.command,
+                "```",
+            ])
+            if result.notes:
+                lines.extend(["", "Notes:", ""])
+                for note in result.notes:
+                    lines.append(f"- {note}")
     return "\n".join(lines) + "\n"
 
 
-def write_json_summary(results: list[BenchmarkResult], path: Path) -> None:
-    path.write_text(json.dumps([asdict(result) for result in results], ensure_ascii=False, indent=2), encoding="utf-8")
+def write_json_summary(results: list[BenchmarkResult], path: Path, *, args: argparse.Namespace) -> None:
+    payload = {
+        "schema_version": 2,
+        "invocation": {
+            "mode": args.mode,
+            "text": args.text,
+            "seed": args.seed,
+            "repeat": args.repeat,
+            "warmup_runs": args.warmup_runs,
+            "cache_state": args.cache_state,
+            "seconds": args.seconds,
+            "seconds_sweep": args.seconds_sweep,
+            "num_steps": args.num_steps,
+            "num_steps_sweep": args.num_steps_sweep,
+            "reference_wav": args.reference_wav,
+            "codec_runtime_mode": args.codec_runtime_mode,
+        },
+        "results": [asdict(result) for result in results],
+        "aggregates": build_aggregates(results),
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def run_self_test() -> int:
     sample = """
 [timing] sample_rf: 23713.9 ms
 [timing] decode_dacvae: 5648.5 ms
+[timing] total_to_decode: 1.75 s
 122.86 real
 1718976512  maximum resident set size
 """.strip()
     timings = parse_timing_lines(sample)
     assert timings["sample_rf"] == 23713.9
     assert timings["decode_dacvae"] == 5648.5
+    assert timings["total_to_decode"] == 1750.0
     assert parse_wall_seconds(sample) == 122.86
     assert parse_max_rss_bytes(sample) == 1718976512
+
+    results = [
+        BenchmarkResult(
+            name="mlx-bridge-reference-seconds-5-steps-40-measured-run-01",
+            case_name="mlx-bridge-reference-seconds-5-steps-40",
+            kind="mlx",
+            phase="measured",
+            run_index=1,
+            overall_run_index=1,
+            cache_state="cold",
+            reference_mode="reference",
+            seconds=5.0,
+            num_steps=40,
+            command="python scripts/generate_wav.py ...",
+            cwd="/tmp/repo",
+            output_wav="/tmp/out.wav",
+            stdout_log="/tmp/out.stdout.log",
+            stderr_log="/tmp/out.stderr.log",
+            status="passed",
+            timings_ms=timings,
+            wall_seconds=122.86,
+            max_rss_bytes=1718976512,
+        ),
+        BenchmarkResult(
+            name="mlx-bridge-reference-seconds-5-steps-40-measured-run-02",
+            case_name="mlx-bridge-reference-seconds-5-steps-40",
+            kind="mlx",
+            phase="measured",
+            run_index=2,
+            overall_run_index=2,
+            cache_state="warm",
+            reference_mode="reference",
+            seconds=5.0,
+            num_steps=40,
+            command="python scripts/generate_wav.py ...",
+            cwd="/tmp/repo",
+            output_wav="/tmp/out-2.wav",
+            stdout_log="/tmp/out-2.stdout.log",
+            stderr_log="/tmp/out-2.stderr.log",
+            status="passed",
+            timings_ms={"sample_rf": 20000.0, "decode_dacvae": 5000.0, "total_to_decode": 26000.0},
+            wall_seconds=100.0,
+            max_rss_bytes=1600000000,
+        ),
+    ]
+    aggregates = build_aggregates(results)
+    assert any(item["cache_state"] == "cold" for item in aggregates)
+    assert any(item["cache_state"] == "warm" for item in aggregates)
     report = build_report(
-        [
-            BenchmarkResult(
-                name="self-test",
-                kind="mlx",
-                command="python scripts/generate_wav.py ...",
-                cwd="/tmp/repo",
-                output_wav="/tmp/out.wav",
-                stdout_log="/tmp/out.stdout.log",
-                stderr_log="/tmp/out.stderr.log",
-                status="passed",
-                timings_ms=timings,
-                wall_seconds=122.86,
-                max_rss_bytes=1718976512,
-            )
-        ],
+        results,
         text=DEFAULT_TEXT,
         seed=20260512,
-        num_steps=40,
+        repeat=2,
+        warmup_runs=0,
+        cache_state_mode="auto",
     )
-    assert "sample_rf" in report
-    assert "122.86 s" in report
+    assert "Aggregate results" in report
+    assert "sample_rf min/max" in report
+    assert "mlx-bridge-reference-seconds-5-steps-40" in report
     print("self-test passed")
     return 0
 
@@ -444,20 +824,28 @@ def main() -> int:
     output_dir = ensure_directory((repo_root / args.output_dir).resolve())
     results: list[BenchmarkResult] = []
 
-    if args.mode in {"upstream", "both"}:
-        results.append(run_upstream(args, repo_root, output_dir))
-    if args.mode in {"mlx", "both"}:
-        results.append(run_mlx(args, repo_root, output_dir))
+    for case in build_cases(args):
+        results.extend(run_case(case, args, repo_root, output_dir))
 
-    write_json_summary(results, output_dir / "benchmark-summary.json")
+    write_json_summary(results, output_dir / "benchmark-summary.json", args=args)
     if args.report:
         report_path = Path(args.report)
         if not report_path.is_absolute():
             report_path = repo_root / report_path
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(build_report(results, text=args.text, seed=args.seed, num_steps=args.num_steps), encoding="utf-8")
+        report_path.write_text(
+            build_report(
+                results,
+                text=args.text,
+                seed=args.seed,
+                repeat=args.repeat,
+                warmup_runs=args.warmup_runs,
+                cache_state_mode=args.cache_state,
+            ),
+            encoding="utf-8",
+        )
 
-    print(json.dumps([asdict(result) for result in results], ensure_ascii=False, indent=2))
+    print(json.dumps({"results": [asdict(result) for result in results], "aggregates": build_aggregates(results)}, ensure_ascii=False, indent=2))
     return 0
 
 
