@@ -19,6 +19,8 @@ try:
         load_npz_weights,
         masked_mean_token,
     )
+    from irodori_mlx.encoders import SelfAttention
+    from irodori_mlx.layers import precompute_freqs_cis
 
     HAS_MLX = True
 except Exception as exc:  # pragma: no cover - exercised only on machines without MLX.
@@ -49,6 +51,19 @@ class ConfigTests(unittest.TestCase):
 
 
 class EncoderRuntimeTests(unittest.TestCase):
+    @require_mlx
+    def test_self_attention_all_false_mask_is_finite_in_float16(self):
+        attention = SelfAttention(dim=8, heads=2, norm_eps=1e-5)
+        attention.set_dtype(mx.float16)
+        x = mx.ones((1, 3, 8), dtype=mx.float16)
+        mask = mx.array([[False, False, False]])
+        freqs = precompute_freqs_cis(dim=4, end=3)
+
+        output = attention(x, key_mask=mask, freqs_cis=freqs)
+
+        self.assertFalse(bool(mx.any(mx.isnan(output)).item()))
+        np.testing.assert_allclose(to_np(output), 0.0, atol=1e-6)
+
     @require_mlx
     def test_text_encoder_masks_outputs_to_zero(self):
         encoder = TextEncoder(

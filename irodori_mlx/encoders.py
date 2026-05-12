@@ -20,6 +20,11 @@ def _mask_float(mask: mx.array, dtype: mx.Dtype) -> mx.array:
     return mask.astype(dtype)[..., None]
 
 
+def _attention_mask_floor(dtype: mx.Dtype) -> mx.array:
+    """Return a finite masking floor for the active attention dtype."""
+    return mx.array(mx.finfo(dtype).min, dtype=dtype)
+
+
 def _apply_batch_dropout(mask: mx.array, dropout: mx.array | None, name: str) -> mx.array:
     if dropout is None:
         return mask
@@ -76,11 +81,16 @@ class SelfAttention(nn.Module):
         kh = mx.transpose(k, (0, 2, 1, 3))
         vh = mx.transpose(v, (0, 2, 1, 3))
         scores = (qh @ mx.transpose(kh, (0, 1, 3, 2))) / math.sqrt(float(self.head_dim))
+        has_key = None
         if key_mask is not None:
             key_mask = _as_bool_mask(key_mask, (bsz, seq_len), "key_mask")
-            scores = mx.where(key_mask[:, None, None, :], scores, mx.array(-1e9, dtype=scores.dtype))
+            scores = mx.where(key_mask[:, None, None, :], scores, _attention_mask_floor(scores.dtype))
+            has_key = mx.any(key_mask, axis=1)[:, None, None, None]
         attn = mx.softmax(scores, axis=-1)
-        y = mx.transpose(attn @ vh, (0, 2, 1, 3)).reshape(bsz, seq_len, self.dim)
+        context = attn @ vh
+        if has_key is not None:
+            context = context * has_key.astype(context.dtype)
+        y = mx.transpose(context, (0, 2, 1, 3)).reshape(bsz, seq_len, self.dim)
         y = y * mx.sigmoid(self.gate(x))
         return self.wo(y)
 
