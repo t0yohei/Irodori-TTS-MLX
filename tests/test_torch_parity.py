@@ -22,7 +22,15 @@ except Exception as exc:  # pragma: no cover - dependency-specific skip path.
     IMPORT_ERROR = exc
 
 
-DEFAULT_UPSTREAM = Path(__file__).resolve().parents[3] / "_scratch" / "Irodori-TTS-upstream"
+def default_upstream_path() -> Path:
+    resolved = Path(__file__).resolve()
+    for parent in resolved.parents:
+        if parent.name == "repos":
+            return parent / "_scratch" / "Irodori-TTS-upstream"
+    return resolved.parents[3] / "_scratch" / "Irodori-TTS-upstream"
+
+
+DEFAULT_UPSTREAM = default_upstream_path()
 UPSTREAM_PATH = Path(os.environ.get("IRODORI_TTS_UPSTREAM_PATH", DEFAULT_UPSTREAM))
 
 
