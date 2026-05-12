@@ -14,13 +14,14 @@ class BenchmarkScriptTests(unittest.TestCase):
             [
                 "[timing] sample_rf: 23713.9 ms",
                 "[timing] decode_dacvae: 5648.5 ms",
-                "122.86 real",
+                "[timing] total_to_decode: 1.75 s",
+                "122.86 real 0.00 user 0.00 sys",
                 "1718976512  maximum resident set size",
             ]
         )
         self.assertEqual(
             benchmark.parse_timing_lines(sample),
-            {"sample_rf": 23713.9, "decode_dacvae": 5648.5},
+            {"sample_rf": 23713.9, "decode_dacvae": 5648.5, "total_to_decode": 1750.0},
         )
         self.assertEqual(benchmark.parse_wall_seconds(sample), 122.86)
         self.assertEqual(benchmark.parse_max_rss_bytes(sample), 1718976512)

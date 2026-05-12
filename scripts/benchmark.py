@@ -26,8 +26,10 @@ from typing import Any
 TIME_L_BIN = "/usr/bin/time"
 DEFAULT_TEXT = "今日はいい天気ですね。"
 DEFAULT_CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
-TIMING_RE = re.compile(r"^\[timing\]\s+([a-zA-Z0-9_\-]+)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\s*ms\s*$")
-WALL_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s+real\s*$")
+TIMING_RE = re.compile(
+    r"^\[timing\]\s+([a-zA-Z0-9_\-]+)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\s*(ms|s)\s*$"
+)
+WALL_RE = re.compile(r"(?:^|\s)([0-9]+(?:\.[0-9]+)?)\s+real(?:\s|$)")
 RSS_RE = re.compile(r"^\s*(\d+)\s+maximum resident set size\s*$")
 
 
@@ -117,13 +119,17 @@ def parse_timing_lines(text: str) -> dict[str, float]:
         match = TIMING_RE.match(line.strip())
         if not match:
             continue
-        timings[match.group(1)] = float(match.group(2))
+        value = float(match.group(2))
+        unit = match.group(3)
+        if unit == "s":
+            value *= 1000.0
+        timings[match.group(1)] = value
     return timings
 
 
 def parse_wall_seconds(stderr: str) -> float | None:
     for line in stderr.splitlines():
-        match = WALL_RE.match(line)
+        match = WALL_RE.search(line)
         if match:
             return float(match.group(1))
     return None
