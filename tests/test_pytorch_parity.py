@@ -40,7 +40,14 @@ except Exception as exc:  # pragma: no cover - exercised only on machines withou
     TORCH_IMPORT_ERROR = exc
 
 
-DEFAULT_UPSTREAM_PATH = Path(__file__).resolve().parents[4] / "_scratch" / "Irodori-TTS-upstream"
+def default_upstream_path() -> Path:
+    resolved = Path(__file__).resolve()
+    parents = resolved.parents
+    anchor = parents[min(4, len(parents) - 1)]
+    return anchor / "_scratch" / "Irodori-TTS-upstream"
+
+
+DEFAULT_UPSTREAM_PATH = default_upstream_path()
 UPSTREAM_PATH = Path(os.environ.get("IRODORI_TTS_UPSTREAM_PATH", DEFAULT_UPSTREAM_PATH))
 
 
