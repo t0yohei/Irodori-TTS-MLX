@@ -14,7 +14,7 @@ This document records the first MLX RF-DiT forward implementation added for issu
 
 The module names intentionally mirror upstream checkpoint keys:
 
-- `cond_module.{0,1,2}.weight`
+- `cond_module.{0,2,4}.weight`
 - `in_proj.*`, `out_norm.weight`, `out_proj.*`
 - `blocks.{i}.attention.{wq,wk,wv,wo,wk_text,wv_text,wk_speaker,wv_speaker,wk_caption,wv_caption,gate}.weight`
 - `blocks.{i}.{attention_adaln,mlp_adaln}.{shift,scale,gate}_{down,up}.*`
