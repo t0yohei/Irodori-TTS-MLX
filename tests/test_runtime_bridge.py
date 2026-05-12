@@ -153,6 +153,13 @@ class RuntimeBridgeTests(unittest.TestCase):
         decoded_latents, _output_path, max_samples = bridge.decoded[0]
         self.assertEqual(decoded_latents.shape, (1, 2, 4))
         self.assertEqual(max_samples, 640)
+        self.assertIsNotNone(result.timings_ms)
+        assert result.timings_ms is not None
+        self.assertIn("prepare_text_condition", result.timings_ms)
+        self.assertIn("prepare_reference_condition", result.timings_ms)
+        self.assertIn("sample_rf", result.timings_ms)
+        self.assertIn("decode_dacvae", result.timings_ms)
+        self.assertIn("total_to_decode", result.timings_ms)
 
     @require_mlx
     def test_no_reference_builds_unconditional_speaker_mask(self):
@@ -178,6 +185,34 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
         self.assertEqual(bridge.encoded, [])
         self.assertIn("speaker reference disabled", "\n".join(result.messages))
+
+    @require_mlx
+    def test_iter_messages_includes_timing_lines(self):
+        cfg = tiny_config()
+        bridge = FakeBridge()
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            model=FakeModel(cfg),
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=0.02,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+        from irodori_mlx.runtime import iter_messages
+
+        lines = list(iter_messages(result))
+        self.assertTrue(any(line.startswith("[timing] sample_rf:") for line in lines))
+        self.assertTrue(any(line.startswith("[timing] total_to_decode:") for line in lines))
 
     @require_mlx
     def test_model_config_exposes_tokenizer_defaults(self):

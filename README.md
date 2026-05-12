@@ -44,6 +44,8 @@ For optional upstream PyTorch vs MLX deterministic component parity tests, see [
 
 For the initial MLX rectified-flow Euler sampler and CFG behavior, see [docs/rf_sampler.md](docs/rf_sampler.md).
 
+For Apple Silicon benchmark workflow, current baseline conclusions, and the benchmark harness for upstream vs MLX bridge comparison, see [docs/benchmark.md](docs/benchmark.md).
+
 For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
 
 ## Checkpoint inspection
@@ -71,6 +73,18 @@ python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run --json
 The initial converter supports the base `Aratako/Irodori-TTS-500M-v2` layout only. It validates the documented key mapping, shape expectations, float32 dtypes, and base speaker-conditioning config before writing output. The VoiceDesign/caption checkpoint is rejected until caption conversion support is implemented.
 
 The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
+
+## Benchmarking
+
+Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, and emit a Markdown report:
+
+```bash
+python3 scripts/benchmark.py --self-test
+python3 scripts/benchmark.py --mode upstream --upstream-root /path/to/Irodori-TTS
+python3 scripts/benchmark.py --mode mlx --weights /path/to/irodori-tts-500m-v2.npz --upstream-root /path/to/Irodori-TTS
+```
+
+The MLX bridge runtime emits benchmark-friendly `[timing]` lines for text/reference preparation, RF sampling, DACVAE decode, and total inference time.
 
 ## Core MLX layers
 
