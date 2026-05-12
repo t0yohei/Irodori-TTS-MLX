@@ -18,7 +18,7 @@ IRODORI_TTS_UPSTREAM_PATH=/path/to/Irodori-TTS \
   python3 -m unittest tests.test_pytorch_parity -v
 ```
 
-If `IRODORI_TTS_UPSTREAM_PATH` is omitted, the test tries the workspace convention used by local development:
+If `IRODORI_TTS_UPSTREAM_PATH` is omitted, the test walks upward from the repository checkout and uses the first existing `_scratch/Irodori-TTS-upstream` directory it finds. In the OpenClaw worktree layout this resolves to:
 
 ```text
 /Users/kouka/.openclaw/workspace/repos/_scratch/Irodori-TTS-upstream

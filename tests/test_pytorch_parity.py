@@ -42,9 +42,19 @@ except Exception as exc:  # pragma: no cover - exercised only on machines withou
 
 def default_upstream_path() -> Path:
     resolved = Path(__file__).resolve()
-    parents = resolved.parents
-    anchor = parents[min(4, len(parents) - 1)]
-    return anchor / "_scratch" / "Irodori-TTS-upstream"
+    repo_root = next(
+        (
+            parent
+            for parent in resolved.parents
+            if (parent / "irodori_mlx").is_dir() and (parent / "tests").is_dir()
+        ),
+        resolved.parent,
+    )
+    for anchor in (repo_root, *repo_root.parents):
+        candidate = anchor / "_scratch" / "Irodori-TTS-upstream"
+        if candidate.exists():
+            return candidate
+    return repo_root.parent / "_scratch" / "Irodori-TTS-upstream"
 
 
 DEFAULT_UPSTREAM_PATH = default_upstream_path()
