@@ -40,6 +40,8 @@ For the upstream PyTorch baseline workflow used to compare future MLX work, see 
 
 For checkpoint metadata and state_dict layout notes that will guide weight conversion, see [docs/weight_mapping.md](docs/weight_mapping.md).
 
+For optional upstream PyTorch vs MLX deterministic component parity tests, see [docs/pytorch_parity.md](docs/pytorch_parity.md).
+
 ## Checkpoint inspection
 
 Use `scripts/inspect_checkpoint.py` to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
