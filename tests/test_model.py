@@ -150,10 +150,12 @@ class RFDiTModelTests(unittest.TestCase):
         self.assertIn("blocks.0.attention.wk_text.weight", keys)
         self.assertIn("blocks.0.attention.wk_speaker.weight", keys)
         self.assertIn("cond_module.2.weight", keys)
+        self.assertIn("cond_module.4.weight", keys)
         self.assertIn("out_proj.bias", keys)
 
         subset = {
             "cond_module.0.weight": mx.zeros_like(model.cond_module[0].weight),
+            "cond_module.4.weight": mx.zeros_like(model.cond_module[4].weight),
             "in_proj.bias": mx.zeros_like(model.in_proj.bias),
             "out_proj.weight": mx.zeros_like(model.out_proj.weight),
         }

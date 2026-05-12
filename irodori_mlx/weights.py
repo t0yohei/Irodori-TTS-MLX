@@ -177,8 +177,8 @@ def rf_dit_required_keys(cfg: ModelConfig) -> tuple[str, ...]:
     keys.extend(
         [
             "cond_module.0.weight",
-            "cond_module.1.weight",
             "cond_module.2.weight",
+            "cond_module.4.weight",
             "in_proj.weight",
             "in_proj.bias",
             "out_norm.weight",

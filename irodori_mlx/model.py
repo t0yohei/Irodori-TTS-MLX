@@ -296,7 +296,9 @@ class TextToLatentRFDiT(nn.Module):
         self.caption_norm = self.condition_encoders.caption_norm
         self.cond_module = [
             nn.Linear(cfg.timestep_embed_dim, cfg.model_dim, bias=False),
+            None,
             nn.Linear(cfg.model_dim, cfg.model_dim, bias=False),
+            None,
             nn.Linear(cfg.model_dim, cfg.model_dim * 3, bias=False),
         ]
         self.in_proj = nn.Linear(cfg.patched_latent_dim, cfg.model_dim, bias=True)
@@ -317,8 +319,8 @@ class TextToLatentRFDiT(nn.Module):
     def _condition_embedding(self, t: mx.array, dtype: mx.Dtype) -> mx.array:
         t_embed = get_timestep_embedding(t, self.cfg.timestep_embed_dim).astype(dtype)
         h = nn.silu(self.cond_module[0](t_embed))
-        h = nn.silu(self.cond_module[1](h))
-        return self.cond_module[2](h)[:, None, :]
+        h = nn.silu(self.cond_module[2](h))
+        return self.cond_module[4](h)[:, None, :]
 
     def encode_conditions(self, **kwargs) -> EncodedConditions:
         return self.condition_encoders(**kwargs)
