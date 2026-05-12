@@ -154,6 +154,7 @@ So the current best mitigation is a simpler one than the original architectural 
 ## Benchmark script
 
 Use `scripts/benchmark.py` to run a reproducible benchmark harness with repeated-run support, warmup labeling, and simple scaling sweeps.
+For environment setup, use the packaged Python 3.11 benchmark flow in [docs/packaging.md](packaging.md): create a venv, install `-e ".[bench]"`, and make upstream `irodori_tts` importable from the same environment.
 
 ### Self-test
 
@@ -188,13 +189,8 @@ python3 scripts/benchmark.py \
 
 ### MLX bridge benchmark
 
-The MLX benchmark expects a converted `.npz` checkpoint from `scripts/convert_weights.py` and an environment that can import:
-
-- `mlx`
-- `torch`
-- `transformers`
-- `sentencepiece`
-- upstream `irodori_tts`
+The MLX benchmark expects a converted `.npz` checkpoint from `scripts/convert_weights.py` and an environment that can import the `.[bench]` dependency group plus upstream `irodori_tts`.
+That means the benchmark venv should contain this repository with `pip install -e ".[bench]"`, while upstream Irodori-TTS is either installed into the same venv or provided on `PYTHONPATH`.
 
 Example:
 
