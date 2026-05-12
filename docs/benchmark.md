@@ -153,7 +153,7 @@ So the current best mitigation is a simpler one than the original architectural 
 
 ## Benchmark script
 
-Use `scripts/benchmark.py` to run a reproducible benchmark harness.
+Use `scripts/benchmark.py` to run a reproducible benchmark harness with repeated-run support, warmup labeling, and simple scaling sweeps.
 
 ### Self-test
 
@@ -212,6 +212,60 @@ python3 scripts/benchmark.py \
 
 For no-reference benchmarking, omit `--reference-wav`.
 
+### Repeated runs and warm-cache tracking
+
+Use `--repeat` to collect multiple measured runs for the same case. Add `--warmup-runs` when you want the harness to intentionally push the runtime toward steady state before recording measured runs.
+
+Example:
+
+```bash
+python3 scripts/benchmark.py \
+  --mode mlx \
+  --weights /path/to/irodori-tts-500m-v2.npz \
+  --upstream-root /path/to/Irodori-TTS \
+  --reference-wav /path/to/reference.wav \
+  --repeat 3 \
+  --warmup-runs 1 \
+  --output-dir benchmark-runs \
+  --report docs/benchmark-latest.md
+```
+
+Cache labeling options:
+
+- `--cache-state auto` (default): heuristically labels the first run in an invocation as cold and later steady-state runs as warm when that distinction is meaningful
+- `--cache-state cold|warm|unknown`: override the label when you know the environment state better than the harness does
+
+Warmup runs are recorded separately from measured runs in both the Markdown report and the JSON summary so one-shot startup effects do not get mixed into the steady-state aggregate.
+
+### Scaling sweeps
+
+Use `--num-steps-sweep` to compare multiple diffusion-step counts in one invocation.
+
+```bash
+python3 scripts/benchmark.py \
+  --mode both \
+  --upstream-root /path/to/Irodori-TTS \
+  --upstream-python /path/to/Irodori-TTS/.venv/bin/python \
+  --weights /path/to/irodori-tts-500m-v2.npz \
+  --reference-wav /path/to/reference.wav \
+  --num-steps-sweep 20,40,60 \
+  --repeat 2
+```
+
+Use `--seconds-sweep` for MLX-only output-length scaling runs:
+
+```bash
+python3 scripts/benchmark.py \
+  --mode mlx \
+  --weights /path/to/irodori-tts-500m-v2.npz \
+  --upstream-root /path/to/Irodori-TTS \
+  --seconds-sweep 3,5,8 \
+  --num-steps 40 \
+  --repeat 2
+```
+
+`--seconds-sweep` is MLX-only because the upstream CLI does not currently expose an output-length flag.
+
 ### Combined run
 
 ```bash
@@ -234,7 +288,16 @@ For each run, the benchmark harness stores:
 - stdout/stderr logs
 - parsed `[timing]` stage breakdowns
 - `/usr/bin/time -l` wall-clock and max RSS when available
+- run metadata such as `phase` (`warmup` / `measured`), `cache_state`, `seconds`, and `num_steps`
 - a JSON summary in `benchmark-runs/benchmark-summary.json`
+
+The summary JSON now uses a structured schema with:
+
+- `results`: raw per-run entries
+- `aggregates`: grouped min / median / max summaries by case, phase, and cache state
+- `invocation`: the CLI parameters used to produce the run set
+
+This keeps repeated measurements diffable over time without throwing away the raw run-by-run evidence.
 
 The MLX bridge runtime now emits these benchmark-friendly timing keys:
 

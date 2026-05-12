@@ -76,16 +76,19 @@ The initial converter accepts only local `.safetensors` checkpoints. Converting 
 
 ## Benchmarking
 
-Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, and emit a Markdown report:
+Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries:
 
 ```bash
 python3 scripts/benchmark.py --self-test
 python3 scripts/benchmark.py --mode upstream --upstream-root /path/to/Irodori-TTS
 python3 scripts/benchmark.py --mode mlx --weights /path/to/irodori-tts-500m-v2.npz --upstream-root /path/to/Irodori-TTS
+python3 scripts/benchmark.py --mode mlx --weights /path/to/irodori-tts-500m-v2.npz --upstream-root /path/to/Irodori-TTS --repeat 3 --warmup-runs 1 --reference-wav /path/to/reference.wav
+python3 scripts/benchmark.py --mode mlx --weights /path/to/irodori-tts-500m-v2.npz --upstream-root /path/to/Irodori-TTS --seconds-sweep 3,5,8 --num-steps-sweep 20,40
 ```
 
 The MLX bridge runtime emits benchmark-friendly `[timing]` lines for text/reference preparation, RF sampling, DACVAE decode, and total inference time.
 For reference-path memory experiments, `--codec-runtime-mode persistent|subprocess` can compare the normal in-process bridge against a helper-process DACVAE boundary.
+The benchmark summary JSON now records per-run metadata (`phase`, `cache_state`, sweep parameters) plus aggregated min/median/max statistics so future reports can diff repeated runs instead of relying on one-off measurements.
 
 ## Core MLX layers
 
