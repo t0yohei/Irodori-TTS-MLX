@@ -96,6 +96,21 @@ class BenchmarkScriptTests(unittest.TestCase):
         with self.assertRaises(benchmark.BenchmarkError):
             benchmark.build_cases(args)
 
+    def test_build_cases_rejects_duplicate_sweep_values_that_collide_on_slug(self):
+        args = Namespace(
+            mode="mlx",
+            seconds=5.0,
+            seconds_sweep="5,5",
+            num_steps=40,
+            num_steps_sweep="20,20",
+            repeat=1,
+            warmup_runs=0,
+            reference_wav=None,
+        )
+        with self.assertRaises(benchmark.BenchmarkError) as ctx:
+            benchmark.build_cases(args)
+        self.assertIn("duplicate benchmark cases/log paths", str(ctx.exception))
+
     def test_resolve_cache_state_auto_separates_cold_and_warm(self):
         args = Namespace(cache_state="auto", warmup_runs=0, repeat=3)
         self.assertEqual(

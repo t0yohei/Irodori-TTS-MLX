@@ -255,6 +255,20 @@ def build_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
                     )
                 )
 
+    seen_slugs: set[str] = set()
+    duplicates: list[str] = []
+    for case in cases:
+        if case.slug in seen_slugs:
+            duplicates.append(case.slug)
+            continue
+        seen_slugs.add(case.slug)
+    if duplicates:
+        joined = ", ".join(sorted(set(duplicates)))
+        raise BenchmarkError(
+            f"Sweep arguments produced duplicate benchmark cases/log paths: {joined}. "
+            "Deduplicate --seconds-sweep/--num-steps-sweep values before running."
+        )
+
     return cases
 
 
