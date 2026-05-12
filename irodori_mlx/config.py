@@ -17,12 +17,14 @@ class ModelConfig:
     speaker_mlp_ratio: float | None = 2.6
     dropout: float = 0.0
     text_vocab_size: int = 99574
+    text_tokenizer_repo: str = "sbintuitions/sarashina2.2-0.5b"
     text_add_bos: bool = True
     text_dim: int = 512
     text_layers: int = 10
     text_heads: int = 8
     use_caption_condition: bool = False
     caption_vocab_size: int | None = None
+    caption_tokenizer_repo: str | None = None
     caption_add_bos: bool | None = None
     caption_dim: int | None = None
     caption_layers: int | None = None
@@ -59,6 +61,10 @@ class ModelConfig:
     @property
     def caption_vocab_size_resolved(self) -> int:
         return self.text_vocab_size if self.caption_vocab_size is None else int(self.caption_vocab_size)
+
+    @property
+    def caption_tokenizer_repo_resolved(self) -> str:
+        return self.text_tokenizer_repo if self.caption_tokenizer_repo is None else str(self.caption_tokenizer_repo)
 
     @property
     def caption_add_bos_resolved(self) -> bool:
