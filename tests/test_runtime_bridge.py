@@ -17,6 +17,7 @@ try:
         GenerationRequest,
         MLXDACVAERuntime,
         MLXRuntimeConfig,
+        load_model_config_json,
         mlx_to_torch_latents,
         torch_to_mlx_latents,
     )
@@ -183,6 +184,18 @@ class RuntimeBridgeTests(unittest.TestCase):
         cfg = ModelConfig()
         self.assertEqual(cfg.text_tokenizer_repo, "sbintuitions/sarashina2.2-0.5b")
         self.assertEqual(cfg.caption_tokenizer_repo_resolved, cfg.text_tokenizer_repo)
+
+    @require_mlx
+    def test_load_model_config_json_accepts_inline_object_or_path(self):
+        inline = load_model_config_json('{"use_caption_condition": true, "caption_vocab_size": 32}')
+        self.assertTrue(inline.use_caption_condition)
+        self.assertEqual(inline.caption_vocab_size_resolved, 32)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "config.json"
+            path.write_text('{"latent_dim": 8, "text_vocab_size": 64}', encoding="utf-8")
+            from_path = load_model_config_json(path)
+        self.assertEqual(from_path.latent_dim, 8)
+        self.assertEqual(from_path.text_vocab_size, 64)
 
     @require_mlx
     def test_torch_mlx_latent_conversion_roundtrip_when_torch_is_available(self):

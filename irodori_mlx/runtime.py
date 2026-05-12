@@ -107,13 +107,24 @@ def mlx_to_torch_latents(latents: mx.array, *, device: str = "cpu"):
     return torch.from_numpy(_as_numpy(latents)).to(device=device, dtype=torch.float32)
 
 
-def load_model_config_json(path: str | Path | None) -> ModelConfig:
-    if path is None:
+def load_model_config_json(value: str | Path | None) -> ModelConfig:
+    """Load `ModelConfig` from a JSON file path or an inline JSON object string."""
+
+    if value is None:
         return ModelConfig()
-    with Path(path).expanduser().open("r", encoding="utf-8") as fh:
-        payload = json.load(fh)
+    raw = str(value).strip()
+    if raw.startswith("{"):
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Inline model config JSON is invalid.") from exc
+        source = "inline JSON"
+    else:
+        with Path(value).expanduser().open("r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+        source = str(value)
     if not isinstance(payload, dict):
-        raise ValueError(f"Model config JSON must contain an object: {path}")
+        raise ValueError(f"Model config JSON must contain an object: {source}")
     return ModelConfig(**payload)
 
 
