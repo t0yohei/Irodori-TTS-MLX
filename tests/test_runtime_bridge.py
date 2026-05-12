@@ -277,8 +277,7 @@ class RuntimeBridgeTests(unittest.TestCase):
         calls = []
 
         def fake_run_codec_worker(*, action, config, extra_args):
-            del config
-            calls.append((action, list(extra_args)))
+            calls.append((action, config, list(extra_args)))
             if action == "describe":
                 return describe_payload
             if action == "encode":
@@ -295,17 +294,28 @@ class RuntimeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime._run_codec_worker", side_effect=fake_run_codec_worker):
             caller_cwd = Path(td) / "caller"
             caller_cwd.mkdir()
+            codec_dir = caller_cwd / "local-codec"
+            codec_dir.mkdir()
             old_cwd = Path.cwd()
             try:
                 os.chdir(caller_cwd)
-                bridge = SubprocessDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="subprocess"))
+                bridge = SubprocessDACVAEBridge(
+                    config=DACVAEBridgeConfig(runtime_mode="subprocess", codec_repo="local-codec")
+                )
                 bridge.encode_reference("ref.wav", max_seconds=None, normalize_db=None, ensure_max=False)
                 output_path = bridge.decode_to_wav(mx.zeros((1, 2, 4), dtype=mx.float32), "out.wav")
             finally:
                 os.chdir(old_cwd)
 
-        encode_call = next(args for action, args in calls if action == "encode")
-        decode_call = next(args for action, args in calls if action == "decode")
+        describe_config = next(config for action, config, _args in calls if action == "describe")
+        encode_call = next(args for action, _config, args in calls if action == "encode")
+        encode_config = next(config for action, config, _args in calls if action == "encode")
+        decode_call = next(args for action, _config, args in calls if action == "decode")
+        decode_config = next(config for action, config, _args in calls if action == "decode")
+        expected_codec_repo = str(codec_dir.resolve())
+        self.assertEqual(describe_config.codec_repo, expected_codec_repo)
+        self.assertEqual(encode_config.codec_repo, expected_codec_repo)
+        self.assertEqual(decode_config.codec_repo, expected_codec_repo)
         self.assertEqual(encode_call[encode_call.index("--reference-wav") + 1], str((caller_cwd / "ref.wav").resolve()))
         self.assertEqual(decode_call[decode_call.index("--output-wav") + 1], str((caller_cwd / "out.wav").resolve()))
         self.assertEqual(output_path, (caller_cwd / "out.wav").resolve())

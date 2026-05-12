@@ -7,7 +7,7 @@ import sys
 import tempfile
 import time
 import wave
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
@@ -312,7 +312,7 @@ class SubprocessDACVAEBridge:
 
     def __init__(self, *, config: DACVAEBridgeConfig) -> None:
         self.config = config
-        raw = _run_codec_worker(action="describe", config=config, extra_args=[])
+        raw = _run_codec_worker(action="describe", config=self._worker_config(config), extra_args=[])
         json_line = next((line for line in reversed(raw.splitlines()) if line.strip().startswith("{")), "")
         if not json_line:
             raise RuntimeError("codec worker describe did not return JSON metadata")
@@ -324,6 +324,20 @@ class SubprocessDACVAEBridge:
     @staticmethod
     def _caller_absolute_path(path: str | Path) -> Path:
         return Path(path).expanduser().resolve(strict=False)
+
+    @classmethod
+    def _caller_resolved_codec_repo(cls, codec_repo: str) -> str:
+        candidate = Path(codec_repo).expanduser()
+        if candidate.is_absolute() or codec_repo.startswith((".", "~")):
+            return str(candidate.resolve(strict=False))
+        caller_candidate = Path.cwd() / candidate
+        if caller_candidate.exists():
+            return str(caller_candidate.resolve(strict=False))
+        return codec_repo
+
+    @classmethod
+    def _worker_config(cls, config: DACVAEBridgeConfig) -> DACVAEBridgeConfig:
+        return replace(config, codec_repo=cls._caller_resolved_codec_repo(config.codec_repo))
 
     def encode_reference(
         self,
@@ -348,7 +362,7 @@ class SubprocessDACVAEBridge:
                 extra_args.extend(["--normalize-db", str(normalize_db)])
             if ensure_max:
                 extra_args.append("--ensure-max")
-            _run_codec_worker(action="encode", config=self.config, extra_args=extra_args)
+            _run_codec_worker(action="encode", config=self._worker_config(self.config), extra_args=extra_args)
             import numpy as np
 
             return mx.array(np.load(latents_path).astype("float32", copy=False))
@@ -371,7 +385,7 @@ class SubprocessDACVAEBridge:
             ]
             if max_samples is not None:
                 extra_args.extend(["--max-samples", str(max_samples)])
-            _run_codec_worker(action="decode", config=self.config, extra_args=extra_args)
+            _run_codec_worker(action="decode", config=self._worker_config(self.config), extra_args=extra_args)
             return resolved_output_path
         finally:
             latents_path.unlink(missing_ok=True)
