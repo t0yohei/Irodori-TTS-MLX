@@ -438,35 +438,23 @@ def run_case(case: BenchmarkCase, args: argparse.Namespace, repo_root: Path, out
     cwd = resolve_case_cwd(case, args, repo_root)
 
     if args.dry_run:
-        dry_name = case.name if args.repeat == 1 and args.warmup_runs == 0 else f"{case.name}-measured-run-01"
-        output_wav = output_dir / f"{case.slug}.measured.run-01.wav"
-        if case.kind == "upstream":
-            argv = build_upstream_command(args, output_wav, num_steps=case.num_steps)
-        else:
-            argv, _env = build_mlx_command(args, repo_root, output_wav, seconds=float(case.seconds), num_steps=case.num_steps)
-        return [
-            BenchmarkResult(
-                name=dry_name,
-                case_name=case.name,
-                kind=case.kind,
-                phase="measured",
-                run_index=1,
-                overall_run_index=1,
-                cache_state=resolve_cache_state(args, phase="measured", overall_run_index=1, measured_run_index=1),
-                reference_mode=case.reference_mode,
-                seconds=case.seconds,
-                num_steps=case.num_steps,
-                command=shell_join(argv),
-                cwd=str(cwd),
-                output_wav=str(output_wav),
-                stdout_log="",
-                stderr_log="",
-                status="dry-run",
-                timings_ms={},
-                wall_seconds=None,
-                max_rss_bytes=None,
-            )
-        ]
+        dry_results: list[BenchmarkResult] = []
+        total_runs = args.warmup_runs + args.repeat
+        for overall_run_index in range(1, total_runs + 1):
+            is_warmup = overall_run_index <= args.warmup_runs
+            phase = "warmup" if is_warmup else "measured"
+            phase_run_index = overall_run_index if is_warmup else overall_run_index - args.warmup_runs
+            measured_run_index = None if is_warmup else phase_run_index
+            cache_state = resolve_cache_state(args, phase=phase, overall_run_index=overall_run_index, measured_run_index=measured_run_index)
+            run_slug = f"{case.slug}.{phase}.run-{phase_run_index:02d}"
+            run_name = case.name if total_runs == 1 else f"{case.name}-{phase}-run-{phase_run_index:02d}"
+            output_wav = output_dir / f"{run_slug}.wav"
+            if case.kind == "upstream":
+                argv = build_upstream_command(args, output_wav, num_steps=case.num_steps)
+            else:
+                argv, _env = build_mlx_command(args, repo_root, output_wav, seconds=float(case.seconds), num_steps=case.num_steps)
+            dry_results.append(BenchmarkResult(name=run_name, case_name=case.name, kind=case.kind, phase=phase, run_index=phase_run_index, overall_run_index=overall_run_index, cache_state=cache_state, reference_mode=case.reference_mode, seconds=case.seconds, num_steps=case.num_steps, command=shell_join(argv), cwd=str(cwd), output_wav=str(output_wav), stdout_log="", stderr_log="", status="dry-run", timings_ms={}, wall_seconds=None, max_rss_bytes=None))
+        return dry_results
 
     results: list[BenchmarkResult] = []
     total_runs = args.warmup_runs + args.repeat
