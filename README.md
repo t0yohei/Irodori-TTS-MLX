@@ -156,6 +156,14 @@ The current project milestones are organized as follows:
 4. **M3 MLX inference prototype**: generate audio with MLX RF-DiT and a PyTorch DACVAE bridge.
 5. **M4 Performance and packaging**: benchmark, optimize, document, and package the prototype.
 
+Current status by milestone:
+
+- **M0 Baseline**: completed.
+- **M1 Weight conversion**: completed.
+- **M2 MLX model parity**: mostly completed; remaining expansion work is tracked in [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/irodori-tts-mlx/issues/33).
+- **M3 MLX inference prototype**: core prototype completed; follow-up usability and coverage work is tracked in [#32 Improve the generation CLI and runtime UX](https://github.com/t0yohei/irodori-tts-mlx/issues/32) and [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/irodori-tts-mlx/issues/33).
+- **M4 Performance and packaging**: active optimization phase; current follow-up work is tracked in [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/irodori-tts-mlx/issues/29), [#30 Extend benchmark automation for warm-cache, repeated runs, and scaling sweeps](https://github.com/t0yohei/irodori-tts-mlx/issues/30), and [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/irodori-tts-mlx/issues/31).
+
 ## License notes
 
 The project license has not been finalized yet. Upstream code and model weights may have different license terms. Check the upstream repository and model cards before reusing or redistributing any derived artifacts.
