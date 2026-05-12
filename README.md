@@ -91,7 +91,9 @@ The `irodori_mlx.encoders` module contains the first MLX conditioning stack:
 
 Masked positions are hard-zeroed after embedding and after each residual block so fully masked conditioning becomes an unconditional path. Speaker/reference conditioning also patches the latent sequence when configured and prepends the upstream-style masked-mean summary token.
 
-This is still a layer-level/model-component API, not a stable public generation interface. End-to-end RF-DiT forward, sampling, tokenization, and the PyTorch DACVAE bridge remain later milestones.
+The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available for MLX model-parity work. It wires the condition encoders into joint RF-DiT attention, timestep-conditioned AdaLN blocks, static conditioning K/V projection caches, and final latent velocity projection. See [docs/rf_dit_forward.md](docs/rf_dit_forward.md) for implementation and numerical-comparison notes.
+
+This is still a model-component API, not a stable public generation interface. Sampling, tokenization, and the PyTorch DACVAE bridge remain later milestones.
 
 ## Public API direction
 

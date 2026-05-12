@@ -6,6 +6,8 @@ from typing import Mapping
 
 import mlx.core as mx
 
+from .config import ModelConfig
+
 
 @dataclass(frozen=True)
 class WeightLoadReport:
@@ -127,4 +129,102 @@ def encoder_required_keys(
         # Keep the observed dimensions close to the caller-visible config.
         if dim <= 0 or heads <= 0 or head_dim <= 0 or hidden <= 0:
             raise ValueError("invalid encoder dimensions")
+    return tuple(keys)
+
+
+def rf_dit_required_keys(cfg: ModelConfig) -> tuple[str, ...]:
+    """Build required upstream key names for the full RF-DiT forward model."""
+    keys: list[str] = []
+    keys.extend(
+        encoder_required_keys(
+            prefix="text_encoder",
+            layers=cfg.text_layers,
+            dim=cfg.text_dim,
+            heads=cfg.text_heads,
+            mlp_ratio=cfg.text_mlp_ratio_resolved,
+            has_embedding=True,
+            has_input_projection=False,
+        )
+    )
+    keys.append("text_norm.weight")
+    if cfg.use_speaker_condition:
+        keys.extend(
+            encoder_required_keys(
+                prefix="speaker_encoder",
+                layers=cfg.speaker_layers,
+                dim=cfg.speaker_dim,
+                heads=cfg.speaker_heads,
+                mlp_ratio=cfg.speaker_mlp_ratio_resolved,
+                has_embedding=False,
+                has_input_projection=True,
+            )
+        )
+        keys.append("speaker_norm.weight")
+    if cfg.use_caption_condition:
+        keys.extend(
+            encoder_required_keys(
+                prefix="caption_encoder",
+                layers=cfg.caption_layers_resolved,
+                dim=cfg.caption_dim_resolved,
+                heads=cfg.caption_heads_resolved,
+                mlp_ratio=cfg.caption_mlp_ratio_resolved,
+                has_embedding=True,
+                has_input_projection=False,
+            )
+        )
+        keys.append("caption_norm.weight")
+
+    keys.extend(
+        [
+            "cond_module.0.weight",
+            "cond_module.1.weight",
+            "cond_module.2.weight",
+            "in_proj.weight",
+            "in_proj.bias",
+            "out_norm.weight",
+            "out_proj.weight",
+            "out_proj.bias",
+        ]
+    )
+    for i in range(cfg.num_layers):
+        block = f"blocks.{i}"
+        keys.extend(
+            [
+                f"{block}.attention.gate.weight",
+                f"{block}.attention.k_norm.weight",
+                f"{block}.attention.q_norm.weight",
+                f"{block}.attention.wk.weight",
+                f"{block}.attention.wo.weight",
+                f"{block}.attention.wq.weight",
+                f"{block}.attention.wv.weight",
+                f"{block}.attention.wk_text.weight",
+                f"{block}.attention.wv_text.weight",
+                f"{block}.mlp.w1.weight",
+                f"{block}.mlp.w2.weight",
+                f"{block}.mlp.w3.weight",
+            ]
+        )
+        if cfg.use_speaker_condition:
+            keys.extend(
+                [
+                    f"{block}.attention.wk_speaker.weight",
+                    f"{block}.attention.wv_speaker.weight",
+                ]
+            )
+        if cfg.use_caption_condition:
+            keys.extend(
+                [
+                    f"{block}.attention.wk_caption.weight",
+                    f"{block}.attention.wv_caption.weight",
+                ]
+            )
+        for adaln in ("attention_adaln", "mlp_adaln"):
+            for branch in ("gate", "scale", "shift"):
+                keys.extend(
+                    [
+                        f"{block}.{adaln}.{branch}_down.weight",
+                        f"{block}.{adaln}.{branch}_up.weight",
+                        f"{block}.{adaln}.{branch}_up.bias",
+                    ]
+                )
     return tuple(keys)
