@@ -59,10 +59,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if not args.no_reference and not args.reference_wav:
+    model_config = load_model_config_json(args.model_config_json)
+    if model_config.use_speaker_condition and not args.no_reference and not args.reference_wav:
         raise SystemExit("error: specify --reference-wav or --no-reference")
 
-    model_config = load_model_config_json(args.model_config_json)
     runtime_config = MLXRuntimeConfig(
         model_config=model_config,
         weights_path=args.weights,
