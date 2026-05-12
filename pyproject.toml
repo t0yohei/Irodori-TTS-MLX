@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "irodori-tts-mlx"
+version = "0.0.0"
+description = "Apple Silicon-focused MLX inference prototype for Irodori-TTS"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "License not finalized; see README.md" }
+authors = [{ name = "t0yohei" }]
+keywords = ["mlx", "apple-silicon", "tts", "audio", "machine-learning"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: Other/Proprietary License",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+  "mlx>=0.25,<1",
+  "numpy>=1.26,<3",
+]
+
+[project.optional-dependencies]
+runtime = [
+  "soundfile>=0.12,<1",
+  "sentencepiece>=0.2,<1",
+  "torch>=2.6,<3",
+  "torchaudio>=2.6,<3",
+  "transformers>=4.51,<5",
+]
+bench = [
+  "safetensors>=0.4,<1",
+  "soundfile>=0.12,<1",
+  "sentencepiece>=0.2,<1",
+  "torch>=2.6,<3",
+  "torchaudio>=2.6,<3",
+  "transformers>=4.51,<5",
+]
+dev = [
+  "build>=1.2,<2",
+  "pytest>=8,<9",
+  "safetensors>=0.4,<1",
+  "soundfile>=0.12,<1",
+  "sentencepiece>=0.2,<1",
+  "torch>=2.6,<3",
+  "torchaudio>=2.6,<3",
+  "transformers>=4.51,<5",
+]
+
+[project.urls]
+Homepage = "https://github.com/t0yohei/irodori-tts-mlx"
+Repository = "https://github.com/t0yohei/irodori-tts-mlx"
+Issues = "https://github.com/t0yohei/irodori-tts-mlx/issues"
+
+[tool.setuptools.packages.find]
+include = ["irodori_mlx*"]

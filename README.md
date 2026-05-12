@@ -48,6 +48,26 @@ For Apple Silicon benchmark workflow, current baseline conclusions, and the benc
 
 For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
 
+For the packaged install story, supported Python version, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
+
+## Supported Python and install targets
+
+The current packaged environment targets **Python 3.11**.
+
+Install this repo in editable mode depending on your use case:
+
+```bash
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+python -m pip install -e ".[runtime]"  # WAV generation / bridge runtime
+python -m pip install -e ".[bench]"    # benchmark + conversion workflow
+python -m pip install -e ".[dev]"      # local contributor environment
+```
+
+The bridge runtime still depends on upstream `irodori_tts` for `DACVAECodec`, so either install the upstream checkout into the same venv or expose it on `PYTHONPATH`. The full setup guide lives in [docs/packaging.md](docs/packaging.md).
+
 ## Checkpoint inspection
 
 Use `scripts/inspect_checkpoint.py` to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
@@ -76,7 +96,8 @@ The initial converter accepts only local `.safetensors` checkpoints. Converting 
 
 ## Benchmarking
 
-Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries:
+Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. For the recommended Python 3.11 benchmark environment, install `.[bench]` as described in [docs/packaging.md](docs/packaging.md).
+
 
 ```bash
 python3 scripts/benchmark.py --self-test

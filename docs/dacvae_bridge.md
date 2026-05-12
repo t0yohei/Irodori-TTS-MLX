@@ -96,7 +96,11 @@ print(result.output_wav)
 ## Runtime dependencies
 
 The normal unit suite does not require the heavy runtime stack. Actual WAV
-generation requires optional runtime packages:
+generation should use the packaged Python 3.11 runtime environment from
+[docs/packaging.md](packaging.md): install this repo with `pip install -e ".[runtime]"`
+and make upstream `irodori_tts` importable from the same venv or `PYTHONPATH`.
+
+In practical terms, the runtime needs:
 
 - `mlx`
 - `torch`
