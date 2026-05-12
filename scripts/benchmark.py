@@ -113,6 +113,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weights", help="Converted MLX .npz weights for MLX bridge benchmark.")
     parser.add_argument("--codec-device", default="cpu", help="Codec device for MLX bridge benchmark.")
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
+    parser.add_argument(
+        "--codec-runtime-mode",
+        choices=("persistent", "subprocess"),
+        default="persistent",
+        help="DACVAE bridge runtime mode for MLX benchmark runs.",
+    )
     parser.add_argument("--model-config-json", help="Optional inline/path JSON for MLX ModelConfig.")
     parser.add_argument("--text-tokenizer-repo")
     parser.add_argument("--caption-tokenizer-repo")
@@ -318,6 +324,8 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
         args.codec_repo,
         "--codec-device",
         args.codec_device,
+        "--codec-runtime-mode",
+        args.codec_runtime_mode,
     ]
     if args.reference_wav:
         argv.extend(["--reference-wav", args.reference_wav])
@@ -337,6 +345,14 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
             pythonpath_parts.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
     return argv, env
+
+
+def resolve_case_cwd(case: BenchmarkCase, args: argparse.Namespace, repo_root: Path) -> Path:
+    if case.kind == "upstream":
+        if not args.upstream_root:
+            raise BenchmarkError("--upstream-root is required for upstream mode")
+        return Path(args.upstream_root).resolve()
+    return repo_root
 
 
 def write_logs(base_path: Path, result: CommandResult) -> tuple[str, str]:
@@ -405,10 +421,7 @@ def summarize_result(
 
 
 def run_case(case: BenchmarkCase, args: argparse.Namespace, repo_root: Path, output_dir: Path) -> list[BenchmarkResult]:
-    if case.kind == "upstream":
-        cwd = Path(args.upstream_root).resolve()
-    else:
-        cwd = repo_root
+    cwd = resolve_case_cwd(case, args, repo_root)
 
     if args.dry_run:
         dry_name = case.name if args.repeat == 1 and args.warmup_runs == 0 else f"{case.name}-measured-run-01"
@@ -703,6 +716,7 @@ def write_json_summary(results: list[BenchmarkResult], path: Path, *, args: argp
             "num_steps": args.num_steps,
             "num_steps_sweep": args.num_steps_sweep,
             "reference_wav": args.reference_wav,
+            "codec_runtime_mode": args.codec_runtime_mode,
         },
         "results": [asdict(result) for result in results],
         "aggregates": build_aggregates(results),

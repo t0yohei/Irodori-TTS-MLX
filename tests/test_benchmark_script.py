@@ -37,6 +37,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
+            codec_runtime_mode="subprocess",
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -45,8 +46,23 @@ class BenchmarkScriptTests(unittest.TestCase):
         )
         argv, env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=5.0, num_steps=40)
         self.assertIn("--no-reference", argv)
+        self.assertIn("--codec-runtime-mode", argv)
+        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "subprocess")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
         self.assertEqual(argv[argv.index("--output") + 1], "/tmp/out.wav")
+
+    def test_resolve_case_cwd_raises_benchmark_error_when_upstream_root_missing(self):
+        case = benchmark.BenchmarkCase(
+            name="upstream-base-no-reference-steps-40",
+            slug="upstream-base-no-reference-steps-40",
+            kind="upstream",
+            reference_mode="no-reference",
+            seconds=None,
+            num_steps=40,
+        )
+        args = Namespace(upstream_root=None)
+        with self.assertRaises(benchmark.BenchmarkError):
+            benchmark.resolve_case_cwd(case, args, Path("/tmp/repo"))
 
     def test_build_cases_expands_repeatable_mlx_sweeps(self):
         args = Namespace(
@@ -220,6 +236,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             num_steps=40,
             num_steps_sweep=None,
             reference_wav=None,
+            codec_runtime_mode="persistent",
         )
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "summary.json"
@@ -227,6 +244,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(payload["schema_version"], 2)
         self.assertEqual(payload["invocation"]["mode"], "mlx")
+        self.assertEqual(payload["invocation"]["codec_runtime_mode"], "persistent")
         self.assertEqual(payload["results"][0]["case_name"], "mlx-case")
         self.assertEqual(payload["aggregates"][0]["timings_ms"]["sample_rf"]["median"], 1000.0)
 
