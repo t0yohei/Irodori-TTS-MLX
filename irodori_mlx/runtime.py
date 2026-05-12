@@ -410,8 +410,9 @@ class MLXDACVAERuntime:
             seed=int(request.seed),
             use_context_kv_cache=bool(request.use_context_kv_cache),
         )
-        timings_ms["sample_rf"] = (time.perf_counter() - started) * 1000.0
         z = unpatch_latents(z_patched, int(self.config.model_config.latent_patch_size))[:, :latent_steps]
+        mx.eval(z)
+        timings_ms["sample_rf"] = (time.perf_counter() - started) * 1000.0
         started = time.perf_counter()
         output = self.bridge.decode_to_wav(z, request.output_wav, max_samples=target_samples)
         timings_ms["decode_dacvae"] = (time.perf_counter() - started) * 1000.0

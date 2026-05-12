@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -213,6 +214,36 @@ class RuntimeBridgeTests(unittest.TestCase):
         lines = list(iter_messages(result))
         self.assertTrue(any(line.startswith("[timing] sample_rf:") for line in lines))
         self.assertTrue(any(line.startswith("[timing] total_to_decode:") for line in lines))
+
+    @require_mlx
+    def test_runtime_forces_mlx_eval_before_finishing_sample_timing(self):
+        cfg = tiny_config()
+        bridge = FakeBridge()
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            model=FakeModel(cfg),
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+        )
+        eval_shapes = []
+
+        def fake_eval(value):
+            eval_shapes.append(tuple(value.shape))
+
+        with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.mx.eval", side_effect=fake_eval):
+            runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=0.02,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertIn((1, 1, 4), eval_shapes)
 
     @require_mlx
     def test_model_config_exposes_tokenizer_defaults(self):
