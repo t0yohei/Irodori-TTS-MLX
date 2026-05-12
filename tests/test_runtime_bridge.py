@@ -252,6 +252,24 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(cfg.caption_tokenizer_repo_resolved, cfg.text_tokenizer_repo)
 
     @require_mlx
+    def test_runtime_constructs_subprocess_bridge_when_requested(self):
+        cfg = tiny_config()
+        fake_bridge = FakeBridge()
+        with patch("irodori_mlx.runtime.SubprocessDACVAEBridge", return_value=fake_bridge) as patched:
+            runtime = MLXDACVAERuntime(
+                config=MLXRuntimeConfig(
+                    model_config=cfg,
+                    weights_path="unused.npz",
+                    text_max_length=3,
+                    codec=DACVAEBridgeConfig(runtime_mode="subprocess"),
+                ),
+                model=FakeModel(cfg),
+                tokenizer=FakeTokenizer(),
+            )
+        self.assertIs(runtime.bridge, fake_bridge)
+        patched.assert_called_once()
+
+    @require_mlx
     def test_load_model_config_json_accepts_inline_object_or_path(self):
         inline = load_model_config_json('{"use_caption_condition": true, "caption_vocab_size": 32}')
         self.assertTrue(inline.use_caption_condition)

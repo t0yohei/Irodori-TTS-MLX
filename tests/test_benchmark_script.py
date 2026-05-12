@@ -36,6 +36,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
+            codec_runtime_mode="subprocess",
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -44,6 +45,8 @@ class BenchmarkScriptTests(unittest.TestCase):
         )
         argv, output_wav, env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out"))
         self.assertIn("--no-reference", argv)
+        self.assertIn("--codec-runtime-mode", argv)
+        self.assertIn("subprocess", argv)
         self.assertEqual(output_wav, Path("/tmp/out/mlx-no-ref.wav"))
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
 

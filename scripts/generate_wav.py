@@ -40,6 +40,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--caption-max-length", type=int)
     parser.add_argument("--codec-repo", default="Aratako/Semantic-DACVAE-Japanese-32dim")
     parser.add_argument("--codec-device", default="cpu", help="PyTorch codec device: cpu, mps, or cuda.")
+    parser.add_argument(
+        "--codec-runtime-mode",
+        default="persistent",
+        choices=("persistent", "subprocess"),
+        help="How to host the PyTorch DACVAE boundary: keep it in-process or isolate encode/decode in helper subprocesses.",
+    )
     parser.add_argument("--disable-codec-normalize", action="store_true")
     parser.add_argument("--enable-watermark", action="store_true")
     parser.add_argument("--seconds", type=float, default=5.0)
@@ -73,6 +79,7 @@ def main() -> int:
         codec=DACVAEBridgeConfig(
             codec_repo=args.codec_repo,
             codec_device=args.codec_device,
+            runtime_mode=args.codec_runtime_mode,
             enable_watermark=bool(args.enable_watermark),
             normalize_db=None if args.disable_codec_normalize else -16.0,
         ),

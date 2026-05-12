@@ -42,6 +42,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             caption_max_length=None,
             codec_repo="Aratako/Semantic-DACVAE-Japanese-32dim",
             codec_device="cpu",
+            codec_runtime_mode="subprocess",
             disable_codec_normalize=False,
             enable_watermark=False,
             seconds=0.1,
@@ -80,6 +81,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         request = runtime.requests[0]
         self.assertIsNone(request.reference_wav)
         self.assertFalse(request.no_reference)
+        self.assertEqual(runtime.config.codec.runtime_mode, "subprocess")
 
 
 if __name__ == "__main__":
