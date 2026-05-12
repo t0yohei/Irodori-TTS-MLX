@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ try:
         GenerationRequest,
         MLXDACVAERuntime,
         MLXRuntimeConfig,
+        SubprocessDACVAEBridge,
         load_model_config_json,
         mlx_to_torch_latents,
         torch_to_mlx_latents,
@@ -268,6 +270,45 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
         self.assertIs(runtime.bridge, fake_bridge)
         patched.assert_called_once()
+
+    @require_mlx
+    def test_subprocess_bridge_normalizes_relative_paths_before_spawning_worker(self):
+        describe_payload = '{"sample_rate":16000,"latent_dim":4,"hop_length":320}'
+        calls = []
+
+        def fake_run_codec_worker(*, action, config, extra_args):
+            del config
+            calls.append((action, list(extra_args)))
+            if action == "describe":
+                return describe_payload
+            if action == "encode":
+                latents_path = Path(extra_args[extra_args.index("--output-latents") + 1])
+                np.save(latents_path, np.zeros((1, 2, 4), dtype=np.float32))
+                return ""
+            if action == "decode":
+                output_path = Path(extra_args[extra_args.index("--output-wav") + 1])
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"fake wav")
+                return ""
+            raise AssertionError(f"unexpected action: {action}")
+
+        with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime._run_codec_worker", side_effect=fake_run_codec_worker):
+            caller_cwd = Path(td) / "caller"
+            caller_cwd.mkdir()
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(caller_cwd)
+                bridge = SubprocessDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="subprocess"))
+                bridge.encode_reference("ref.wav", max_seconds=None, normalize_db=None, ensure_max=False)
+                output_path = bridge.decode_to_wav(mx.zeros((1, 2, 4), dtype=mx.float32), "out.wav")
+            finally:
+                os.chdir(old_cwd)
+
+        encode_call = next(args for action, args in calls if action == "encode")
+        decode_call = next(args for action, args in calls if action == "decode")
+        self.assertEqual(encode_call[encode_call.index("--reference-wav") + 1], str((caller_cwd / "ref.wav").resolve()))
+        self.assertEqual(decode_call[decode_call.index("--output-wav") + 1], str((caller_cwd / "out.wav").resolve()))
+        self.assertEqual(output_path, (caller_cwd / "out.wav").resolve())
 
     @require_mlx
     def test_load_model_config_json_accepts_inline_object_or_path(self):

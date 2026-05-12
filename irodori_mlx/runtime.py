@@ -321,6 +321,10 @@ class SubprocessDACVAEBridge:
         self.latent_dim = int(payload["latent_dim"])
         self.hop_length = int(payload["hop_length"])
 
+    @staticmethod
+    def _caller_absolute_path(path: str | Path) -> Path:
+        return Path(path).expanduser().resolve(strict=False)
+
     def encode_reference(
         self,
         path: str | Path,
@@ -334,7 +338,7 @@ class SubprocessDACVAEBridge:
         try:
             extra_args = [
                 "--reference-wav",
-                str(path),
+                str(self._caller_absolute_path(path)),
                 "--output-latents",
                 str(latents_path),
             ]
@@ -354,6 +358,7 @@ class SubprocessDACVAEBridge:
     def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
         import numpy as np
 
+        resolved_output_path = self._caller_absolute_path(output_path)
         with tempfile.NamedTemporaryFile(prefix="irodori-latents-", suffix=".npy", delete=False) as fh:
             latents_path = Path(fh.name)
         try:
@@ -362,12 +367,12 @@ class SubprocessDACVAEBridge:
                 "--input-latents",
                 str(latents_path),
                 "--output-wav",
-                str(output_path),
+                str(resolved_output_path),
             ]
             if max_samples is not None:
                 extra_args.extend(["--max-samples", str(max_samples)])
             _run_codec_worker(action="decode", config=self.config, extra_args=extra_args)
-            return Path(output_path)
+            return resolved_output_path
         finally:
             latents_path.unlink(missing_ok=True)
 
