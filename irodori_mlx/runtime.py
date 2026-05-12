@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import wave
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -68,6 +69,7 @@ class GenerationResult:
     latent_steps: int
     patched_steps: int
     seed: int
+    timings_ms: dict[str, float] | None = None
     messages: tuple[str, ...] = ()
 
 
@@ -338,11 +340,14 @@ class MLXDACVAERuntime:
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         messages: list[str] = []
+        timings_ms: dict[str, float] = {}
+        total_started = time.perf_counter()
         if request.seconds <= 0:
             raise ValueError(f"seconds must be positive, got {request.seconds!r}")
         if request.reference_wav is None and not request.no_reference and self.config.model_config.use_speaker_condition:
             raise ValueError("Specify reference_wav, or set no_reference=True for an unconditional speaker path.")
 
+        started = time.perf_counter()
         text_ids, text_mask = self.tokenizer.encode(
             request.text,
             max_length=int(self.config.text_max_length),
@@ -355,8 +360,10 @@ class MLXDACVAERuntime:
             caption_ids, caption_mask = self.caption_tokenizer.encode(caption_text, max_length=int(caption_max))
             if caption_text.strip() == "":
                 caption_mask = mx.zeros_like(caption_mask)
+        timings_ms["prepare_text_condition"] = (time.perf_counter() - started) * 1000.0
 
         ref_latent = ref_mask = None
+        started = time.perf_counter()
         if self.config.model_config.use_speaker_condition:
             if request.no_reference:
                 ref_len = max(1, int(self.config.model_config.speaker_patch_size))
@@ -376,12 +383,14 @@ class MLXDACVAERuntime:
                 )
                 ref_latent = patch_latents_drop_tail(raw_ref, int(self.config.model_config.latent_patch_size))
                 ref_mask = mx.ones((1, ref_latent.shape[1]), dtype=mx.bool_)
+        timings_ms["prepare_reference_condition"] = (time.perf_counter() - started) * 1000.0
 
         target_samples = int(float(request.seconds) * float(self.bridge.sample_rate))
         latent_steps = (target_samples + self.bridge.hop_length - 1) // self.bridge.hop_length
         patched_steps = (latent_steps + int(self.config.model_config.latent_patch_size) - 1) // int(
             self.config.model_config.latent_patch_size
         )
+        started = time.perf_counter()
         z_patched = sample_euler_rf_cfg(
             self.model,
             text_input_ids=text_ids,
@@ -402,7 +411,12 @@ class MLXDACVAERuntime:
             use_context_kv_cache=bool(request.use_context_kv_cache),
         )
         z = unpatch_latents(z_patched, int(self.config.model_config.latent_patch_size))[:, :latent_steps]
+        mx.eval(z)
+        timings_ms["sample_rf"] = (time.perf_counter() - started) * 1000.0
+        started = time.perf_counter()
         output = self.bridge.decode_to_wav(z, request.output_wav, max_samples=target_samples)
+        timings_ms["decode_dacvae"] = (time.perf_counter() - started) * 1000.0
+        timings_ms["total_to_decode"] = (time.perf_counter() - total_started) * 1000.0
         return GenerationResult(
             output_wav=str(output),
             sample_rate=int(self.bridge.sample_rate),
@@ -410,6 +424,7 @@ class MLXDACVAERuntime:
             latent_steps=int(latent_steps),
             patched_steps=int(patched_steps),
             seed=int(request.seed),
+            timings_ms=timings_ms,
             messages=tuple(messages),
         )
 
@@ -438,5 +453,7 @@ def iter_messages(result: GenerationResult) -> Iterable[str]:
     yield f"latent_steps: {result.latent_steps}"
     yield f"patched_steps: {result.patched_steps}"
     yield f"seed: {result.seed}"
+    for name, value in sorted((result.timings_ms or {}).items()):
+        yield f"[timing] {name}: {value:.3f} ms"
     for message in result.messages:
         yield message

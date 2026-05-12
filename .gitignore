@@ -11,3 +11,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .venv-*/
+
+# Generated benchmark artifacts
+benchmark-runs/
+docs/benchmark-latest*.md
