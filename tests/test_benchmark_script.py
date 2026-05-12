@@ -111,6 +111,42 @@ class BenchmarkScriptTests(unittest.TestCase):
             benchmark.build_cases(args)
         self.assertIn("duplicate benchmark cases/log paths", str(ctx.exception))
 
+    def test_run_case_dry_run_preserves_warmup_and_measured_metadata(self):
+        case = benchmark.BenchmarkCase(
+            name="mlx-bridge-reference-seconds-5-steps-40",
+            slug="mlx-bridge-reference-seconds-5-steps-40",
+            kind="mlx",
+            reference_mode="reference",
+            seconds=5.0,
+            num_steps=40,
+        )
+        args = Namespace(
+            warmup_runs=1,
+            repeat=2,
+            dry_run=True,
+            weights="weights.npz",
+            reference_wav="ref.wav",
+            text="hello",
+            seed=123,
+            codec_repo="codec-repo",
+            codec_device="cpu",
+            codec_runtime_mode="persistent",
+            model_config_json=None,
+            text_tokenizer_repo=None,
+            caption_tokenizer_repo=None,
+            upstream_root=None,
+            mlx_python="python3",
+            cache_state="auto",
+        )
+        results = benchmark.run_case(case, args, Path("/tmp/repo"), Path("/tmp/out"))
+        self.assertEqual([result.phase for result in results], ["warmup", "measured", "measured"])
+        self.assertEqual([result.run_index for result in results], [1, 1, 2])
+        self.assertEqual([result.overall_run_index for result in results], [1, 2, 3])
+        self.assertEqual([result.cache_state for result in results], ["cold", "warm", "warm"])
+        self.assertTrue(results[0].output_wav.endswith(".warmup.run-01.wav"))
+        self.assertTrue(results[1].output_wav.endswith(".measured.run-01.wav"))
+        self.assertEqual(results[0].status, "dry-run")
+
     def test_resolve_cache_state_auto_separates_cold_and_warm(self):
         args = Namespace(cache_state="auto", warmup_runs=0, repeat=3)
         self.assertEqual(
