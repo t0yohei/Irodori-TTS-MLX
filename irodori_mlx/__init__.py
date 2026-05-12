@@ -11,6 +11,7 @@ from .encoders import (
     masked_mean_token,
 )
 from .model import DiffusionBlock, JointAttention, TextToLatentRFDiT
+from .sampling import euler_timestep_schedule, sample_euler_rf_cfg
 from .layers import (
     LowRankAdaLN,
     RMSNorm,
@@ -42,6 +43,7 @@ __all__ = [
     "apply_rotary_emb",
     "assign_named_weights",
     "encoder_required_keys",
+    "euler_timestep_schedule",
     "get_timestep_embedding",
     "load_npz_weights",
     "masked_mean_token",
@@ -49,5 +51,6 @@ __all__ = [
     "patch_sequence_with_mask",
     "precompute_freqs_cis",
     "rf_dit_required_keys",
+    "sample_euler_rf_cfg",
     "unpatch_latents",
 ]
