@@ -10,6 +10,7 @@ from .encoders import (
     TextEncoder,
     masked_mean_token,
 )
+from .model import DiffusionBlock, JointAttention, TextToLatentRFDiT
 from .layers import (
     LowRankAdaLN,
     RMSNorm,
@@ -21,11 +22,13 @@ from .layers import (
     precompute_freqs_cis,
     unpatch_latents,
 )
-from .weights import WeightLoadReport, assign_named_weights, encoder_required_keys, load_npz_weights
+from .weights import WeightLoadReport, assign_named_weights, encoder_required_keys, load_npz_weights, rf_dit_required_keys
 
 __all__ = [
     "ConditionEncoders",
+    "DiffusionBlock",
     "EncodedConditions",
+    "JointAttention",
     "LowRankAdaLN",
     "ModelConfig",
     "RMSNorm",
@@ -34,6 +37,7 @@ __all__ = [
     "SwiGLU",
     "TextBlock",
     "TextEncoder",
+    "TextToLatentRFDiT",
     "WeightLoadReport",
     "apply_rotary_emb",
     "assign_named_weights",
@@ -44,5 +48,6 @@ __all__ = [
     "patch_latents",
     "patch_sequence_with_mask",
     "precompute_freqs_cis",
+    "rf_dit_required_keys",
     "unpatch_latents",
 ]
