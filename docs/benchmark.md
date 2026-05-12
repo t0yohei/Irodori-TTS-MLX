@@ -13,13 +13,16 @@ We now have both:
 
 - the measured upstream PyTorch/MPS baseline from [docs/baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md](baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md)
 - the measured MLX bridge report from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md](benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md)
+- the warm-cache / codec-device / memory follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md](benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md)
 
 Current read:
 
 - MLX RF-DiT + PyTorch DACVAE bridge already reduces `sample_rf` dramatically on Apple Silicon
 - end-to-end `total_to_decode` also improves materially even before a full DACVAE port
 - therefore, a full MLX DACVAE port is still **not** the first latency optimization priority
+- warm-cache reruns are even faster than the first MLX report suggested
 - however, reference-path peak RSS increased enough that memory pressure remains a real follow-up question
+- switching `codec-device` from `mps` to `cpu` did not reduce reference-path RSS in this setup, so the likely issue is mixed-runtime residency rather than the codec backend alone
 
 In short: the bridge architecture is already good enough to justify continued optimization on the MLX model/sampler path first, while keeping DACVAE porting as a later optimization if memory or remaining decode cost becomes dominant.
 
@@ -102,6 +105,24 @@ Compared with the upstream reference-audio baseline:
 - max RSS: **3.36 GiB**, about **1.30 GiB higher** than the earlier upstream reference-audio baseline
 
 So the latency question is largely answered: the MLX bridge is already a clear win. The open question that remains is memory behavior, especially on the reference path.
+
+## Warm-cache and codec-device follow-up
+
+Follow-up report: [2026-05-12 Apple Silicon MLX benchmark follow-up](benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md)
+
+Key follow-up results:
+
+- no-reference warm-cache `total_to_decode`: **4,612.2 ms**
+- reference-audio warm-cache `total_to_decode`: **4,945.2 ms**
+- reference-audio `codec-device=cpu` `total_to_decode`: **5,817.9 ms**
+- reference-audio warm-cache max RSS with `codec-device=mps`: **3.36 GiB**
+- reference-audio max RSS with `codec-device=cpu`: **3.92 GiB**
+
+This sharpens the interpretation:
+
+- warm-cache behavior strengthens the case that the MLX bridge is already a strong steady-state latency win
+- the reference-path memory issue survives warm-cache reruns
+- CPU codec fallback is not a simple memory fix here; it was slower and used more peak memory in this measurement
 
 ## Benchmark script
 
@@ -204,9 +225,10 @@ The next meaningful report should deepen or validate these measured MLX results:
 | Question | Why it matters |
 | --- | --- |
 | Does MLX reduce `sample_rf` materially vs upstream MPS? | This is the main expected win. |
-| Does bridge overhead erase the model-side gain? | If yes, DACVAE porting may become more important. |
+| Does bridge overhead erase the model-side gain? | Already looks unlikely, but longer / repeated runs should confirm. |
 | Is max RSS better or worse than upstream MPS? | Memory pressure can decide practical usability on smaller Apple Silicon machines. |
-| Does reference-audio conditioning change the win profile? | Bridge overhead is higher in the reference path. |
+| Does reference-audio conditioning change the win profile? | Yes; memory remains the main unresolved concern. |
+| Can mixed-runtime residency be reduced without a full DACVAE port? | This is now the most important follow-up optimization question. |
 
 ## Decision rule for DACVAE port priority
 
