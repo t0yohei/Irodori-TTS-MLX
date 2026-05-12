@@ -66,7 +66,10 @@ def get_timestep_embedding(timestep: mx.array, dim: int) -> mx.array:
         * mx.arange(half, dtype=mx.float32)
         / float(half)
     )
-    args = timestep.astype(mx.float32)[:, None] * freqs[None, :]
+    timestep_f32 = timestep.astype(mx.float32)
+    if timestep_f32.ndim == 0:
+        timestep_f32 = timestep_f32[None]
+    args = timestep_f32[:, None] * freqs[None, :]
     emb = mx.concatenate([mx.cos(args), mx.sin(args)], axis=-1)
     if input_dtype in {mx.float16, mx.bfloat16, mx.float32, mx.float64}:
         return emb.astype(input_dtype)
@@ -127,7 +130,7 @@ class LowRankAdaLN(nn.Module):
     def _zero_output_projections(self) -> None:
         for layer in (self.shift_up, self.scale_up, self.gate_up):
             layer.weight = mx.zeros_like(layer.weight)
-            if "bias" in layer:
+            if hasattr(layer, "bias") and layer.bias is not None:
                 layer.bias = mx.zeros_like(layer.bias)
 
     def __call__(self, x: mx.array, cond_embed: mx.array) -> tuple[mx.array, mx.array]:
