@@ -24,11 +24,22 @@ The module names intentionally mirror upstream checkpoint keys:
 
 ## Numerical comparison status
 
-The local CI environment for this repository currently has MLX but not PyTorch installed, and no full converted checkpoint is checked in. The committed tests therefore compare fixed MLX direct-forward outputs against the cached context-K/V path and validate finite end-to-end outputs on deterministic tiny inputs.
+`tests/test_torch_parity.py` compares a deterministic tiny `TextToLatentRFDiT` forward pass against the upstream PyTorch implementation on fixed inputs. The test is optional in generic CI: it runs when PyTorch, MLX, and an upstream Irodori-TTS checkout are available, and can be enabled with:
 
-Known expected differences versus upstream PyTorch once a full comparison harness is run:
+```bash
+IRODORI_TTS_UPSTREAM_PATH=/path/to/Irodori-TTS python -m pytest tests/test_torch_parity.py -q
+```
+
+This PR was validated locally with a temporary Python 3.11 virtualenv containing PyTorch and MLX:
+
+```text
+IRODORI_TTS_UPSTREAM_PATH=/Users/kouka/.openclaw/workspace/repos/_scratch/Irodori-TTS-upstream python -m pytest -q
+23 passed
+```
+
+Known expected differences for future full-checkpoint parity work:
 
 - MLX and PyTorch softmax/attention kernels may differ at normal floating-point tolerance.
-- Current tests use small synthetic models, not the full 500M checkpoint.
+- Current parity coverage uses a small synthetic model, not the full 500M checkpoint.
 - Dropout parity is only meaningful with `dropout=0.0`; inference should keep dropout disabled.
-- Output parity requires converted weights with the documented no-transpose policy.
+- Full output parity still requires converted production weights with the documented no-transpose policy.
