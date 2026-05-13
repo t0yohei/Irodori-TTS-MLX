@@ -2,10 +2,11 @@
 """Convert upstream Irodori-TTS weights into an MLX-friendly archive.
 
 The converter supports the base v2 checkpoint layout from
-``Aratako/Irodori-TTS-500M-v2`` and the VoiceDesign / caption-conditioned
-layout from ``Aratako/Irodori-TTS-500M-v2-VoiceDesign``. It validates the
-expected key mapping before writing anything and copies tensors as-is into a
-NumPy ``.npz`` archive, which can be loaded by MLX via ``mx.load``.
+``Aratako/Irodori-TTS-500M-v2``, the VoiceDesign / caption-conditioned
+layout from ``Aratako/Irodori-TTS-500M-v2-VoiceDesign``, and the v3
+speaker-conditioned layout from ``Aratako/Irodori-TTS-500M-v3``. It validates
+the expected key mapping before writing anything and copies tensors as-is into
+a NumPy ``.npz`` archive, which can be loaded by MLX via ``mx.load``.
 """
 
 from __future__ import annotations
@@ -31,13 +32,16 @@ SUPPORTED_SOURCE_SUFFIX = ".safetensors"
 FLOAT32_NAMES = {"F32", "float32", "torch.float32", "dtype('float32')"}
 CHECKPOINT_FAMILY_BASE = "base_v2"
 CHECKPOINT_FAMILY_VOICEDESIGN = "voicedesign"
+CHECKPOINT_FAMILY_V3 = "v3"
 SUPPORTED_CHECKPOINTS = {
     CHECKPOINT_FAMILY_BASE: "Aratako/Irodori-TTS-500M-v2",
     CHECKPOINT_FAMILY_VOICEDESIGN: "Aratako/Irodori-TTS-500M-v2-VoiceDesign",
+    CHECKPOINT_FAMILY_V3: "Aratako/Irodori-TTS-500M-v3",
 }
 EXPECTED_TENSOR_COUNTS = {
     CHECKPOINT_FAMILY_BASE: 613,
     CHECKPOINT_FAMILY_VOICEDESIGN: 636,
+    CHECKPOINT_FAMILY_V3: 637,
 }
 CAPTION_PREFIXES = (
     "caption_encoder.",
@@ -54,6 +58,9 @@ SPEAKER_PREFIXES = (
 SPEAKER_FRAGMENTS = (
     ".attention.wk_speaker.weight",
     ".attention.wv_speaker.weight",
+)
+DURATION_PREFIXES = (
+    "duration_predictor.",
 )
 
 
@@ -113,7 +120,7 @@ def build_expected_shapes(*, family: str) -> dict[str, tuple[int, ...]]:
             add(f"{block}.attention.{proj}.weight", (1280, 1280))
         for proj in ("wk_text", "wv_text"):
             add(f"{block}.attention.{proj}.weight", (1280, 512))
-        if family == CHECKPOINT_FAMILY_BASE:
+        if family in (CHECKPOINT_FAMILY_BASE, CHECKPOINT_FAMILY_V3):
             for proj in ("wk_speaker", "wv_speaker"):
                 add(f"{block}.attention.{proj}.weight", (1280, 768))
         elif family == CHECKPOINT_FAMILY_VOICEDESIGN:
@@ -146,7 +153,7 @@ def build_expected_shapes(*, family: str) -> dict[str, tuple[int, ...]]:
         add(f"{block}.mlp.w3.weight", (1331, 512))
     add("text_norm.weight", (512,))
 
-    if family == CHECKPOINT_FAMILY_BASE:
+    if family in (CHECKPOINT_FAMILY_BASE, CHECKPOINT_FAMILY_V3):
         add("speaker_encoder.in_proj.weight", (768, 32))
         add("speaker_encoder.in_proj.bias", (768,))
         for i in range(8):
@@ -185,6 +192,22 @@ def build_expected_shapes(*, family: str) -> dict[str, tuple[int, ...]]:
     add("out_proj.weight", (32, 1280))
     add("out_proj.bias", (32,))
 
+    if family == CHECKPOINT_FAMILY_V3:
+        add("duration_predictor.null_speaker", (768,))
+        add("duration_predictor.token_input_proj.weight", (1024, 512))
+        add("duration_predictor.token_input_proj.bias", (1024,))
+        for i in range(3):
+            block = f"duration_predictor.token_blocks.{i}"
+            add(f"{block}.modulation.weight", (3072, 768))
+            add(f"{block}.modulation.bias", (3072,))
+            add(f"{block}.norm.weight", (1024,))
+            add(f"{block}.mlp.w1.weight", (1024, 1024))
+            add(f"{block}.mlp.w2.weight", (1024, 1024))
+            add(f"{block}.mlp.w3.weight", (1024, 1024))
+        add("duration_predictor.token_out_norm.weight", (1024,))
+        add("duration_predictor.token_out_proj.weight", (1, 1024))
+        add("duration_predictor.token_out_proj.bias", (1,))
+
     expected_count = EXPECTED_TENSOR_COUNTS[family]
     if len(expected) != expected_count:
         raise AssertionError(f"expected {expected_count} tensors for {family}, built {len(expected)}")
@@ -193,7 +216,7 @@ def build_expected_shapes(*, family: str) -> dict[str, tuple[int, ...]]:
 
 EXPECTED_SHAPES_BY_FAMILY = {
     family: build_expected_shapes(family=family)
-    for family in (CHECKPOINT_FAMILY_BASE, CHECKPOINT_FAMILY_VOICEDESIGN)
+    for family in (CHECKPOINT_FAMILY_BASE, CHECKPOINT_FAMILY_VOICEDESIGN, CHECKPOINT_FAMILY_V3)
 }
 
 
@@ -289,6 +312,10 @@ def _has_speaker_tensors(records: Mapping[str, TensorRecord]) -> bool:
     return any(name.startswith(SPEAKER_PREFIXES) or any(fragment in name for fragment in SPEAKER_FRAGMENTS) for name in records)
 
 
+def _has_duration_tensors(records: Mapping[str, TensorRecord]) -> bool:
+    return any(name.startswith(DURATION_PREFIXES) for name in records)
+
+
 def detect_checkpoint_family(
     config: dict[str, Any] | None,
     records: Mapping[str, TensorRecord],
@@ -300,13 +327,19 @@ def detect_checkpoint_family(
 
     caption_config = bool(config.get("use_caption_condition") is True)
     speaker_config = bool(config.get("use_speaker_condition") is True or _has_prefixed_key(config, "speaker_"))
+    duration_config = bool(config.get("use_duration_predictor") is True or _has_prefixed_key(config, "duration_"))
     caption_tensors = _has_caption_tensors(records)
     speaker_tensors = _has_speaker_tensors(records)
+    duration_tensors = _has_duration_tensors(records)
 
     if caption_config and speaker_config:
         errors.append("config is ambiguous: caption conditioning is enabled while speaker fields are also present")
     if caption_tensors and speaker_tensors:
         errors.append("tensor layout is ambiguous: found both caption-conditioned and speaker-conditioned tensors")
+    if caption_config and duration_config:
+        errors.append("config is ambiguous: caption conditioning is enabled while duration predictor fields are also present")
+    if caption_tensors and duration_tensors:
+        errors.append("tensor layout is ambiguous: found both caption-conditioned and duration-predictor tensors")
     if errors:
         return None, errors
 
@@ -315,9 +348,18 @@ def detect_checkpoint_family(
             errors.append("VoiceDesign checkpoints should not carry base speaker-conditioning fields")
         return CHECKPOINT_FAMILY_VOICEDESIGN, errors
 
+    if duration_config or duration_tensors:
+        if config.get("use_caption_condition") is True:
+            errors.append("v3 checkpoints must not enable caption conditioning")
+        if not (speaker_config or speaker_tensors):
+            errors.append("v3 checkpoints must retain the base speaker-conditioned layout")
+        return CHECKPOINT_FAMILY_V3, errors
+
     if speaker_config or speaker_tensors:
         if config.get("use_caption_condition") is True:
             errors.append("base checkpoints must not enable caption conditioning")
+        if config.get("use_duration_predictor") is True:
+            errors.append("base v2 checkpoints must not enable the duration predictor")
         return CHECKPOINT_FAMILY_BASE, errors
 
     errors.append("could not determine checkpoint family from metadata or tensor names")
@@ -341,6 +383,8 @@ def validate_base_config(config: dict[str, Any] | None) -> list[str]:
             errors.append(f"config {key}: expected {expected!r}, got {config.get(key)!r}")
     if config.get("use_caption_condition") is True:
         errors.append("base checkpoints must not enable caption conditioning")
+    if config.get("use_duration_predictor") is True:
+        errors.append("base checkpoints must not enable the duration predictor")
     has_speaker_fields = any(key.startswith("speaker_") for key in config)
     if config.get("use_speaker_condition") is False or not has_speaker_fields:
         errors.append("base speaker conditioning fields are missing or disabled")
@@ -367,6 +411,39 @@ def validate_voicedesign_config(config: dict[str, Any] | None) -> list[str]:
         errors.append("VoiceDesign checkpoints must set use_caption_condition=true")
     if any(key.startswith("speaker_") for key in config):
         errors.append("VoiceDesign checkpoints must not include base speaker-conditioning fields")
+    return errors
+
+
+def validate_v3_config(config: dict[str, Any] | None) -> list[str]:
+    if config is None:
+        return ["metadata.config_json is required to confirm the v3 checkpoint identity"]
+    errors: list[str] = []
+    expected_values = {
+        "latent_dim": 32,
+        "model_dim": 1280,
+        "num_layers": 12,
+        "text_layers": 10,
+        "speaker_layers": 8,
+        "speaker_dim": 768,
+        "duration_aux_dim": 14,
+        "duration_hidden_dim": 1024,
+        "duration_layers": 3,
+        "duration_dropout": 0.1,
+        "duration_attention_heads": 8,
+        "duration_architecture": "token_sum_adarn_zero_no_aux",
+        "duration_token_init_frames": 9.0,
+        "duration_speaker_fusion": "adarn_zero",
+    }
+    for key, expected in expected_values.items():
+        if config.get(key) != expected:
+            errors.append(f"config {key}: expected {expected!r}, got {config.get(key)!r}")
+    if config.get("use_duration_predictor") is not True:
+        errors.append("v3 checkpoints must set use_duration_predictor=true")
+    if config.get("use_caption_condition") is True:
+        errors.append("v3 checkpoints must not enable caption conditioning")
+    has_speaker_fields = any(key.startswith("speaker_") for key in config)
+    if config.get("use_speaker_condition") is False or not has_speaker_fields:
+        errors.append("v3 speaker conditioning fields are missing or disabled")
     return errors
 
 
@@ -397,6 +474,8 @@ def validate_records(
         config_errors.extend(validate_base_config(config))
     elif family == CHECKPOINT_FAMILY_VOICEDESIGN:
         config_errors.extend(validate_voicedesign_config(config))
+    elif family == CHECKPOINT_FAMILY_V3:
+        config_errors.extend(validate_v3_config(config))
 
     ok = bool(family) and not (missing or unexpected or shape_mismatches or dtype_mismatches or config_errors)
     return {
@@ -517,14 +596,19 @@ def print_text_report(report: Mapping[str, Any]) -> None:
 def run_self_tests() -> None:
     base_shapes = EXPECTED_SHAPES_BY_FAMILY[CHECKPOINT_FAMILY_BASE]
     voice_shapes = EXPECTED_SHAPES_BY_FAMILY[CHECKPOINT_FAMILY_VOICEDESIGN]
+    v3_shapes = EXPECTED_SHAPES_BY_FAMILY[CHECKPOINT_FAMILY_V3]
     assert len(base_shapes) == 613
     assert len(voice_shapes) == 636
+    assert len(v3_shapes) == 637
     assert base_shapes["blocks.0.attention.wq.weight"] == (1280, 1280)
     assert base_shapes["blocks.11.attention.wk_speaker.weight"] == (1280, 768)
     assert voice_shapes["blocks.11.attention.wk_caption.weight"] == (1280, 512)
     assert voice_shapes["caption_encoder.blocks.9.mlp.w2.weight"] == (512, 1331)
     assert base_shapes["speaker_encoder.blocks.7.attention.q_norm.weight"] == (12, 64)
     assert voice_shapes["out_proj.bias"] == (32,)
+    assert v3_shapes["duration_predictor.token_input_proj.weight"] == (1024, 512)
+    assert v3_shapes["duration_predictor.token_blocks.2.modulation.weight"] == (3072, 768)
+    assert v3_shapes["duration_predictor.token_out_proj.bias"] == (1,)
 
     base_records = {
         key: TensorRecord(name=key, shape=shape, dtype="F32")
@@ -555,6 +639,32 @@ def run_self_tests() -> None:
         },
     )
     assert voice_validation["ok"], voice_validation
+
+    v3_records = {
+        key: TensorRecord(name=key, shape=shape, dtype="F32")
+        for key, shape in v3_shapes.items()
+    }
+    v3_validation = validate_records(
+        v3_records,
+        {
+            "latent_dim": 32,
+            "model_dim": 1280,
+            "num_layers": 12,
+            "text_layers": 10,
+            "speaker_layers": 8,
+            "speaker_dim": 768,
+            "use_duration_predictor": True,
+            "duration_aux_dim": 14,
+            "duration_hidden_dim": 1024,
+            "duration_layers": 3,
+            "duration_dropout": 0.1,
+            "duration_attention_heads": 8,
+            "duration_architecture": "token_sum_adarn_zero_no_aux",
+            "duration_token_init_frames": 9.0,
+            "duration_speaker_fusion": "adarn_zero",
+        },
+    )
+    assert v3_validation["ok"], v3_validation
 
     missing_config = validate_records(base_records, None)
     assert not missing_config["ok"]
