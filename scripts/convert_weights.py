@@ -327,7 +327,7 @@ def detect_checkpoint_family(
 
     caption_config = bool(config.get("use_caption_condition") is True)
     speaker_config = bool(config.get("use_speaker_condition") is True or _has_prefixed_key(config, "speaker_"))
-    duration_config = bool(config.get("use_duration_predictor") is True or _has_prefixed_key(config, "duration_"))
+    duration_config = bool(config.get("use_duration_predictor") is True)
     caption_tensors = _has_caption_tensors(records)
     speaker_tensors = _has_speaker_tensors(records)
     duration_tensors = _has_duration_tensors(records)

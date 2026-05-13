@@ -150,6 +150,16 @@ class ConvertWeightsScriptTests(unittest.TestCase):
         self.assertEqual(validation["checkpoint_family"], convert_weights.CHECKPOINT_FAMILY_V3)
         self.assertTrue(any("use_duration_predictor=true" in error for error in validation["config_errors"]))
 
+    def test_validate_records_keeps_voicedesign_when_only_unrelated_duration_metadata_exists(self):
+        config = self._config(family=convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN)
+        config["duration_export_note"] = "metadata only"
+        validation = convert_weights.validate_records(
+            self._records(family=convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN),
+            config,
+        )
+        self.assertTrue(validation["ok"])
+        self.assertEqual(validation["checkpoint_family"], convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN)
+
     def test_validation_error_message_mentions_checkpoint_family_when_known(self):
         records = self._records(family=convert_weights.CHECKPOINT_FAMILY_BASE)
         records.pop("out_proj.bias")
