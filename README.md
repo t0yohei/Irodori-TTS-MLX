@@ -186,10 +186,14 @@ The current project milestones are organized as follows:
 Current status by milestone:
 
 - **M0 Baseline**: completed.
-- **M1 Weight conversion**: completed.
-- **M2 MLX model parity**: mostly completed; remaining expansion work is tracked in [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/irodori-tts-mlx/issues/33).
-- **M3 MLX inference prototype**: core prototype completed; follow-up usability and coverage work is tracked in [#32 Improve the generation CLI and runtime UX](https://github.com/t0yohei/irodori-tts-mlx/issues/32) and [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/irodori-tts-mlx/issues/33).
-- **M4 Performance and packaging**: active optimization phase; current follow-up work is tracked in [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/irodori-tts-mlx/issues/29), [#30 Extend benchmark automation for warm-cache, repeated runs, and scaling sweeps](https://github.com/t0yohei/irodori-tts-mlx/issues/30), and [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/irodori-tts-mlx/issues/31).
+- **M1 Weight conversion**: completed, including VoiceDesign / caption-conditioned checkpoint conversion support from [#41 Add VoiceDesign / caption-conditioned checkpoint conversion support](https://github.com/t0yohei/irodori-tts-mlx/issues/41).
+- **M2 MLX model parity**: completed for the currently supported checkpoint families, with VoiceDesign follow-up work captured and closed in [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/irodori-tts-mlx/issues/33).
+- **M3 MLX inference prototype**: completed for the current CLI/runtime scope, including generation UX follow-up from [#32 Improve the generation CLI and runtime UX](https://github.com/t0yohei/irodori-tts-mlx/issues/32) and real-checkpoint integration coverage from [#44 Add real-checkpoint VoiceDesign integration coverage](https://github.com/t0yohei/irodori-tts-mlx/issues/44).
+- **M4 Performance and packaging**: completed for the current prototype scope, including memory residency mitigation from [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/irodori-tts-mlx/issues/29), repeated benchmark automation from [#30 Extend benchmark automation for warm-cache, repeated runs, and scaling sweeps](https://github.com/t0yohei/irodori-tts-mlx/issues/30), and reproducible packaging from [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/irodori-tts-mlx/issues/31).
+
+Current open follow-up:
+
+- [#46 Add hosted Apple Silicon CI coverage for full VoiceDesign generation](https://github.com/t0yohei/irodori-tts-mlx/issues/46)
 
 ## License notes
 
