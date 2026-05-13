@@ -4,18 +4,18 @@ Issue #33 asks for a clear support statement for `Aratako/Irodori-TTS-500M-v2-Vo
 
 ## Executive summary
 
-The repository already contains **partial caption-conditioned support** in the MLX model/runtime stack, but **does not yet support end-to-end VoiceDesign checkpoint conversion**.
+The repository now contains **working caption-conditioned conversion support** for the inspected VoiceDesign checkpoint family, alongside the existing MLX model/runtime support.
 
 In practice, that means:
 
 - metadata inspection for VoiceDesign checkpoints works
 - `ModelConfig`, encoder wiring, RF-DiT attention, and runtime caption tokenization already understand caption-conditioned configs
 - the WAV-generation runtime can run a caption-conditioned path **if compatible converted MLX weights already exist**
-- the checked-in weight converter still rejects VoiceDesign checkpoints on purpose
+- the checked-in weight converter now detects the VoiceDesign family and can export caption-conditioned `.npz` archives when the checkpoint matches the documented layout
 
 So the current support statement is:
 
-> Caption-conditioned inference code paths are partially implemented and test-covered, but VoiceDesign is not yet a turnkey workflow because checkpoint conversion remains base-v2-only.
+> Caption-conditioned inference code paths are implemented through conversion, weight loading, and runtime usage for the inspected VoiceDesign family, with tests covering the main converter decision points.
 
 ## Support matrix
 
@@ -27,8 +27,8 @@ So the current support statement is:
 | `irodori_mlx.model.TextToLatentRFDiT` | supported | RF-DiT blocks include `wk_caption` / `wv_caption` projections when caption conditioning is enabled. |
 | `irodori_mlx.runtime.MLXDACVAERuntime` | partially supported | Loads a caption tokenizer and can run without speaker reference audio because VoiceDesign disables the speaker path. |
 | `scripts/generate_wav.py` | partially supported | Exposes `--caption`, caption tokenizer overrides, and caption guidance controls. |
-| `scripts/convert_weights.py` | not supported | Explicitly validates for the base checkpoint layout and rejects `use_caption_condition=true`. |
-| Reproducible end-to-end VoiceDesign smoke test | not supported | No converted VoiceDesign fixture/recipe is checked in yet. |
+| `scripts/convert_weights.py` | supported for the inspected family | Detects base-v2 vs VoiceDesign, validates family-specific tensor/config layouts, and exports caption-conditioned `.npz` archives. |
+| Reproducible end-to-end VoiceDesign smoke test | partially supported | The manual inspect → convert → `generate_wav.py --caption ...` path is now documented, but the repo still has no real checkpoint-backed automated fixture. |
 
 ## What is already covered in code
 
@@ -52,25 +52,17 @@ The MLX weight loader already knows the caption-specific tensor names once a com
 - `blocks.{i}.attention.wk_caption.weight`
 - `blocks.{i}.attention.wv_caption.weight`
 
-This means the main missing piece is not the RF-DiT module graph itself, but the converter path that produces the `.npz` archive.
+This means the RF-DiT module graph and converter path now line up for the inspected VoiceDesign family.
 
 ## Known gaps
 
-### 1. Weight conversion is still base-v2-only
+### 1. No repository-level automated VoiceDesign fixture
 
-`scripts/convert_weights.py` intentionally validates against the base speaker-conditioned checkpoint layout.
+The converter now supports the documented VoiceDesign family, but the repository still does not carry a real checkpoint-backed automated fixture.
 
-Current blockers:
+### 2. Manual end-to-end VoiceDesign recipe still needs a real checkpoint
 
-- `validate_base_config()` rejects `use_caption_condition=true`
-- caption-only keys are treated as unsupported
-- converter output assumptions still target the base speaker-conditioned tensor set
-
-This is the main reason VoiceDesign is not yet an end-to-end supported workflow.
-
-### 2. No repository-level end-to-end VoiceDesign recipe
-
-The docs mention optional VoiceDesign baselines, but there is not yet a fully supported sequence for:
+The docs can now describe a supported sequence for:
 
 1. inspecting a VoiceDesign checkpoint
 2. converting it to MLX `.npz`
@@ -79,20 +71,36 @@ The docs mention optional VoiceDesign baselines, but there is not yet a fully su
 
 ### 3. No real checkpoint-backed integration fixture
 
-Current tests cover the code paths with small fakes/mocks. They do not yet prove a real converted VoiceDesign checkpoint can run end to end.
+Current tests cover converter-family detection and validation with lightweight synthetic records. They do not yet prove a real converted VoiceDesign checkpoint can run end to end.
 
 ## Recommended next implementation step
 
 The next concrete functional expansion should be:
 
-1. extend `scripts/convert_weights.py` to accept VoiceDesign checkpoint metadata and caption tensor names
-2. emit `.npz` archives that match the existing caption-aware MLX module tree
-3. add one checkpoint-backed smoke/integration test (or reproducible manual validation recipe) for `scripts/generate_wav.py --caption ...`
+1. run the converter against a real local VoiceDesign checkpoint and capture a reproducible dry-run / export example
+2. add one checkpoint-backed smoke/integration test (or documented benchmark recipe) for `scripts/generate_wav.py --caption ...`
+3. decide whether broader caption-conditioned families beyond the inspected VoiceDesign layout should be supported explicitly
 
-That next step is higher leverage than more runtime refactoring, because most of the runtime/model wiring already exists.
+That next step is now about real-checkpoint validation rather than converter wiring, because the core conversion/model/runtime path exists.
+
+## Manual VoiceDesign workflow
+
+A reproducible manual path now looks like this:
+
+```bash
+python3 scripts/inspect_checkpoint.py /path/to/voice-design/model.safetensors --json
+python3 scripts/convert_weights.py /path/to/voice-design/model.safetensors /tmp/irodori-voicedesign.npz --dry-run --json
+python3 scripts/convert_weights.py /path/to/voice-design/model.safetensors /tmp/irodori-voicedesign.npz
+python3 scripts/generate_wav.py \
+  --weights /tmp/irodori-voicedesign.npz \
+  --model-config-json '{"use_caption_condition": true, "caption_vocab_size": 99574, "caption_tokenizer_repo": "llm-jp/llm-jp-3-150m", "caption_add_bos": true, "caption_dim": 512, "caption_layers": 10, "caption_heads": 8, "caption_mlp_ratio": 2.6}' \
+  --text "こんにちは。" \
+  --caption "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。" \
+  --output /tmp/irodori-voicedesign.wav
+```
+
+Check the `checkpoint_family` field in the dry-run JSON/text report before running the full conversion. A valid inspected VoiceDesign checkpoint should report `checkpoint_family: voicedesign`.
 
 ## Current user-facing support statement
 
-Until converter support lands, the project should describe VoiceDesign support like this:
-
-> VoiceDesign / caption-conditioned checkpoints are partially supported internally. The MLX config, model, and runtime paths understand caption conditioning, but the checked-in weight conversion workflow only supports the base `Aratako/Irodori-TTS-500M-v2` checkpoint today.
+> VoiceDesign / caption-conditioned checkpoints are supported for the inspected `Aratako/Irodori-TTS-500M-v2-VoiceDesign` family through conversion, MLX weight loading, and runtime generation. The main remaining caveat is that the repository still lacks a real checkpoint-backed automated integration fixture.

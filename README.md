@@ -82,7 +82,7 @@ The script prints metadata/config, tensor names, shapes, dtypes, and parameter t
 
 ## Weight conversion
 
-Use `scripts/convert_weights.py` to convert a local base v2 checkpoint into an MLX-friendly `.npz` archive:
+Use `scripts/convert_weights.py` to convert a local base v2 or VoiceDesign checkpoint into an MLX-friendly `.npz` archive:
 
 ```bash
 python3 scripts/convert_weights.py /path/to/model.safetensors /path/to/irodori-tts-500m-v2.npz
@@ -90,7 +90,7 @@ python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run
 python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run --json
 ```
 
-The initial converter supports the base `Aratako/Irodori-TTS-500M-v2` layout only. It validates the documented key mapping, shape expectations, float32 dtypes, and base speaker-conditioning config before writing output. The VoiceDesign/caption checkpoint is rejected until caption conversion support is implemented. See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support matrix and the next planned expansion step.
+The converter now supports both the base `Aratako/Irodori-TTS-500M-v2` layout and the `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned layout. It validates the documented key mapping, shape expectations, float32 dtypes, and family-specific config assumptions before writing output. Use `--dry-run --json` to confirm the detected `checkpoint_family` before exporting large checkpoints. See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support matrix and remaining caveats.
 
 The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
 
@@ -140,7 +140,7 @@ The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available fo
 
 `irodori_mlx.sampling.sample_euler_rf_cfg` adds the first RF Euler sampling loop on top of the MLX model path. It can generate patched latent sequences with fixed-seed noise, upstream-style timesteps, optional context K/V cache, and text/speaker/caption CFG modes.
 
-`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can already use this runtime/model path when compatible converted weights exist, but the repository still lacks turnkey VoiceDesign conversion support. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, and boundary notes, and [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support statement.
+`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can now use the documented conversion + runtime path as long as their metadata and tensor layout match the inspected VoiceDesign family. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, and boundary notes, and [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support statement.
 
 ## Public API direction
 
