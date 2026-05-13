@@ -94,7 +94,9 @@ The converter now supports both the base `Aratako/Irodori-TTS-500M-v2` layout an
 
 The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
 
-For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. The default automation validates inspect + converter family detection without forcing full `.npz` export on every run.
+For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. That lightweight automation validates inspect + converter family detection without forcing full `.npz` export on every run.
+
+For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. That workflow targets GitHub-hosted Apple Silicon macOS larger runners (`macos-latest-xlarge`), so it avoids self-hosted infrastructure but should be scheduled conservatively because larger-runner billing and availability still apply.
 
 ## Benchmarking
 
@@ -188,12 +190,8 @@ Current status by milestone:
 - **M0 Baseline**: completed.
 - **M1 Weight conversion**: completed, including VoiceDesign / caption-conditioned checkpoint conversion support from [#41 Add VoiceDesign / caption-conditioned checkpoint conversion support](https://github.com/t0yohei/irodori-tts-mlx/issues/41).
 - **M2 MLX model parity**: completed for the currently supported checkpoint families, with VoiceDesign follow-up work captured and closed in [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/irodori-tts-mlx/issues/33).
-- **M3 MLX inference prototype**: completed for the current CLI/runtime scope, including generation UX follow-up from [#32 Improve the generation CLI and runtime UX](https://github.com/t0yohei/irodori-tts-mlx/issues/32) and real-checkpoint integration coverage from [#44 Add real-checkpoint VoiceDesign integration coverage](https://github.com/t0yohei/irodori-tts-mlx/issues/44).
+- **M3 MLX inference prototype**: completed for the current CLI/runtime scope, including generation UX follow-up from [#32 Improve the generation CLI and runtime UX](https://github.com/t0yohei/irodori-tts-mlx/issues/32), real-checkpoint integration coverage from [#44 Add real-checkpoint VoiceDesign integration coverage](https://github.com/t0yohei/irodori-tts-mlx/issues/44), and hosted Apple Silicon full-generation coverage from [#46 Add hosted Apple Silicon CI coverage for full VoiceDesign generation](https://github.com/t0yohei/irodori-tts-mlx/issues/46).
 - **M4 Performance and packaging**: completed for the current prototype scope, including memory residency mitigation from [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/irodori-tts-mlx/issues/29), repeated benchmark automation from [#30 Extend benchmark automation for warm-cache, repeated runs, and scaling sweeps](https://github.com/t0yohei/irodori-tts-mlx/issues/30), and reproducible packaging from [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/irodori-tts-mlx/issues/31).
-
-Current open follow-up:
-
-- [#46 Add hosted Apple Silicon CI coverage for full VoiceDesign generation](https://github.com/t0yohei/irodori-tts-mlx/issues/46)
 
 ## License notes
 
