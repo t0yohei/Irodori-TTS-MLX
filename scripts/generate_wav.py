@@ -59,6 +59,16 @@ CONFIG_KEYS = {
 }
 
 REQUIRED_STRING_KEYS = {"weights", "output", "text"}
+OPTIONAL_STRING_KEYS = {
+    "reference_wav",
+    "caption",
+    "model_config_json",
+    "text_tokenizer_repo",
+    "caption_tokenizer_repo",
+    "codec_repo",
+    "codec_device",
+    "metadata_json",
+}
 BOOL_KEYS = {
     "no_reference",
     "disable_codec_normalize",
@@ -108,6 +118,12 @@ def _validate_generation_config(payload: dict[str, Any]) -> dict[str, Any]:
             value = payload[key]
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"generation config field '{key}' must be a non-empty string")
+
+    for key in OPTIONAL_STRING_KEYS:
+        if key in payload and payload[key] is not None:
+            value = payload[key]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"generation config field '{key}' must be a string when provided")
 
     for key in BOOL_KEYS:
         if key in payload and not isinstance(payload[key], bool):

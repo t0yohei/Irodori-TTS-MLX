@@ -190,6 +190,16 @@ class GenerateWavScriptTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 generate_wav.parse_args(["--config-json", str(cfg_path)])
 
+    def test_parse_args_rejects_invalid_metadata_json_type(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "metadata_json": true}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit):
+                generate_wav.parse_args(["--config-json", str(cfg_path)])
+
     def test_main_json_output_and_metadata_file(self):
         runtime_holder = {}
 
