@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Convert upstream Irodori-TTS weights into an MLX-friendly archive.
 
-The initial converter intentionally supports only the base v2 checkpoint layout
-from ``Aratako/Irodori-TTS-500M-v2``. It validates the documented key mapping
-before writing anything and copies tensors as-is into a NumPy ``.npz`` archive,
-which can be loaded by MLX via ``mx.load``.
+The converter supports the base v2 checkpoint layout from
+``Aratako/Irodori-TTS-500M-v2`` and the VoiceDesign / caption-conditioned
+layout from ``Aratako/Irodori-TTS-500M-v2-VoiceDesign``. It validates the
+expected key mapping before writing anything and copies tensors as-is into a
+NumPy ``.npz`` archive, which can be loaded by MLX via ``mx.load``.
 """
 
 from __future__ import annotations
@@ -26,17 +27,33 @@ except ImportError:  # pragma: no cover - fallback for unusual invocation paths
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from inspect_checkpoint import InspectionError, inspect_local_safetensors
 
-SUPPORTED_CHECKPOINT = "Aratako/Irodori-TTS-500M-v2"
 SUPPORTED_SOURCE_SUFFIX = ".safetensors"
-SUPPORTED_TENSOR_COUNT = 613
 FLOAT32_NAMES = {"F32", "float32", "torch.float32", "dtype('float32')"}
-UNSUPPORTED_CAPTION_PREFIXES = (
+CHECKPOINT_FAMILY_BASE = "base_v2"
+CHECKPOINT_FAMILY_VOICEDESIGN = "voicedesign"
+SUPPORTED_CHECKPOINTS = {
+    CHECKPOINT_FAMILY_BASE: "Aratako/Irodori-TTS-500M-v2",
+    CHECKPOINT_FAMILY_VOICEDESIGN: "Aratako/Irodori-TTS-500M-v2-VoiceDesign",
+}
+EXPECTED_TENSOR_COUNTS = {
+    CHECKPOINT_FAMILY_BASE: 613,
+    CHECKPOINT_FAMILY_VOICEDESIGN: 636,
+}
+CAPTION_PREFIXES = (
     "caption_encoder.",
     "caption_norm.",
 )
-UNSUPPORTED_CAPTION_FRAGMENTS = (
+CAPTION_FRAGMENTS = (
     ".attention.wk_caption.weight",
     ".attention.wv_caption.weight",
+)
+SPEAKER_PREFIXES = (
+    "speaker_encoder.",
+    "speaker_norm.",
+)
+SPEAKER_FRAGMENTS = (
+    ".attention.wk_speaker.weight",
+    ".attention.wv_speaker.weight",
 )
 
 
@@ -58,9 +75,9 @@ class TensorRecord:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Convert a local base Irodori-TTS safetensors checkpoint into an MLX-friendly .npz archive."
+        description="Convert a local Irodori-TTS safetensors checkpoint into an MLX-friendly .npz archive."
     )
-    parser.add_argument("source", nargs="?", help="Local base-v2 .safetensors checkpoint path.")
+    parser.add_argument("source", nargs="?", help="Local .safetensors checkpoint path.")
     parser.add_argument(
         "output",
         nargs="?",
@@ -70,7 +87,7 @@ def parse_args() -> argparse.Namespace:
         "--format",
         choices=("npz",),
         default="npz",
-        help="Output format. Only npz is supported for the initial converter.",
+        help="Output format. Only npz is supported.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Validate and report without writing output.")
     parser.add_argument("--json", action="store_true", dest="json_output", help="Emit JSON report.")
@@ -82,7 +99,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_expected_shapes() -> dict[str, tuple[int, ...]]:
+def build_expected_shapes(*, family: str) -> dict[str, tuple[int, ...]]:
     expected: dict[str, tuple[int, ...]] = {}
 
     def add(name: str, shape: tuple[int, ...]) -> None:
@@ -96,8 +113,14 @@ def build_expected_shapes() -> dict[str, tuple[int, ...]]:
             add(f"{block}.attention.{proj}.weight", (1280, 1280))
         for proj in ("wk_text", "wv_text"):
             add(f"{block}.attention.{proj}.weight", (1280, 512))
-        for proj in ("wk_speaker", "wv_speaker"):
-            add(f"{block}.attention.{proj}.weight", (1280, 768))
+        if family == CHECKPOINT_FAMILY_BASE:
+            for proj in ("wk_speaker", "wv_speaker"):
+                add(f"{block}.attention.{proj}.weight", (1280, 768))
+        elif family == CHECKPOINT_FAMILY_VOICEDESIGN:
+            for proj in ("wk_caption", "wv_caption"):
+                add(f"{block}.attention.{proj}.weight", (1280, 512))
+        else:
+            raise AssertionError(f"unknown checkpoint family: {family}")
         for norm in ("k_norm", "q_norm"):
             add(f"{block}.attention.{norm}.weight", (20, 64))
         add(f"{block}.mlp.w1.weight", (3680, 1280))
@@ -123,20 +146,35 @@ def build_expected_shapes() -> dict[str, tuple[int, ...]]:
         add(f"{block}.mlp.w3.weight", (1331, 512))
     add("text_norm.weight", (512,))
 
-    add("speaker_encoder.in_proj.weight", (768, 32))
-    add("speaker_encoder.in_proj.bias", (768,))
-    for i in range(8):
-        block = f"speaker_encoder.blocks.{i}"
-        for proj in ("gate", "wk", "wo", "wq", "wv"):
-            add(f"{block}.attention.{proj}.weight", (768, 768))
-        for norm in ("k_norm", "q_norm"):
-            add(f"{block}.attention.{norm}.weight", (12, 64))
-        for norm in ("attention_norm", "mlp_norm"):
-            add(f"{block}.{norm}.weight", (768,))
-        add(f"{block}.mlp.w1.weight", (1996, 768))
-        add(f"{block}.mlp.w2.weight", (768, 1996))
-        add(f"{block}.mlp.w3.weight", (1996, 768))
-    add("speaker_norm.weight", (768,))
+    if family == CHECKPOINT_FAMILY_BASE:
+        add("speaker_encoder.in_proj.weight", (768, 32))
+        add("speaker_encoder.in_proj.bias", (768,))
+        for i in range(8):
+            block = f"speaker_encoder.blocks.{i}"
+            for proj in ("gate", "wk", "wo", "wq", "wv"):
+                add(f"{block}.attention.{proj}.weight", (768, 768))
+            for norm in ("k_norm", "q_norm"):
+                add(f"{block}.attention.{norm}.weight", (12, 64))
+            for norm in ("attention_norm", "mlp_norm"):
+                add(f"{block}.{norm}.weight", (768,))
+            add(f"{block}.mlp.w1.weight", (1996, 768))
+            add(f"{block}.mlp.w2.weight", (768, 1996))
+            add(f"{block}.mlp.w3.weight", (1996, 768))
+        add("speaker_norm.weight", (768,))
+    else:
+        add("caption_encoder.text_embedding.weight", (99574, 512))
+        for i in range(10):
+            block = f"caption_encoder.blocks.{i}"
+            for proj in ("gate", "wk", "wo", "wq", "wv"):
+                add(f"{block}.attention.{proj}.weight", (512, 512))
+            for norm in ("k_norm", "q_norm"):
+                add(f"{block}.attention.{norm}.weight", (8, 64))
+            for norm in ("attention_norm", "mlp_norm"):
+                add(f"{block}.{norm}.weight", (512,))
+            add(f"{block}.mlp.w1.weight", (1331, 512))
+            add(f"{block}.mlp.w2.weight", (512, 1331))
+            add(f"{block}.mlp.w3.weight", (1331, 512))
+        add("caption_norm.weight", (512,))
 
     add("cond_module.0.weight", (1280, 512))
     add("cond_module.2.weight", (1280, 1280))
@@ -147,12 +185,16 @@ def build_expected_shapes() -> dict[str, tuple[int, ...]]:
     add("out_proj.weight", (32, 1280))
     add("out_proj.bias", (32,))
 
-    if len(expected) != SUPPORTED_TENSOR_COUNT:
-        raise AssertionError(f"expected {SUPPORTED_TENSOR_COUNT} tensors, built {len(expected)}")
+    expected_count = EXPECTED_TENSOR_COUNTS[family]
+    if len(expected) != expected_count:
+        raise AssertionError(f"expected {expected_count} tensors for {family}, built {len(expected)}")
     return dict(sorted(expected.items()))
 
 
-EXPECTED_SHAPES = build_expected_shapes()
+EXPECTED_SHAPES_BY_FAMILY = {
+    family: build_expected_shapes(family=family)
+    for family in (CHECKPOINT_FAMILY_BASE, CHECKPOINT_FAMILY_VOICEDESIGN)
+}
 
 
 def is_safetensors_path(path: Path) -> bool:
@@ -223,7 +265,7 @@ def validate_source_path(path: Path) -> None:
         raise ConversionError(f"Source checkpoint is not a file: {path}")
     if not is_safetensors_path(path):
         raise ConversionError(
-            f"Only local {SUPPORTED_SOURCE_SUFFIX} checkpoints are supported in the initial converter: {path}"
+            f"Only local {SUPPORTED_SOURCE_SUFFIX} checkpoints are supported in the converter: {path}"
         )
 
 
@@ -233,6 +275,53 @@ def load_checkpoint(path: Path, *, load_arrays: bool) -> tuple[dict[str, Any] | 
     if not load_arrays:
         return config, header_records
     return config, load_safetensors_arrays(path)
+
+
+def _has_prefixed_key(config: Mapping[str, Any] | None, prefix: str) -> bool:
+    return bool(config) and any(str(key).startswith(prefix) for key in config)
+
+
+def _has_caption_tensors(records: Mapping[str, TensorRecord]) -> bool:
+    return any(name.startswith(CAPTION_PREFIXES) or any(fragment in name for fragment in CAPTION_FRAGMENTS) for name in records)
+
+
+def _has_speaker_tensors(records: Mapping[str, TensorRecord]) -> bool:
+    return any(name.startswith(SPEAKER_PREFIXES) or any(fragment in name for fragment in SPEAKER_FRAGMENTS) for name in records)
+
+
+def detect_checkpoint_family(
+    config: dict[str, Any] | None,
+    records: Mapping[str, TensorRecord],
+) -> tuple[str | None, list[str]]:
+    errors: list[str] = []
+    if config is None:
+        errors.append("metadata.config_json is required to identify the checkpoint family")
+        return None, errors
+
+    caption_config = bool(config.get("use_caption_condition") is True)
+    speaker_config = bool(config.get("use_speaker_condition") is True or _has_prefixed_key(config, "speaker_"))
+    caption_tensors = _has_caption_tensors(records)
+    speaker_tensors = _has_speaker_tensors(records)
+
+    if caption_config and speaker_config:
+        errors.append("config is ambiguous: caption conditioning is enabled while speaker fields are also present")
+    if caption_tensors and speaker_tensors:
+        errors.append("tensor layout is ambiguous: found both caption-conditioned and speaker-conditioned tensors")
+    if errors:
+        return None, errors
+
+    if caption_config or caption_tensors:
+        if speaker_config:
+            errors.append("VoiceDesign checkpoints should not carry base speaker-conditioning fields")
+        return CHECKPOINT_FAMILY_VOICEDESIGN, errors
+
+    if speaker_config or speaker_tensors:
+        if config.get("use_caption_condition") is True:
+            errors.append("base checkpoints must not enable caption conditioning")
+        return CHECKPOINT_FAMILY_BASE, errors
+
+    errors.append("could not determine checkpoint family from metadata or tensor names")
+    return None, errors
 
 
 def validate_base_config(config: dict[str, Any] | None) -> list[str]:
@@ -245,38 +334,57 @@ def validate_base_config(config: dict[str, Any] | None) -> list[str]:
         "num_layers": 12,
         "text_layers": 10,
         "speaker_layers": 8,
+        "speaker_dim": 768,
     }
     for key, expected in expected_values.items():
         if config.get(key) != expected:
             errors.append(f"config {key}: expected {expected!r}, got {config.get(key)!r}")
     if config.get("use_caption_condition") is True:
-        errors.append("VoiceDesign/caption checkpoints are not supported: use_caption_condition=true")
+        errors.append("base checkpoints must not enable caption conditioning")
     has_speaker_fields = any(key.startswith("speaker_") for key in config)
     if config.get("use_speaker_condition") is False or not has_speaker_fields:
         errors.append("base speaker conditioning fields are missing or disabled")
     return errors
 
 
-def is_unsupported_caption_key(name: str) -> bool:
-    return name.startswith(UNSUPPORTED_CAPTION_PREFIXES) or any(
-        fragment in name for fragment in UNSUPPORTED_CAPTION_FRAGMENTS
-    )
+def validate_voicedesign_config(config: dict[str, Any] | None) -> list[str]:
+    if config is None:
+        return ["metadata.config_json is required to confirm the VoiceDesign checkpoint identity"]
+    errors: list[str] = []
+    expected_values = {
+        "latent_dim": 32,
+        "model_dim": 1280,
+        "num_layers": 12,
+        "text_layers": 10,
+        "caption_layers": 10,
+        "caption_dim": 512,
+        "caption_heads": 8,
+    }
+    for key, expected in expected_values.items():
+        if config.get(key) != expected:
+            errors.append(f"config {key}: expected {expected!r}, got {config.get(key)!r}")
+    if config.get("use_caption_condition") is not True:
+        errors.append("VoiceDesign checkpoints must set use_caption_condition=true")
+    if any(key.startswith("speaker_") for key in config):
+        errors.append("VoiceDesign checkpoints must not include base speaker-conditioning fields")
+    return errors
 
 
 def validate_records(
     records: Mapping[str, TensorRecord], config: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    family, family_errors = detect_checkpoint_family(config, records)
+    expected_shapes = EXPECTED_SHAPES_BY_FAMILY.get(family or CHECKPOINT_FAMILY_BASE, {})
     source_keys = set(records)
-    expected_keys = set(EXPECTED_SHAPES)
+    expected_keys = set(expected_shapes)
     missing = sorted(expected_keys - source_keys)
     unexpected = sorted(source_keys - expected_keys)
-    unsupported = sorted(key for key in source_keys if is_unsupported_caption_key(key))
     shape_mismatches = []
     dtype_mismatches = []
 
     for key in sorted(source_keys & expected_keys):
         record = records[key]
-        expected_shape = EXPECTED_SHAPES[key]
+        expected_shape = expected_shapes[key]
         if record.shape != expected_shape:
             shape_mismatches.append(
                 {"key": key, "expected": list(expected_shape), "actual": list(record.shape)}
@@ -284,21 +392,31 @@ def validate_records(
         if dtype_name(record.dtype) not in FLOAT32_NAMES:
             dtype_mismatches.append({"key": key, "expected": "float32/F32", "actual": record.dtype})
 
-    config_errors = validate_base_config(config)
-    ok = not (missing or unexpected or unsupported or shape_mismatches or dtype_mismatches or config_errors)
+    config_errors = list(family_errors)
+    if family == CHECKPOINT_FAMILY_BASE:
+        config_errors.extend(validate_base_config(config))
+    elif family == CHECKPOINT_FAMILY_VOICEDESIGN:
+        config_errors.extend(validate_voicedesign_config(config))
+
+    ok = bool(family) and not (missing or unexpected or shape_mismatches or dtype_mismatches or config_errors)
     return {
         "ok": ok,
+        "checkpoint_family": family,
+        "supported_checkpoint": SUPPORTED_CHECKPOINTS.get(family) if family else None,
         "missing_keys": missing,
         "unexpected_keys": unexpected,
-        "unsupported_keys": unsupported,
+        "unsupported_keys": [],
         "shape_mismatches": shape_mismatches,
         "dtype_mismatches": dtype_mismatches,
-        "config_errors": config_errors,
+        "config_errors": sorted(set(config_errors)),
     }
 
 
 def validation_error_message(validation: Mapping[str, Any]) -> str:
     parts: list[str] = ["Checkpoint validation failed"]
+    family = validation.get("checkpoint_family")
+    if family:
+        parts.append(f"checkpoint_family: {family}")
     for label in (
         "config_errors",
         "missing_keys",
@@ -315,10 +433,10 @@ def validation_error_message(validation: Mapping[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def records_to_arrays(records: Mapping[str, TensorRecord]) -> dict[str, Any]:
+def records_to_arrays(records: Mapping[str, TensorRecord], *, checkpoint_family: str) -> dict[str, Any]:
     np = import_numpy()
     arrays: dict[str, Any] = {}
-    for key in sorted(EXPECTED_SHAPES):
+    for key in sorted(EXPECTED_SHAPES_BY_FAMILY[checkpoint_family]):
         array = records[key].array
         if array is None:
             raise ConversionError(f"Tensor data was not loaded for {key!r}")
@@ -369,7 +487,8 @@ def build_report(
         "output": None if output is None else str(output),
         "format": "npz",
         "dry_run": dry_run,
-        "supported_checkpoint": SUPPORTED_CHECKPOINT,
+        "checkpoint_family": validation.get("checkpoint_family"),
+        "supported_checkpoint": validation.get("supported_checkpoint"),
         "tensor_count": len(records),
         "total_parameters": total_parameters,
         "dtypes": dict(sorted(dtype_counts.items())),
@@ -384,6 +503,8 @@ def print_text_report(report: Mapping[str, Any]) -> None:
     print(f"output: {report['output'] or '(not written)'}")
     print(f"format: {report['format']}")
     print(f"dry_run: {report['dry_run']}")
+    print(f"checkpoint_family: {report.get('checkpoint_family') or '(unknown)'}")
+    print(f"supported_checkpoint: {report.get('supported_checkpoint') or '(unknown)'}")
     print(f"validation: {status}")
     print(f"tensor_count: {report['tensor_count']}")
     print(f"total_parameters: {report['total_parameters']:,}")
@@ -394,34 +515,79 @@ def print_text_report(report: Mapping[str, Any]) -> None:
 
 
 def run_self_tests() -> None:
-    assert len(EXPECTED_SHAPES) == 613
-    assert EXPECTED_SHAPES["blocks.0.attention.wq.weight"] == (1280, 1280)
-    assert EXPECTED_SHAPES["blocks.11.attention.wk_speaker.weight"] == (1280, 768)
-    assert EXPECTED_SHAPES["text_encoder.blocks.9.mlp.w2.weight"] == (512, 1331)
-    assert EXPECTED_SHAPES["speaker_encoder.blocks.7.attention.q_norm.weight"] == (12, 64)
-    assert EXPECTED_SHAPES["out_proj.bias"] == (32,)
+    base_shapes = EXPECTED_SHAPES_BY_FAMILY[CHECKPOINT_FAMILY_BASE]
+    voice_shapes = EXPECTED_SHAPES_BY_FAMILY[CHECKPOINT_FAMILY_VOICEDESIGN]
+    assert len(base_shapes) == 613
+    assert len(voice_shapes) == 636
+    assert base_shapes["blocks.0.attention.wq.weight"] == (1280, 1280)
+    assert base_shapes["blocks.11.attention.wk_speaker.weight"] == (1280, 768)
+    assert voice_shapes["blocks.11.attention.wk_caption.weight"] == (1280, 512)
+    assert voice_shapes["caption_encoder.blocks.9.mlp.w2.weight"] == (512, 1331)
+    assert base_shapes["speaker_encoder.blocks.7.attention.q_norm.weight"] == (12, 64)
+    assert voice_shapes["out_proj.bias"] == (32,)
 
-    records = {
+    base_records = {
         key: TensorRecord(name=key, shape=shape, dtype="F32")
-        for key, shape in EXPECTED_SHAPES.items()
+        for key, shape in base_shapes.items()
     }
-    validation = validate_records(records, {"latent_dim": 32, "model_dim": 1280, "num_layers": 12, "text_layers": 10, "speaker_layers": 8, "speaker_dim": 768})
-    assert validation["ok"], validation
-    missing_config = validate_records(records, None)
+    base_validation = validate_records(
+        base_records,
+        {"latent_dim": 32, "model_dim": 1280, "num_layers": 12, "text_layers": 10, "speaker_layers": 8, "speaker_dim": 768},
+    )
+    assert base_validation["ok"], base_validation
+
+    voice_records = {
+        key: TensorRecord(name=key, shape=shape, dtype="F32")
+        for key, shape in voice_shapes.items()
+    }
+    voice_validation = validate_records(
+        voice_records,
+        {
+            "latent_dim": 32,
+            "model_dim": 1280,
+            "num_layers": 12,
+            "text_layers": 10,
+            "use_caption_condition": True,
+            "caption_layers": 10,
+            "caption_dim": 512,
+            "caption_heads": 8,
+            "caption_vocab_size": 99574,
+        },
+    )
+    assert voice_validation["ok"], voice_validation
+
+    missing_config = validate_records(base_records, None)
     assert not missing_config["ok"]
     assert missing_config["config_errors"]
 
-    bad_records = dict(records)
-    bad_records.pop("out_proj.bias")
-    bad_records["caption_norm.weight"] = TensorRecord("caption_norm.weight", (512,), "F32")
-    bad_records["in_proj.weight"] = TensorRecord("in_proj.weight", (32, 1280), "F32")
-    bad = validate_records(bad_records, {"use_caption_condition": True})
-    assert not bad["ok"]
-    assert "out_proj.bias" in bad["missing_keys"]
-    assert "caption_norm.weight" in bad["unexpected_keys"]
-    assert "caption_norm.weight" in bad["unsupported_keys"]
-    assert bad["shape_mismatches"][0]["key"] == "in_proj.weight"
-    assert bad["config_errors"]
+    bad_voice = dict(voice_records)
+    bad_voice["speaker_norm.weight"] = TensorRecord("speaker_norm.weight", (768,), "F32")
+    bad_validation = validate_records(
+        bad_voice,
+        {
+            "latent_dim": 32,
+            "model_dim": 1280,
+            "num_layers": 12,
+            "text_layers": 10,
+            "use_caption_condition": True,
+            "caption_layers": 10,
+            "caption_dim": 512,
+            "caption_heads": 8,
+        },
+    )
+    assert not bad_validation["ok"]
+    assert any("ambiguous" in err for err in bad_validation["config_errors"])
+
+    malformed_base = dict(base_records)
+    malformed_base.pop("out_proj.bias")
+    malformed_base["in_proj.weight"] = TensorRecord("in_proj.weight", (32, 1280), "F32")
+    malformed = validate_records(
+        malformed_base,
+        {"latent_dim": 32, "model_dim": 1280, "num_layers": 12, "text_layers": 10, "speaker_layers": 8, "speaker_dim": 768},
+    )
+    assert not malformed["ok"]
+    assert "out_proj.bias" in malformed["missing_keys"]
+    assert malformed["shape_mismatches"][0]["key"] == "in_proj.weight"
     print("self-tests passed")
 
 
@@ -456,7 +622,10 @@ def main() -> int:
 
     if not args.dry_run:
         assert output is not None
-        write_npz_atomic(output, records_to_arrays(records))
+        checkpoint_family = validation["checkpoint_family"]
+        if checkpoint_family is None:
+            raise ConversionError("checkpoint family was not resolved after successful validation")
+        write_npz_atomic(output, records_to_arrays(records, checkpoint_family=checkpoint_family))
         if not args.json_output:
             print(f"wrote: {output}")
     return 0
