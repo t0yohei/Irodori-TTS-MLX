@@ -73,11 +73,12 @@ an unconditional speaker mask. Normal base-v2 generation should pass
 
 Caption-conditioned / VoiceDesign-style configs already use a different runtime
 path: they load a caption tokenizer, accept `--caption`, and can run without a
-speaker reference because speaker conditioning is disabled in that config.
-However, the checked-in weight converter still rejects VoiceDesign checkpoints,
-so this path is only usable today when compatible converted MLX weights already
-exist. See [caption_condition_support.md](caption_condition_support.md) for the
-current support matrix.
+speaker reference because speaker conditioning is disabled in that config. The
+checked-in weight converter now supports the inspected VoiceDesign checkpoint
+family, and hosted Apple Silicon CI can exercise the full `generate_wav.py
+--caption ...` path with a real public checkpoint. See
+[caption_condition_support.md](caption_condition_support.md) for the current
+support matrix and runner caveats.
 
 `--codec-runtime-mode` controls how the PyTorch DACVAE boundary is hosted:
 
