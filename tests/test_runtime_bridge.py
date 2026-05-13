@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import numpy as np
 
@@ -36,11 +37,15 @@ def require_mlx(test_func):
 
 
 class FakeTokenizer:
+    def __init__(self, *, token_ids=None, mask=None):
+        self._token_ids = token_ids
+        self._mask = mask
+
     def encode(self, text: str, *, max_length: int):
         del text
-        ids = [1, 2] + [0] * max(0, int(max_length) - 2)
-        mask = [True, True] + [False] * max(0, int(max_length) - 2)
-        return mx.array([ids[:max_length]], dtype=mx.int32), mx.array([mask[:max_length]], dtype=mx.bool_)
+        token_ids = self._token_ids or ([1, 2] + [0] * max(0, int(max_length) - 2))
+        mask = self._mask or ([True, True] + [False] * max(0, int(max_length) - 2))
+        return mx.array([token_ids[:max_length]], dtype=mx.int32), mx.array([mask[:max_length]], dtype=mx.bool_)
 
 
 class FakeBridge:
@@ -76,13 +81,20 @@ class FakeModel:
         if self.cfg.use_speaker_condition:
             speaker_state = mx.ones((batch, int(kwargs["ref_mask"].shape[1]), self.cfg.speaker_dim), dtype=mx.float32)
             speaker_mask = kwargs["ref_mask"].astype(mx.bool_)
+        caption_state = caption_mask = None
+        if self.cfg.use_caption_condition:
+            caption_mask = kwargs["caption_mask"].astype(mx.bool_)
+            caption_state = mx.ones(
+                (batch, int(caption_mask.shape[1]), self.cfg.caption_dim_resolved),
+                dtype=mx.float32,
+            )
         return EncodedConditions(
             text_state=mx.ones((batch, int(text_mask.shape[1]), self.cfg.text_dim), dtype=mx.float32),
             text_mask=text_mask,
             speaker_state=speaker_state,
             speaker_mask=speaker_mask,
-            caption_state=None,
-            caption_mask=None,
+            caption_state=caption_state,
+            caption_mask=caption_mask,
         )
 
     def build_context_kv_cache(self, *, text_state, speaker_state, caption_state=None):
@@ -331,6 +343,78 @@ class RuntimeBridgeTests(unittest.TestCase):
             from_path = load_model_config_json(path)
         self.assertEqual(from_path.latent_dim, 8)
         self.assertEqual(from_path.text_vocab_size, 64)
+
+    @require_mlx
+    def test_runtime_loads_distinct_text_and_caption_tokenizers(self):
+        cfg = replace(
+            tiny_config(),
+            use_caption_condition=True,
+            caption_vocab_size=32,
+            caption_tokenizer_repo="example/caption-tokenizer",
+            caption_dim=8,
+            caption_layers=1,
+            caption_heads=2,
+            caption_mlp_ratio=1.5,
+        )
+        with patch("irodori_mlx.runtime.PretrainedTextTokenizer.from_pretrained", side_effect=[FakeTokenizer(), FakeTokenizer()]) as mocked:
+            runtime = MLXDACVAERuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_tokenizer_repo="example/text-tokenizer"),
+                model=FakeModel(cfg),
+                bridge=FakeBridge(),
+            )
+        self.assertIsNotNone(runtime.tokenizer)
+        self.assertIsNotNone(runtime.caption_tokenizer)
+        mocked.assert_has_calls(
+            [
+                call("example/text-tokenizer", add_bos=True),
+                call("example/caption-tokenizer", add_bos=True),
+            ]
+        )
+
+    @require_mlx
+    def test_runtime_blank_caption_uses_unconditional_caption_mask(self):
+        cfg = replace(
+            tiny_config(),
+            use_caption_condition=True,
+            caption_vocab_size=32,
+            caption_tokenizer_repo="example/caption-tokenizer",
+            caption_dim=8,
+            caption_layers=1,
+            caption_heads=2,
+            caption_mlp_ratio=1.5,
+        )
+        bridge = FakeBridge()
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            model=FakeModel(cfg),
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+            caption_tokenizer=FakeTokenizer(token_ids=[7, 8, 9], mask=[True, True, True]),
+        )
+        captured = {}
+
+        def fake_sample(_model, **kwargs):
+            captured.update(kwargs)
+            return mx.zeros((1, int(kwargs["sequence_length"]), cfg.patched_latent_dim), dtype=mx.float32)
+
+        with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
+            runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    caption="   ",
+                    output_wav=str(Path(td) / "out.wav"),
+                    seconds=0.04,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_caption=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        np.testing.assert_array_equal(np.array(captured["caption_mask"]), np.array([[False, False, False]]))
+        self.assertIsNone(captured["ref_latent"])
+        self.assertIsNone(captured["ref_mask"])
+        self.assertEqual(len(bridge.encoded), 0)
 
     @require_mlx
     def test_torch_mlx_latent_conversion_roundtrip_when_torch_is_available(self):

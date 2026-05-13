@@ -71,6 +71,14 @@ an unconditional speaker mask. Normal base-v2 generation should pass
 `--reference-wav`. The CLI now reports clearer validation errors when
 `--reference-wav` / `--no-reference` are misused.
 
+Caption-conditioned / VoiceDesign-style configs already use a different runtime
+path: they load a caption tokenizer, accept `--caption`, and can run without a
+speaker reference because speaker conditioning is disabled in that config.
+However, the checked-in weight converter still rejects VoiceDesign checkpoints,
+so this path is only usable today when compatible converted MLX weights already
+exist. See [caption_condition_support.md](caption_condition_support.md) for the
+current support matrix.
+
 `--codec-runtime-mode` controls how the PyTorch DACVAE boundary is hosted:
 
 - `persistent` (default): keep the codec in-process and eagerly release PyTorch-side intermediates after encode/decode
@@ -140,6 +148,8 @@ In practical terms, the runtime needs:
 - The bridge is a prototype runtime surface, not a stable package API.
 - The converted MLX `.npz` archive currently contains weights only; config is
   supplied separately or by the base-v2 defaults.
+- VoiceDesign / caption-conditioned runtime/model support is only partial until
+  checkpoint conversion grows beyond the base v2 layout.
 - DACVAE remains PyTorch-only in v0.
 - The experimental subprocess codec mode is mainly for memory investigation; it
   is currently slower than the default persistent bridge.
