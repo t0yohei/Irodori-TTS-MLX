@@ -162,7 +162,6 @@ def run_generation(
                 filename=filename,
                 revision=revision,
                 local_dir=str(local_download_dir),
-                local_dir_use_symlinks=False,
             )
         )
         inspection = inspect_local_safetensors(checkpoint_path)

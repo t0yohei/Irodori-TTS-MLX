@@ -42,10 +42,16 @@ class RunVoiceDesignGenerationCIScriptTests(unittest.TestCase):
                 output_wav.write_bytes(b"fake wav")
                 return CompletedProcess(args=command, returncode=0, stdout=json.dumps(generation_payload), stderr="")
 
+            download_calls = []
+
+            def fake_download(**kwargs):
+                download_calls.append(kwargs)
+                return checkpoint_path
+
             with patch.object(
                 run_voicedesign_generation_ci,
                 "_require_hf_hub_download",
-                return_value=lambda **kwargs: checkpoint_path,
+                return_value=fake_download,
             ), patch.object(
                 run_voicedesign_generation_ci,
                 "inspect_local_safetensors",
@@ -91,6 +97,8 @@ class RunVoiceDesignGenerationCIScriptTests(unittest.TestCase):
                 self.assertTrue(Path(result["model_config_path"]).exists())
                 self.assertTrue(Path(result["output_wav"]).exists())
                 self.assertEqual(result["generation"]["request"]["caption"], "calm")
+                self.assertEqual(len(download_calls), 1)
+                self.assertNotIn("local_dir_use_symlinks", download_calls[0])
 
     def test_run_generation_rejects_non_caption_checkpoint_config(self):
         with tempfile.TemporaryDirectory() as td:

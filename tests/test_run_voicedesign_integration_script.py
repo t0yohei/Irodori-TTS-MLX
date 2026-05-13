@@ -29,10 +29,16 @@ class RunVoiceDesignIntegrationScriptTests(unittest.TestCase):
                 "supported_checkpoint": "Aratako/Irodori-TTS-500M-v2-VoiceDesign",
                 "validation": fake_validation,
             }
+            download_calls = []
+
+            def fake_download(**kwargs):
+                download_calls.append(kwargs)
+                return checkpoint_path
+
             with patch.object(
                 run_voicedesign_integration,
                 "_require_hf_hub_download",
-                return_value=lambda **kwargs: checkpoint_path,
+                return_value=fake_download,
             ), patch.object(
                 run_voicedesign_integration,
                 "inspect_local_safetensors",
@@ -62,6 +68,8 @@ class RunVoiceDesignIntegrationScriptTests(unittest.TestCase):
         self.assertEqual(result["inspection"]["tensor_count"], 2)
         self.assertFalse(result["full_conversion"])
         self.assertNotIn("full_conversion_export", result)
+        self.assertEqual(len(download_calls), 1)
+        self.assertNotIn("local_dir_use_symlinks", download_calls[0])
 
     def test_run_integration_includes_full_conversion_export_when_enabled(self):
         with tempfile.TemporaryDirectory() as td:
@@ -78,10 +86,16 @@ class RunVoiceDesignIntegrationScriptTests(unittest.TestCase):
                 "dtype_mismatches": [],
                 "config_errors": [],
             }
+            download_calls = []
+
+            def fake_download(**kwargs):
+                download_calls.append(kwargs)
+                return checkpoint_path
+
             with patch.object(
                 run_voicedesign_integration,
                 "_require_hf_hub_download",
-                return_value=lambda **kwargs: checkpoint_path,
+                return_value=fake_download,
             ), patch.object(
                 run_voicedesign_integration,
                 "inspect_local_safetensors",
@@ -113,6 +127,8 @@ class RunVoiceDesignIntegrationScriptTests(unittest.TestCase):
 
         self.assertEqual(result["full_conversion_export"]["array_count"], 2)
         self.assertEqual(result["full_conversion_export"]["sample_keys"], ["a", "b"])
+        self.assertEqual(len(download_calls), 1)
+        self.assertNotIn("local_dir_use_symlinks", download_calls[0])
 
 
 if __name__ == "__main__":
