@@ -94,6 +94,8 @@ The converter now supports both the base `Aratako/Irodori-TTS-500M-v2` layout an
 
 The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
 
+For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. The default automation validates inspect + converter family detection without forcing full `.npz` export on every run.
+
 ## Benchmarking
 
 Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. For the recommended Python 3.11 benchmark environment, install `.[bench]` as described in [docs/packaging.md](docs/packaging.md).
