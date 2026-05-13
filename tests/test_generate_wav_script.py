@@ -160,6 +160,36 @@ class GenerateWavScriptTests(unittest.TestCase):
                 ]
             )
 
+    def test_parse_args_rejects_invalid_boolean_config_value(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "no_reference": "false"}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit):
+                generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+    def test_parse_args_rejects_invalid_numeric_config_value(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "seconds": "fast"}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit):
+                generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+    def test_parse_args_rejects_null_required_config_value(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": null, "output": "out.wav", "text": "hello"}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit):
+                generate_wav.parse_args(["--config-json", str(cfg_path)])
+
     def test_main_json_output_and_metadata_file(self):
         runtime_holder = {}
 

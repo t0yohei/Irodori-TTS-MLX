@@ -58,6 +58,30 @@ CONFIG_KEYS = {
     "json_output",
 }
 
+REQUIRED_STRING_KEYS = {"weights", "output", "text"}
+BOOL_KEYS = {
+    "no_reference",
+    "disable_codec_normalize",
+    "enable_watermark",
+    "no_context_kv_cache",
+    "print_boundaries",
+    "json_output",
+}
+INT_KEYS = {"text_max_length", "caption_max_length", "num_steps", "seed"}
+FLOAT_KEYS = {
+    "seconds",
+    "cfg_scale_text",
+    "cfg_scale_caption",
+    "cfg_scale_speaker",
+    "cfg_min_t",
+    "cfg_max_t",
+    "max_reference_seconds",
+}
+CHOICE_KEYS = {
+    "codec_runtime_mode": {"persistent", "subprocess"},
+    "cfg_guidance_mode": {"independent", "joint", "reduced"},
+}
+
 
 def _load_json_object(value: str | None, *, label: str) -> dict[str, Any]:
     if value is None:
@@ -78,6 +102,37 @@ def _load_json_object(value: str | None, *, label: str) -> dict[str, Any]:
     return payload
 
 
+def _validate_generation_config(payload: dict[str, Any]) -> dict[str, Any]:
+    for key in REQUIRED_STRING_KEYS:
+        if key in payload:
+            value = payload[key]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"generation config field '{key}' must be a non-empty string")
+
+    for key in BOOL_KEYS:
+        if key in payload and not isinstance(payload[key], bool):
+            raise ValueError(f"generation config field '{key}' must be a boolean")
+
+    for key in INT_KEYS:
+        if key in payload:
+            value = payload[key]
+            if value is None or isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"generation config field '{key}' must be an integer")
+
+    for key in FLOAT_KEYS:
+        if key in payload:
+            value = payload[key]
+            if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"generation config field '{key}' must be a number")
+
+    for key, choices in CHOICE_KEYS.items():
+        if key in payload and payload[key] not in choices:
+            allowed = ", ".join(sorted(choices))
+            raise ValueError(f"generation config field '{key}' must be one of: {allowed}")
+
+    return payload
+
+
 def load_generation_config_json(value: str | None) -> dict[str, Any]:
     payload = _load_json_object(value, label="generation config")
     if "output_wav" in payload and "output" not in payload:
@@ -85,7 +140,7 @@ def load_generation_config_json(value: str | None) -> dict[str, Any]:
     unexpected = sorted(set(payload) - CONFIG_KEYS)
     if unexpected:
         raise ValueError("Unsupported generation config keys: " + ", ".join(unexpected))
-    return payload
+    return _validate_generation_config(payload)
 
 
 def _default(config: dict[str, Any], key: str, fallback: Any) -> Any:
@@ -102,7 +157,7 @@ def _add_configurable_bool(
     help_text: str,
 ) -> None:
     group = parser.add_mutually_exclusive_group()
-    group.add_argument(enable_flag, dest=dest, action="store_true", default=bool(config.get(dest, False)), help=help_text)
+    group.add_argument(enable_flag, dest=dest, action="store_true", default=config.get(dest, False), help=help_text)
     group.add_argument(disable_flag, dest=dest, action="store_false", help=argparse.SUPPRESS)
 
 
@@ -210,7 +265,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
-    if not str(args.text).strip():
+    if args.weights is None or not str(args.weights).strip():
+        parser.error("--weights must not be empty")
+    if args.output is None or not str(args.output).strip():
+        parser.error("--output must not be empty")
+    if args.text is None or not str(args.text).strip():
         parser.error("--text must not be empty")
     if args.seconds <= 0:
         parser.error("--seconds must be > 0")
