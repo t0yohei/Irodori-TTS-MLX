@@ -22,6 +22,19 @@ RF-DiT forward, and Euler RF sampling. This keeps the first practical prototype
 focused on the model path that should benefit from MLX while avoiding a full
 DACVAE port before the RF-DiT path is validated.
 
+## Upstream dependency boundary
+
+The PyTorch side is provided by upstream `irodori_tts`, specifically
+`irodori_tts.codec.DACVAECodec`. Install the upstream checkout into the same
+venv with `python -m pip install -e /path/to/Irodori-TTS` (recommended) or make
+it importable with `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}`. The import
+failure message in `PyTorchDACVAEBridge` points at the same two fixes.
+
+This repo does not claim standalone DACVAE operation in v0.1. It owns the MLX
+conditioning/model/sampling path and crosses into upstream PyTorch only for
+DACVAE encode/decode. See [upstream_dependency.md](upstream_dependency.md) for
+the full split.
+
 ## CLI
 
 ```bash
