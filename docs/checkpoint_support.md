@@ -50,4 +50,5 @@ Converted weights are derived artifacts from upstream checkpoints. Do not commit
 - [`docs/weight_mapping.md`](weight_mapping.md): observed tensor layouts and family differences.
 - [`docs/caption_condition_support.md`](caption_condition_support.md): VoiceDesign-specific support evidence.
 - [`docs/v3_support.md`](v3_support.md): v3-specific support evidence and predicted-duration behavior.
+- [`docs/v0_1_release_gate.md`](v0_1_release_gate.md): required v0.1 fresh-environment WAV-generation release gate and optional heavier validation.
 - [`docs/dacvae_bridge.md`](dacvae_bridge.md): generation CLI and runtime boundary notes.
