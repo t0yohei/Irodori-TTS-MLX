@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   v3-hosted-generation:
-    runs-on: macos-latest-xlarge
+    runs-on: macos-14
     timeout-minutes: 240
     steps:
       - name: Check out repository

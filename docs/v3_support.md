@@ -88,9 +88,9 @@ This gives the repository a practical regression check that is stronger than doc
 
 ## Known caveats
 
-### 1. Hosted coverage depends on paid Apple Silicon larger runners
+### 1. Hosted coverage depends on standard Apple Silicon runner availability
 
-The checked-in hosted workflow uses `macos-latest-xlarge`, so billing, queueing, and runner availability still matter.
+The checked-in hosted workflow uses the standard `macos-14` M1 runner, so public-repository coverage avoids larger-runner billing. Queueing and the smaller standard-runner resource envelope still matter.
 
 ### 2. The hosted smoke run uses `--no-reference`
 
