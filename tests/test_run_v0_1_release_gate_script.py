@@ -135,6 +135,24 @@ class RunV01ReleaseGateScriptTests(unittest.TestCase):
                         include_optional_voicedesign=False,
                     )
 
+    def test_release_gate_rejects_missing_required_metadata_artifact(self):
+        with tempfile.TemporaryDirectory() as td:
+            def fake_v3(**kwargs):
+                result = _fake_generation_result(Path(kwargs["output_dir"]), family="v3")
+                Path(result["metadata_json"]).unlink()
+                return result
+
+            with patch.object(run_v0_1_release_gate.run_v3_generation_ci, "run_generation", side_effect=fake_v3):
+                with self.assertRaisesRegex(RuntimeError, "metadata artifact"):
+                    run_v0_1_release_gate.run_release_gate(
+                        output_dir=str(Path(td) / "artifacts"),
+                        download_dir=None,
+                        upstream_root=None,
+                        codec_device="cpu",
+                        num_steps=4,
+                        include_optional_voicedesign=False,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

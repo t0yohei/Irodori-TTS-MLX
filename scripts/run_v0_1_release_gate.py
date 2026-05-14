@@ -91,6 +91,12 @@ def _assert_required_v3_metadata(result: dict[str, Any]) -> None:
         raise RuntimeError("v0.1 required gate generated an empty WAV artifact.")
     if int(result.get("weights_bytes", 0)) <= 0:
         raise RuntimeError("v0.1 required gate generated an empty converted-weight artifact.")
+    metadata_json = result.get("metadata_json")
+    if not metadata_json:
+        raise RuntimeError("v0.1 required gate did not report a metadata JSON artifact path.")
+    metadata_path = Path(str(metadata_json))
+    if not metadata_path.is_file() or metadata_path.stat().st_size <= 0:
+        raise RuntimeError(f"v0.1 required gate generated an empty or missing metadata artifact: {metadata_path}")
 
 
 def run_release_gate(
