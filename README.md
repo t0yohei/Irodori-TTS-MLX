@@ -82,7 +82,7 @@ The script prints metadata/config, tensor names, shapes, dtypes, and parameter t
 
 ## Weight conversion
 
-Use `scripts/convert_weights.py` to convert a local base v2 or VoiceDesign checkpoint into an MLX-friendly `.npz` archive:
+Use `scripts/convert_weights.py` to convert a local base v2, v3, or VoiceDesign checkpoint into an MLX-friendly `.npz` archive:
 
 ```bash
 python3 scripts/convert_weights.py /path/to/model.safetensors /path/to/irodori-tts-500m-v2.npz
@@ -90,7 +90,7 @@ python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run
 python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run --json
 ```
 
-The converter now supports both the base `Aratako/Irodori-TTS-500M-v2` layout and the `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned layout. It validates the documented key mapping, shape expectations, float32 dtypes, and family-specific config assumptions before writing output. Use `--dry-run --json` to confirm the detected `checkpoint_family` before exporting large checkpoints. See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support matrix and remaining caveats.
+The converter now supports the base `Aratako/Irodori-TTS-500M-v2` layout, the `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned layout, and the `Aratako/Irodori-TTS-500M-v3` inspection/conversion layout. It validates the documented key mapping, shape expectations, float32 dtypes, and family-specific config assumptions before writing output. Use `--dry-run --json` to confirm the detected `checkpoint_family` before exporting large checkpoints. V3 support currently stops at inspection/conversion: runtime generation for the duration predictor path is still follow-up work under issue #49. See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support matrix and remaining caveats.
 
 The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
 
