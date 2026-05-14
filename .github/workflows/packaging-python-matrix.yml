@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - issue-59-expand-python-support
 
 permissions:
   contents: read
