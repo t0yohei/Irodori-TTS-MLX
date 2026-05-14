@@ -1,5 +1,7 @@
 # irodori-tts-mlx
 
+[日本語 README](README.ja.md)
+
 An unofficial MLX inference port of [Irodori-TTS](https://github.com/Aratako/Irodori-TTS) for Apple Silicon.
 
 > [!IMPORTANT]
@@ -69,6 +71,14 @@ python -m pip install -e ".[dev]"      # local contributor environment
 ```
 
 The bridge runtime still depends on upstream `irodori_tts` for `DACVAECodec`, so either install the upstream checkout into the same venv or expose it on `PYTHONPATH`. The full setup guide lives in [docs/packaging.md](docs/packaging.md).
+
+## README split
+
+To keep both READMEs discoverable without letting them drift too far:
+
+- [README.md](README.md) is the canonical source for exact technical scope, compatibility, and milestone status.
+- [README.ja.md](README.ja.md) provides a Japanese overview, setup entry points, current limitations, and links into the detailed docs.
+- Detailed procedures and validation notes should continue to live under `docs/*.md` so both READMEs can stay concise.
 
 ## Checkpoint inspection
 
