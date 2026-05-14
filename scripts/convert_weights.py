@@ -332,8 +332,8 @@ def detect_checkpoint_family(
     speaker_tensors = _has_speaker_tensors(records)
     duration_tensors = _has_duration_tensors(records)
 
-    if caption_config and speaker_config:
-        errors.append("config is ambiguous: caption conditioning is enabled while speaker fields are also present")
+    if caption_config and speaker_config and speaker_tensors:
+        errors.append("config is ambiguous: caption conditioning is enabled while speaker-conditioned tensors are also present")
     if caption_tensors and speaker_tensors:
         errors.append("tensor layout is ambiguous: found both caption-conditioned and speaker-conditioned tensors")
     if caption_config and duration_config:
@@ -344,8 +344,8 @@ def detect_checkpoint_family(
         return None, errors
 
     if caption_config or caption_tensors:
-        if speaker_config:
-            errors.append("VoiceDesign checkpoints should not carry base speaker-conditioning fields")
+        # Public VoiceDesign checkpoints may still carry legacy speaker_* config
+        # fields while using a purely caption-conditioned tensor layout.
         return CHECKPOINT_FAMILY_VOICEDESIGN, errors
 
     if duration_config or duration_tensors:
@@ -409,8 +409,9 @@ def validate_voicedesign_config(config: dict[str, Any] | None) -> list[str]:
             errors.append(f"config {key}: expected {expected!r}, got {config.get(key)!r}")
     if config.get("use_caption_condition") is not True:
         errors.append("VoiceDesign checkpoints must set use_caption_condition=true")
-    if any(key.startswith("speaker_") for key in config):
-        errors.append("VoiceDesign checkpoints must not include base speaker-conditioning fields")
+    # Some public VoiceDesign checkpoints still carry legacy speaker_* metadata
+    # even though the tensor layout is caption-conditioned. Treat those config
+    # keys as tolerated metadata noise rather than a hard validation failure.
     return errors
 
 
