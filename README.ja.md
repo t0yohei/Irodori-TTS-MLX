@@ -62,7 +62,7 @@ v0.1 で対応対象としている checkpoint family:
 - 学習・微調整用途は対象外です
 - Web UI / Gradio は対象外です
 - すべての歴史的 / third-party checkpoint 互換を保証するものではありません
-- ライセンスは未確定です。派生物の再配布前に upstream / model card の条件確認が必要です
+- このリポジトリ自身のコードとドキュメントは MIT License です。ただし upstream code、checkpoint、DACVAE weights、converted `.npz`、生成音声は再配布しません。詳細は [docs/license_and_distribution.md](docs/license_and_distribution.md) を参照してください
 
 ## セットアップ
 
@@ -130,6 +130,7 @@ python3 scripts/benchmark.py --self-test
 - RF sampler: [docs/rf_sampler.md](docs/rf_sampler.md)
 - DACVAE bridge / WAV 生成: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
 - upstream `irodori_tts` 依存境界: [docs/upstream_dependency.md](docs/upstream_dependency.md)
+- ライセンス / 再配布ポリシー: [docs/license_and_distribution.md](docs/license_and_distribution.md)
 - packaging / install: [docs/packaging.md](docs/packaging.md)
 - benchmark: [docs/benchmark.md](docs/benchmark.md)
 - VoiceDesign サポート: [docs/caption_condition_support.md](docs/caption_condition_support.md)

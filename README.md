@@ -235,7 +235,7 @@ v0.1 support is limited to checkpoint families whose tensor layouts and runtime 
 | v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported | Supported; omit `--seconds` for predicted duration | **Supported** |
 | Other historical, fine-tuned, LoRA, architecture-modified, or renamed Irodori-TTS checkpoints | Any non-matching layout/config | Best-effort metadata inspection only | Unsupported | Unsupported | **Unsupported** |
 
-Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats.
+Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats, and [docs/license_and_distribution.md](docs/license_and_distribution.md) for the repository license and non-redistribution policy.
 
 ## Checkpoint inspection
 
@@ -338,6 +338,7 @@ The v0.1 prototype does not include:
 ## Related resources
 
 - Upstream Irodori-TTS: <https://github.com/Aratako/Irodori-TTS>
+- License and distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
 - MLX: <https://github.com/ml-explore/mlx>
 - Irodori-TTS 500M v2 model card: <https://huggingface.co/Aratako/Irodori-TTS-500M-v2>
 - Irodori-TTS 500M v2 VoiceDesign model card: <https://huggingface.co/Aratako/Irodori-TTS-500M-v2-VoiceDesign>
@@ -365,4 +366,6 @@ Current status by milestone:
 
 ## License notes
 
-The project license has not been finalized yet. Upstream code and model weights may have different license terms. Check the upstream repository and model cards before reusing or redistributing any derived artifacts.
+This repository's own source code and documentation are licensed under the [MIT License](LICENSE), unless a file explicitly states otherwise.
+
+The MIT License does not cover upstream code, checkpoint files, DACVAE weights, tokenizer assets, reference audio, converted `.npz` archives, generated audio, or other artifacts that are not redistributed here. This repository does **not** redistribute checkpoints or derived model/audio artifacts for v0.1; users must obtain upstream artifacts themselves and follow the relevant upstream repository and model-card terms. See [docs/license_and_distribution.md](docs/license_and_distribution.md) for the full policy.

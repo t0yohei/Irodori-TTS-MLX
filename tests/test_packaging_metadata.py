@@ -12,8 +12,12 @@ class PackagingMetadataTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
 
+        self.assertIn('requires = ["setuptools>=77", "wheel"]', pyproject)
         self.assertIn('name = "irodori-tts-mlx"', pyproject)
         self.assertIn('requires-python = ">=3.11,<3.15"', pyproject)
+        self.assertIn('license = "MIT"', pyproject)
+        self.assertNotIn('"License :: Other/Proprietary License"', pyproject)
+        self.assertNotIn('"License :: OSI Approved :: MIT License"', pyproject)
         self.assertIn('"Programming Language :: Python :: 3.11"', pyproject)
         self.assertIn('"Programming Language :: Python :: 3.12"', pyproject)
         self.assertIn('"Programming Language :: Python :: 3.13"', pyproject)
@@ -102,6 +106,26 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn("upstream `irodori_tts` still owns the PyTorch", dependency_doc)
         self.assertIn("full MLX DACVAE port is not required", dependency_doc)
         self.assertIn("does **not** provide standalone v0.1 WAV generation", dependency_doc)
+
+    def test_license_and_distribution_policy_is_documented(self):
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        readme_ja = (root / "README.ja.md").read_text(encoding="utf-8")
+        policy_doc = (root / "docs" / "license_and_distribution.md").read_text(encoding="utf-8")
+        license_file = (root / "LICENSE").read_text(encoding="utf-8")
+
+        self.assertIn("MIT License", license_file)
+        self.assertIn("[MIT License](LICENSE)", readme)
+        self.assertIn("docs/license_and_distribution.md", readme)
+        self.assertIn("docs/license_and_distribution.md", readme_ja)
+
+        for text in (readme, policy_doc):
+            self.assertIn("does **not** redistribute", text)
+            self.assertIn("converted `.npz`", text)
+            self.assertIn("generated audio", text)
+
+        self.assertIn("Irodori-TTS 500M v3 checkpoint", policy_doc)
+        self.assertIn("Semantic-DACVAE Japanese codec weights", policy_doc)
 
 
 if __name__ == "__main__":
