@@ -71,6 +71,25 @@ an unconditional speaker mask. Normal base-v2 generation should pass
 `--reference-wav`. The CLI now reports clearer validation errors when
 `--reference-wav` / `--no-reference` are misused.
 
+A minimal v3 validation run can reuse that unconditional path to exercise the
+duration predictor without shipping a reference asset:
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:$PYTHONPATH \
+python3 scripts/generate_wav.py \
+  --weights /path/to/irodori-tts-500m-v3.npz \
+  --model-config-json /path/to/v3-model-config.json \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3.wav \
+  --num-steps 40
+```
+
+That command intentionally omits `--seconds`, so checkpoints with
+`use_duration_predictor=true` follow the predicted-duration path. Add
+`--reference-wav` for real speaker-conditioned runs when you want the generated
+voice to track a specific sample more closely.
+
 Caption-conditioned / VoiceDesign-style configs already use a different runtime
 path: they load a caption tokenizer, accept `--caption`, and can run without a
 speaker reference because speaker conditioning is disabled in that config. The
@@ -93,6 +112,7 @@ The current recommendation is to keep `persistent` as the normal runtime mode.
 - When `--seconds` is omitted and the loaded `ModelConfig` enables `use_duration_predictor`, the runtime predicts latent length from the current text/reference conditions.
 - `--duration-scale` scales only that predicted length; it has no effect when `--seconds` is set.
 - When `--seconds` is omitted for checkpoints without the duration predictor, the MLX runtime keeps the existing fixed 5-second fallback instead of changing older checkpoint behavior.
+- Hosted v3 validation (`scripts/run_v3_generation_ci.py` / `.github/workflows/v3-hosted-generation.yml`) intentionally omits `--seconds` and asserts `duration_mode="predicted"` in the JSON payload so the first-class v3 semantics stay exercised.
 
 JSON output now includes `duration_mode`, `requested_seconds`, and `resolved_seconds` so automation can tell which rule was used.
 
@@ -158,8 +178,15 @@ In practical terms, the runtime needs:
 - The bridge is a prototype runtime surface, not a stable package API.
 - The converted MLX `.npz` archive currently contains weights only; config is
   supplied separately or by the base-v2 defaults.
-- VoiceDesign / caption-conditioned runtime/model support is only partial until
-  checkpoint conversion grows beyond the base v2 layout.
+- VoiceDesign / caption-conditioned runtime/model support is scoped to the
+  inspected `Aratako/Irodori-TTS-500M-v2-VoiceDesign` family rather than every
+  historical caption-conditioned checkpoint.
+- V3 runtime support depends on a config/weights pair that still matches the
+  inspected public checkpoint family; manual `--seconds` remains the escape hatch
+  when you want exact duration control instead of the predictor.
+- Codec watermarking remains optional and only has an effect when the upstream
+  DACVAE runtime exposes watermark support; `--enable-watermark` should be
+  treated as best-effort rather than guaranteed output tagging.
 - DACVAE remains PyTorch-only in v0.
 - The experimental subprocess codec mode is mainly for memory investigation; it
   is currently slower than the default persistent bridge.

@@ -48,6 +48,8 @@ For Apple Silicon benchmark workflow, current baseline conclusions, and the benc
 
 For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
 
+For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
+
 For the packaged install story, supported Python version, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
 
 ## Supported Python and install targets
@@ -90,13 +92,13 @@ python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run
 python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run --json
 ```
 
-The converter now supports the base `Aratako/Irodori-TTS-500M-v2` layout, the `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned layout, and the `Aratako/Irodori-TTS-500M-v3` inspection/conversion layout. It validates the documented key mapping, shape expectations, float32 dtypes, and family-specific config assumptions before writing output. Use `--dry-run --json` to confirm the detected `checkpoint_family` before exporting large checkpoints. V3 support currently stops at inspection/conversion: runtime generation for the duration predictor path is still follow-up work under issue #49. See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support matrix and remaining caveats.
+The converter now supports the base `Aratako/Irodori-TTS-500M-v2` layout, the `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned layout, and the `Aratako/Irodori-TTS-500M-v3` duration-predictor layout. It validates the documented key mapping, shape expectations, float32 dtypes, and family-specific config assumptions before writing output. Use `--dry-run --json` to confirm the detected `checkpoint_family` before exporting large checkpoints. V3 is now supported through conversion plus the MLX bridge runtime, with duration semantics documented in [docs/dacvae_bridge.md](docs/dacvae_bridge.md) and reproducible validation coverage documented in [docs/v3_support.md](docs/v3_support.md). See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the separate VoiceDesign support matrix.
 
 The initial converter accepts only local `.safetensors` checkpoints. Converting them requires the optional `safetensors` Python package. Header-only `--dry-run` validation works without loading the multi-GiB tensor payload.
 
 For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. That lightweight automation validates inspect + converter family detection without forcing full `.npz` export on every run.
 
-For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. That workflow targets GitHub-hosted Apple Silicon macOS larger runners (`macos-latest-xlarge`), so it avoids self-hosted infrastructure but should be scheduled conservatively because larger-runner billing and availability still apply.
+For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows target GitHub-hosted Apple Silicon macOS larger runners (`macos-latest-xlarge`), so they avoid self-hosted infrastructure but should be scheduled conservatively because larger-runner billing and availability still apply.
 
 ## Benchmarking
 
@@ -144,7 +146,7 @@ The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available fo
 
 `irodori_mlx.sampling.sample_euler_rf_cfg` adds the first RF Euler sampling loop on top of the MLX model path. It can generate patched latent sequences with fixed-seed noise, upstream-style timesteps, optional context K/V cache, and text/speaker/caption CFG modes.
 
-`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can now use the documented conversion + runtime path as long as their metadata and tensor layout match the inspected VoiceDesign family. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, and boundary notes, and [docs/caption_condition_support.md](docs/caption_condition_support.md) for the current support statement.
+`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can now use the documented conversion + runtime path as long as their metadata and tensor layout match the inspected VoiceDesign family, and the public `Aratako/Irodori-TTS-500M-v3` path is supported with predicted-duration semantics when `--seconds` is omitted. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, and boundary notes, [docs/caption_condition_support.md](docs/caption_condition_support.md) for the VoiceDesign support statement, and [docs/v3_support.md](docs/v3_support.md) for the v3 validation story.
 
 ## Public API direction
 
@@ -172,6 +174,7 @@ The initial prototype should not include:
 - MLX: <https://github.com/ml-explore/mlx>
 - Irodori-TTS 500M v2 model card: <https://huggingface.co/Aratako/Irodori-TTS-500M-v2>
 - Irodori-TTS 500M v2 VoiceDesign model card: <https://huggingface.co/Aratako/Irodori-TTS-500M-v2-VoiceDesign>
+- Irodori-TTS 500M v3 model card: <https://huggingface.co/Aratako/Irodori-TTS-500M-v3>
 - Semantic-DACVAE Japanese 32-dim codec: <https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim>
 - DACVAE: <https://github.com/facebookresearch/dacvae>
 

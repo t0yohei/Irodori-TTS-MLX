@@ -1,0 +1,51 @@
+name: v3 hosted Apple Silicon generation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 1 * *"
+
+permissions:
+  contents: read
+
+jobs:
+  v3-hosted-generation:
+    runs-on: macos-latest-xlarge
+    timeout-minutes: 240
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: arm64
+
+      - name: Install repo runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[runtime]"
+          python -m pip install safetensors huggingface_hub
+
+      - name: Check out upstream Irodori-TTS
+        run: |
+          git clone --depth=1 https://github.com/Aratako/Irodori-TTS.git "$RUNNER_TEMP/Irodori-TTS"
+          python -m pip install -e "$RUNNER_TEMP/Irodori-TTS"
+
+      - name: Run hosted v3 generation coverage
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python scripts/run_v3_generation_ci.py \
+            --output-dir artifacts \
+            --upstream-root "$RUNNER_TEMP/Irodori-TTS" \
+            --json > artifacts/v3-hosted-generation-summary.json
+          cat artifacts/v3-hosted-generation-summary.json
+
+      - name: Upload hosted generation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-hosted-generation
+          path: artifacts/
+          retention-days: 14
