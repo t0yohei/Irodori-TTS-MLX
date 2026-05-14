@@ -62,6 +62,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             disable_codec_normalize=False,
             enable_watermark=False,
             seconds=0.1,
+            duration_scale=1.0,
             num_steps=1,
             cfg_scale_text=0.0,
             cfg_scale_caption=0.0,
@@ -123,6 +124,18 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.text, "hello")
         self.assertEqual(args.seconds, 2.5)
         self.assertEqual(args.num_steps, 8)
+
+    def test_parse_args_allows_omitted_seconds_for_auto_duration(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "seconds": null, "duration_scale": 1.2}',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+        self.assertIsNone(args.seconds)
+        self.assertEqual(args.duration_scale, 1.2)
 
     def test_parse_args_config_boolean_can_be_disabled_from_cli(self):
         with tempfile.TemporaryDirectory() as td:
@@ -190,6 +203,21 @@ class GenerateWavScriptTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 generate_wav.parse_args(["--config-json", str(cfg_path)])
 
+    def test_parse_args_rejects_non_positive_duration_scale(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--duration-scale",
+                    "0",
+                ]
+            )
+
     def test_parse_args_rejects_invalid_metadata_json_type(self):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
@@ -226,6 +254,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["result"]["output_wav"], out_wav)
         self.assertEqual(payload["result"]["timings_ms"]["sample_rf"], 12.5)
         self.assertEqual(payload["request"]["caption"], "calm")
+        self.assertEqual(payload["request"]["duration_scale"], 1.0)
         self.assertEqual(written["result"]["samples"], 2400)
 
     def test_main_print_boundaries_uses_stderr_in_json_mode(self):

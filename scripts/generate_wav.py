@@ -43,6 +43,7 @@ CONFIG_KEYS = {
     "disable_codec_normalize",
     "enable_watermark",
     "seconds",
+    "duration_scale",
     "num_steps",
     "cfg_scale_text",
     "cfg_scale_caption",
@@ -79,7 +80,7 @@ BOOL_KEYS = {
 }
 INT_KEYS = {"text_max_length", "caption_max_length", "num_steps", "seed"}
 FLOAT_KEYS = {
-    "seconds",
+    "duration_scale",
     "cfg_scale_text",
     "cfg_scale_caption",
     "cfg_scale_speaker",
@@ -87,6 +88,7 @@ FLOAT_KEYS = {
     "cfg_max_t",
     "max_reference_seconds",
 }
+NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
     "codec_runtime_mode": {"persistent", "subprocess"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
@@ -140,6 +142,12 @@ def _validate_generation_config(payload: dict[str, Any]) -> dict[str, Any]:
             value = payload[key]
             if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"generation config field '{key}' must be a number")
+
+    for key in NULLABLE_FLOAT_KEYS:
+        if key in payload:
+            value = payload[key]
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
+                raise ValueError(f"generation config field '{key}' must be a number or null")
 
     for key, choices in CHOICE_KEYS.items():
         if key in payload and payload[key] not in choices:
@@ -230,7 +238,18 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         disable_flag="--disable-watermark",
         help_text="Enable codec watermarking when the upstream codec supports it.",
     )
-    parser.add_argument("--seconds", type=float, default=float(_default(config, "seconds", 5.0)), help="Target output duration in seconds (default: 5.0).")
+    parser.add_argument(
+        "--seconds",
+        type=float,
+        default=config.get("seconds"),
+        help="Manual output duration in seconds. Omit it to use predicted duration when the loaded model supports it.",
+    )
+    parser.add_argument(
+        "--duration-scale",
+        type=float,
+        default=float(_default(config, "duration_scale", 1.0)),
+        help="Scale the predicted duration when --seconds is omitted (default: 1.0).",
+    )
     parser.add_argument("--num-steps", type=int, default=int(_default(config, "num_steps", 40)), help="RF sampling steps (default: 40).")
     parser.add_argument("--cfg-scale-text", type=float, default=float(_default(config, "cfg_scale_text", 3.0)), help="Classifier-free guidance scale for text conditioning.")
     parser.add_argument("--cfg-scale-caption", type=float, default=float(_default(config, "cfg_scale_caption", 3.0)), help="Classifier-free guidance scale for caption conditioning.")
@@ -287,8 +306,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--output must not be empty")
     if args.text is None or not str(args.text).strip():
         parser.error("--text must not be empty")
-    if args.seconds <= 0:
+    if args.seconds is not None and args.seconds <= 0:
         parser.error("--seconds must be > 0")
+    if args.duration_scale <= 0:
+        parser.error("--duration-scale must be > 0")
     if args.num_steps <= 0:
         parser.error("--num-steps must be > 0")
     if args.text_max_length <= 0:
@@ -311,6 +332,9 @@ def build_result_payload(
             "latent_steps": result.latent_steps,
             "patched_steps": result.patched_steps,
             "seed": result.seed,
+            "duration_mode": getattr(result, "duration_mode", None),
+            "requested_seconds": getattr(result, "requested_seconds", None),
+            "resolved_seconds": getattr(result, "resolved_seconds", None),
             "timings_ms": result.timings_ms,
             "messages": list(result.messages),
         },
@@ -368,7 +392,8 @@ def main() -> int:
         reference_wav=args.reference_wav,
         no_reference=bool(args.no_reference),
         caption=args.caption,
-        seconds=float(args.seconds),
+        seconds=None if args.seconds is None else float(args.seconds),
+        duration_scale=float(args.duration_scale),
         num_steps=int(args.num_steps),
         cfg_scale_text=float(args.cfg_scale_text),
         cfg_scale_caption=float(args.cfg_scale_caption),

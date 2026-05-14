@@ -14,6 +14,7 @@ from typing import Iterable
 import mlx.core as mx
 
 from .config import ModelConfig
+from .duration import build_duration_features
 from .layers import unpatch_latents
 from .model import TextToLatentRFDiT
 from .sampling import sample_euler_rf_cfg
@@ -53,7 +54,8 @@ class GenerationRequest:
     reference_wav: str | None = None
     no_reference: bool = False
     caption: str | None = None
-    seconds: float = 5.0
+    seconds: float | None = None
+    duration_scale: float = 1.0
     num_steps: int = 40
     cfg_scale_text: float = 3.0
     cfg_scale_caption: float = 3.0
@@ -74,6 +76,9 @@ class GenerationResult:
     latent_steps: int
     patched_steps: int
     seed: int
+    duration_mode: str
+    requested_seconds: float | None = None
+    resolved_seconds: float | None = None
     timings_ms: dict[str, float] | None = None
     messages: tuple[str, ...] = ()
 
@@ -487,8 +492,11 @@ class MLXDACVAERuntime:
         messages: list[str] = []
         timings_ms: dict[str, float] = {}
         total_started = time.perf_counter()
-        if request.seconds <= 0:
-            raise ValueError(f"seconds must be positive, got {request.seconds!r}")
+        manual_seconds = None if request.seconds is None else float(request.seconds)
+        if manual_seconds is not None and manual_seconds <= 0:
+            raise ValueError(f"seconds must be positive when provided, got {request.seconds!r}")
+        if float(request.duration_scale) <= 0:
+            raise ValueError(f"duration_scale must be positive, got {request.duration_scale!r}")
         if request.reference_wav is None and not request.no_reference and self.config.model_config.use_speaker_condition:
             raise ValueError("Specify reference_wav, or set no_reference=True for an unconditional speaker path.")
 
@@ -530,8 +538,61 @@ class MLXDACVAERuntime:
                 ref_mask = mx.ones((1, ref_latent.shape[1]), dtype=mx.bool_)
         timings_ms["prepare_reference_condition"] = (time.perf_counter() - started) * 1000.0
 
-        target_samples = int(float(request.seconds) * float(self.bridge.sample_rate))
-        latent_steps = (target_samples + self.bridge.hop_length - 1) // self.bridge.hop_length
+        duration_mode = "fallback"
+        resolved_seconds: float | None = None
+        if manual_seconds is not None:
+            duration_mode = "manual"
+            target_samples = int(manual_seconds * float(self.bridge.sample_rate))
+            latent_steps = max(1, (target_samples + self.bridge.hop_length - 1) // self.bridge.hop_length)
+            resolved_seconds = float(target_samples) / float(self.bridge.sample_rate)
+            messages.append(f"manual duration override active: {resolved_seconds:.3f}s")
+        elif self.config.model_config.use_duration_predictor:
+            duration_mode = "predicted"
+            started = time.perf_counter()
+            has_speaker = mx.zeros((1,), dtype=mx.bool_)
+            if ref_mask is not None:
+                has_speaker = ref_mask.any(axis=1)
+            duration_features = build_duration_features(
+                [request.text],
+                token_counts=text_mask.sum(axis=1),
+                max_text_len=int(self.config.text_max_length),
+                has_speaker=has_speaker,
+            )
+            encoded = self.model.encode_conditions(
+                text_input_ids=text_ids,
+                text_mask=text_mask,
+                ref_latent=ref_latent,
+                ref_mask=ref_mask,
+                caption_input_ids=caption_ids,
+                caption_mask=caption_mask,
+            )
+            pred_log_frames = self.model.predict_duration_log_frames(
+                text_state=encoded.text_state,
+                text_mask=encoded.text_mask,
+                speaker_state=encoded.speaker_state,
+                speaker_mask=encoded.speaker_mask,
+                duration_features=duration_features,
+                has_speaker=has_speaker,
+            )
+            pred_frames = float(_as_numpy(mx.expm1(pred_log_frames).astype(mx.float32)).mean())
+            scaled_frames = max(1.0, pred_frames * float(request.duration_scale))
+            latent_steps = max(1, int(round(scaled_frames)))
+            target_samples = int(latent_steps * self.bridge.hop_length)
+            resolved_seconds = float(target_samples) / float(self.bridge.sample_rate)
+            timings_ms["predict_duration"] = (time.perf_counter() - started) * 1000.0
+            messages.append(
+                "predicted duration active: "
+                f"frames={pred_frames:.1f}, scale={float(request.duration_scale):.3f}, seconds={resolved_seconds:.3f}"
+            )
+        else:
+            fallback_seconds = 5.0
+            target_samples = int(fallback_seconds * float(self.bridge.sample_rate))
+            latent_steps = max(1, (target_samples + self.bridge.hop_length - 1) // self.bridge.hop_length)
+            resolved_seconds = float(target_samples) / float(self.bridge.sample_rate)
+            messages.append(
+                "duration predictor unavailable; falling back to fixed duration "
+                f"{resolved_seconds:.3f}s"
+            )
         patched_steps = (latent_steps + int(self.config.model_config.latent_patch_size) - 1) // int(
             self.config.model_config.latent_patch_size
         )
@@ -569,6 +630,9 @@ class MLXDACVAERuntime:
             latent_steps=int(latent_steps),
             patched_steps=int(patched_steps),
             seed=int(request.seed),
+            duration_mode=duration_mode,
+            requested_seconds=manual_seconds,
+            resolved_seconds=resolved_seconds,
             timings_ms=timings_ms,
             messages=tuple(messages),
         )
@@ -599,6 +663,11 @@ def iter_messages(result: GenerationResult) -> Iterable[str]:
     yield f"latent_steps: {result.latent_steps}"
     yield f"patched_steps: {result.patched_steps}"
     yield f"seed: {result.seed}"
+    yield f"duration_mode: {result.duration_mode}"
+    if result.requested_seconds is not None:
+        yield f"requested_seconds: {result.requested_seconds}"
+    if result.resolved_seconds is not None:
+        yield f"resolved_seconds: {result.resolved_seconds:.3f}"
     for name, value in sorted((result.timings_ms or {}).items()):
         yield f"[timing] {name}: {value:.3f} ms"
     for message in result.messages:

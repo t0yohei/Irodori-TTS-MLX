@@ -1,6 +1,7 @@
 """Core MLX utilities for the irodori-tts-mlx prototype."""
 
 from .config import ModelConfig
+from .duration import build_duration_features
 from .encoders import (
     ConditionEncoders,
     EncodedConditions,
@@ -64,6 +65,7 @@ __all__ = [
     "WeightLoadReport",
     "apply_rotary_emb",
     "assign_named_weights",
+    "build_duration_features",
     "encoder_required_keys",
     "euler_timestep_schedule",
     "get_timestep_embedding",

@@ -87,6 +87,15 @@ support matrix and runner caveats.
 
 The current recommendation is to keep `persistent` as the normal runtime mode.
 
+## Duration semantics
+
+- `--seconds` is an explicit manual override.
+- When `--seconds` is omitted and the loaded `ModelConfig` enables `use_duration_predictor`, the runtime predicts latent length from the current text/reference conditions.
+- `--duration-scale` scales only that predicted length; it has no effect when `--seconds` is set.
+- When `--seconds` is omitted for checkpoints without the duration predictor, the MLX runtime keeps the existing fixed 5-second fallback instead of changing older checkpoint behavior.
+
+JSON output now includes `duration_mode`, `requested_seconds`, and `resolved_seconds` so automation can tell which rule was used.
+
 ## Python API
 
 ```python
