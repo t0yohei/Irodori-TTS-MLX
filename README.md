@@ -54,13 +54,13 @@ For the packaged install story, supported Python versions, and reproducible runt
 
 ## Supported Python and install targets
 
-The current packaged environment supports **Python 3.11 and 3.12**.
+The current packaged environment supports **Python 3.11 through 3.14**.
 Python 3.11 remains the reference environment for the published benchmark notes and examples in this repository.
 
 Install this repo in editable mode depending on your use case:
 
 ```bash
-python3.11 -m venv .venv  # or: python3.12 -m venv .venv
+python3.11 -m venv .venv  # or: python3.12/3.13/3.14 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
@@ -103,7 +103,7 @@ For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, 
 
 ## Benchmarking
 
-Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. Python 3.11 and 3.12 are supported for packaging, while Python 3.11 remains the recommended benchmark reference environment described in [docs/packaging.md](docs/packaging.md).
+Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. Python 3.11 through 3.14 are supported for packaging, while Python 3.11 remains the recommended benchmark reference environment described in [docs/packaging.md](docs/packaging.md).
 
 
 ```bash

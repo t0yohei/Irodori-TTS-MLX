@@ -154,7 +154,7 @@ So the current best mitigation is a simpler one than the original architectural 
 ## Benchmark script
 
 Use `scripts/benchmark.py` to run a reproducible benchmark harness with repeated-run support, warmup labeling, and simple scaling sweeps.
-For environment setup, use the packaged benchmark flow in [docs/packaging.md](packaging.md): Python 3.11 and 3.12 are supported for packaging, while the benchmark examples continue to use Python 3.11 as the reference environment. Create a venv, install `-e ".[bench]"`, and make upstream `irodori_tts` importable from the same environment.
+For environment setup, use the packaged benchmark flow in [docs/packaging.md](packaging.md): Python 3.11 through 3.14 are supported for packaging, while the benchmark examples continue to use Python 3.11 as the reference environment. Create a venv, install `-e ".[bench]"`, and make upstream `irodori_tts` importable from the same environment.
 
 ### Self-test
 

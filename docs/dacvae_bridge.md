@@ -161,7 +161,7 @@ print(result.output_wav)
 
 The normal unit suite does not require the heavy runtime stack. Actual WAV
 generation should use a supported packaged runtime environment from
-[docs/packaging.md](packaging.md) (currently Python 3.11 or 3.12): install this
+[docs/packaging.md](packaging.md) (currently Python 3.11 through 3.14): install this
 repo with `pip install -e ".[runtime]"` and make upstream `irodori_tts`
 importable from the same venv or `PYTHONPATH`.
 

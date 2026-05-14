@@ -10,9 +10,11 @@ class PackagingMetadataTests(unittest.TestCase):
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
 
         self.assertIn('name = "irodori-tts-mlx"', pyproject)
-        self.assertIn('requires-python = ">=3.11,<3.13"', pyproject)
+        self.assertIn('requires-python = ">=3.11,<3.15"', pyproject)
         self.assertIn('"Programming Language :: Python :: 3.11"', pyproject)
         self.assertIn('"Programming Language :: Python :: 3.12"', pyproject)
+        self.assertIn('"Programming Language :: Python :: 3.13"', pyproject)
+        self.assertIn('"Programming Language :: Python :: 3.14"', pyproject)
         self.assertIn('"mlx>=0.25,<1"', pyproject)
         self.assertIn('"numpy>=1.26,<3"', pyproject)
 
@@ -33,6 +35,8 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn('pip install -e ".[dev]"', packaging_doc)
         self.assertIn("Python 3.11", packaging_doc)
         self.assertIn("Python 3.12", packaging_doc)
+        self.assertIn("Python 3.13", packaging_doc)
+        self.assertIn("Python 3.14", packaging_doc)
 
 
 if __name__ == "__main__":
