@@ -559,7 +559,7 @@ def main() -> int:
         payload["batch"] = {"index": index, "count": len(request_overrides), "overrides": dict(overrides)}
         payloads.append(payload)
 
-    output_payload: dict[str, Any] | list[dict[str, Any]] = payloads[0] if len(payloads) == 1 else {
+    output_payload: dict[str, Any] | list[dict[str, Any]] = payloads[0] if len(payloads) == 1 and not args.requests_json else {
         "results": payloads,
         "boundaries": runtime.describe_boundaries(),
         "cli": payloads[0]["cli"],

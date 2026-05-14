@@ -410,6 +410,37 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["batch"]["count"], 2)
         self.assertEqual(len(payload["results"]), 2)
 
+    def test_main_single_batch_request_keeps_batch_envelope(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            requests_path = Path(td) / "requests.json"
+            output_wav = str(Path(td) / "only.wav")
+            requests_path.write_text(json.dumps([{"text": "only", "output": output_wav}]), encoding="utf-8")
+            args = self._args("")
+            args.output = None
+            args.text = None
+            args.requests_json = str(requests_path)
+            args.json_output = True
+            stdout = StringIO()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
+                rc = generate_wav.main()
+
+            payload = json.loads(stdout.getvalue())
+
+        runtime = runtime_holder["runtime"]
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(runtime.requests), 1)
+        self.assertEqual(payload["batch"]["count"], 1)
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["results"][0]["result"]["output_wav"], output_wav)
+
     def test_main_print_boundaries_uses_stderr_in_json_mode(self):
         def fake_runtime_factory(*, config):
             return _FakeRuntime(config)
