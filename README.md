@@ -5,19 +5,44 @@
 An unofficial MLX inference port of [Irodori-TTS](https://github.com/Aratako/Irodori-TTS) for Apple Silicon.
 
 > [!IMPORTANT]
-> This project is an early prototype. The shortest supported path is local checkpoint inspection/conversion plus `scripts/generate_wav.py`; model weights, upstream `irodori_tts`, and DACVAE runtime dependencies are not redistributed by this repository.
+> This is an alpha inference prototype, not a polished product. The shortest supported path is local checkpoint inspection/conversion plus `scripts/generate_wav.py`; the MLX RF-DiT path can generate WAV files through the upstream PyTorch DACVAE bridge when you provide compatible local checkpoints and runtime dependencies. Model weights, upstream `irodori_tts`, DACVAE assets, checkpoint redistribution, training, Web UI, and a full MLX DACVAE port are out of scope.
 
-## Project goal
+## Current v0.1 scope
 
-The first practical target is a v0 inference prototype with this boundary:
+`irodori-tts-mlx` currently provides an Apple Silicon-focused path for:
+
+- inspecting supported Irodori-TTS checkpoints without loading all tensor payloads
+- converting supported `.safetensors` checkpoints into MLX-friendly `.npz` RF-DiT weights
+- running MLX text/condition encoders, RF-DiT, and rectified-flow sampling
+- encoding reference audio and decoding generated latents through upstream `irodori_tts` / PyTorch `DACVAECodec`
+- writing generated WAV files with `scripts/generate_wav.py`
+- benchmarking and validating the prototype through local scripts and hosted Apple Silicon workflows
+
+The implementation boundary is still:
 
 > MLX RF-DiT inference + PyTorch DACVAE encode/decode bridge
 
-In other words, the initial implementation should port the Irodori-TTS text/condition encoders, RF-DiT model, and rectified-flow sampler to MLX, while continuing to use the upstream PyTorch DACVAE path for reference audio encoding and waveform decoding.
+This keeps the MLX port focused on the model path most likely to benefit from Apple Silicon while relying on the upstream DACVAE implementation for audio-codec behavior.
 
-This keeps the first milestone focused on the part most likely to benefit from MLX, without taking on a full DACVAE port before the core model path is validated.
+## What works and what does not
 
-## Intended v0 architecture
+Supported for the v0.1 prototype:
+
+- base `Aratako/Irodori-TTS-500M-v2`-style checkpoints
+- `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned checkpoints
+- `Aratako/Irodori-TTS-500M-v3` checkpoints with predicted-duration semantics when `--seconds` is omitted
+- Python **3.11 through 3.14** packaging targets; Python 3.11 remains the benchmark reference environment
+
+Not supported yet:
+
+- training or fine-tuning
+- full MLX DACVAE encode/decode
+- checkpoint or generated-model redistribution
+- GUI / Gradio / hosted demo
+- broad compatibility with every historical or third-party Irodori-TTS checkpoint
+- stable public Python API guarantees
+
+## Architecture
 
 ```text
 text prompt ───────────────┐
@@ -240,7 +265,9 @@ The initial converter accepts only local `.safetensors` checkpoints. Converting 
 
 For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. That lightweight automation validates inspect + converter family detection without forcing full `.npz` export on every run.
 
-For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows now target the standard GitHub-hosted Apple Silicon M1 runner (`macos-14`), so public-repository runs stay on the free hosted macOS tier without needing self-hosted infrastructure.
+For the v0.1 release gate, use `scripts/run_v0_1_release_gate.py` or `.github/workflows/v0.1-release-gate.yml`; see [docs/v0_1_release_gate.md](docs/v0_1_release_gate.md). The required gate downloads the public v3 checkpoint, inspects it, converts it, runs no-reference predicted-duration WAV generation, validates JSON metadata, and preserves artifacts. VoiceDesign caption-conditioned generation is available as an optional heavier gate via `--include-optional-voicedesign` / the workflow input.
+
+For focused full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows now target the standard GitHub-hosted Apple Silicon M1 runner (`macos-14`), so public-repository runs stay on the free hosted macOS tier without needing self-hosted infrastructure.
 
 ## Benchmarking
 
@@ -292,17 +319,11 @@ The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available fo
 
 ## Public API direction
 
-The first user-facing interface should be CLI-first, with a small Python API underneath it.
+The project is currently CLI-first. `scripts/generate_wav.py`, `scripts/convert_weights.py`, `scripts/inspect_checkpoint.py`, and `scripts/benchmark.py` are the supported user entry points for local experimentation. Internal Python modules are available for the CLI and tests, but no stable public Python API is promised before v0.1 is finalized.
 
-Planned shape:
+## Non-goals for v0.1
 
-- CLI: simple generation commands for local experimentation
-- Python API: reusable loading and generation functions used by the CLI
-- No stable API guarantee until the first end-to-end inference prototype works
-
-## Non-goals for v0
-
-The initial prototype should not include:
+The v0.1 prototype does not include:
 
 - training or fine-tuning support
 - a full MLX DACVAE port
