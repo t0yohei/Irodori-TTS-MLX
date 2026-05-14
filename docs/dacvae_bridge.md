@@ -32,10 +32,21 @@ python3 scripts/generate_wav.py \
   --text "こんにちは。今日は良い天気です。" \
   --output /tmp/irodori.wav \
   --seconds 5 \
-  --num-steps 40 \
+  --preset balanced \
   --codec-device cpu \
   --codec-runtime-mode persistent
 ```
+
+The user-facing preset surface is intentionally small:
+
+- `--preset fast` → `--num-steps 12`
+- `--preset balanced` → `--num-steps 24`
+- `--preset quality` → `--num-steps 40`
+
+These mappings come from the Apple Silicon local sweep in
+[docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md).
+Right now the preset only adjusts `num_steps`, because that is the knob this repo has benchmarked directly across base/v3, reference-audio, and VoiceDesign flows.
+If you need exact control, pass `--num-steps` explicitly and it will override the preset.
 
 For repeatable local workflows, put common arguments in a JSON preset and only
 override the per-run fields on the CLI:
@@ -46,7 +57,7 @@ override the per-run fields on the CLI:
   "reference_wav": "/path/to/reference.wav",
   "output": "/tmp/irodori.wav",
   "seconds": 5.0,
-  "num_steps": 40,
+  "preset": "balanced",
   "codec_device": "cpu"
 }
 ```
@@ -82,7 +93,7 @@ python3 scripts/generate_wav.py \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3.wav \
-  --num-steps 40
+  --preset balanced
 ```
 
 That command intentionally omits `--seconds`, so checkpoints with

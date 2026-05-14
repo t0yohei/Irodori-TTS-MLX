@@ -48,6 +48,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             weights="weights.npz",
             output=output_wav,
             text="hello",
+            preset=None,
             reference_wav=None,
             no_reference=False,
             caption="calm",
@@ -124,6 +125,66 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.text, "hello")
         self.assertEqual(args.seconds, 2.5)
         self.assertEqual(args.num_steps, 8)
+
+    def test_parse_args_applies_preset_num_steps(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--preset",
+                "fast",
+            ]
+        )
+
+        self.assertEqual(args.preset, "fast")
+        self.assertEqual(args.num_steps, 12)
+
+    def test_parse_args_manual_num_steps_overrides_preset(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--preset",
+                "balanced",
+                "--num-steps",
+                "16",
+            ]
+        )
+
+        self.assertEqual(args.preset, "balanced")
+        self.assertEqual(args.num_steps, 16)
+
+    def test_parse_args_config_preset_supplies_default_num_steps(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "preset": "quality"}',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+        self.assertEqual(args.preset, "quality")
+        self.assertEqual(args.num_steps, 40)
+
+    def test_parse_args_cli_preset_overrides_config_num_steps(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "num_steps": 8}',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path), "--preset", "balanced"])
+
+        self.assertEqual(args.preset, "balanced")
+        self.assertEqual(args.num_steps, 24)
 
     def test_parse_args_allows_omitted_seconds_for_auto_duration(self):
         with tempfile.TemporaryDirectory() as td:
