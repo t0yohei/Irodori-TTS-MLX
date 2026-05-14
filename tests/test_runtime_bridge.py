@@ -17,11 +17,13 @@ try:
 
     from irodori_mlx.config import ModelConfig
     from irodori_mlx.encoders import EncodedConditions
+    from irodori_mlx.text_normalization import normalize_text
     from irodori_mlx.runtime import (
         DACVAEBridgeConfig,
         GenerationRequest,
         MLXDACVAERuntime,
         MLXRuntimeConfig,
+        PretrainedTextTokenizer,
         PyTorchDACVAEBridge,
         SubprocessDACVAEBridge,
         load_model_config_json,
@@ -33,6 +35,32 @@ try:
 except Exception as exc:  # pragma: no cover - exercised only without MLX.
     HAS_MLX = False
     MLX_IMPORT_ERROR = exc
+
+
+class FakePretrainedTokenizer:
+    def __init__(self, *, token_ids=None, pad_token_id=0, bos_token_id=2, eos_token_id=3):
+        self._token_ids = list(token_ids or [10, 11, 12])
+        self.pad_token_id = pad_token_id
+        self.bos_token_id = bos_token_id
+        self.eos_token_id = eos_token_id
+        self.eos_token = "</s>" if eos_token_id is not None else None
+        self._pad_token = None
+        self.padding_side = "left"
+        self.calls = []
+
+    @property
+    def pad_token(self):
+        return self._pad_token
+
+    @pad_token.setter
+    def pad_token(self, value):
+        self._pad_token = value
+        if value == self.eos_token:
+            self.pad_token_id = self.eos_token_id
+
+    def encode(self, text, *, add_special_tokens):
+        self.calls.append((text, add_special_tokens))
+        return list(self._token_ids)
 
 
 def require_mlx(test_func):
@@ -144,6 +172,105 @@ def tiny_config() -> ModelConfig:
 
 
 class RuntimeBridgeTests(unittest.TestCase):
+    @require_mlx
+    def test_normalize_text_collapses_long_ascii_ellipsis_after_nfkc(self):
+        self.assertEqual(normalize_text("待って........."), "待って……")
+        self.assertEqual(normalize_text("待って......."), "待って……")
+        self.assertEqual(normalize_text("待って...."), "待って…")
+        self.assertEqual(normalize_text("１２３円です..."), "123円です…")
+
+    @require_mlx
+    def test_pretrained_text_tokenizer_matches_upstream_batch_semantics_for_japanese_inputs(self):
+        raw = FakePretrainedTokenizer(token_ids=[101, 102, 103])
+        tokenizer = PretrainedTextTokenizer(raw, add_bos=True)
+
+        token_ids, mask = tokenizer.encode("今日はいい天気ですね。AIとTTS、１２３円!", max_length=6)
+
+        self.assertEqual(raw.padding_side, "right")
+        self.assertEqual(raw.calls, [("今日はいい天気ですね。AIとTTS、１２３円!", False)])
+        np.testing.assert_array_equal(np.array(token_ids), np.array([[2, 101, 102, 103, 0, 0]], dtype=np.int32))
+        np.testing.assert_array_equal(np.array(mask), np.array([[True, True, True, True, False, False]]))
+
+    @require_mlx
+    def test_pretrained_text_tokenizer_truncates_after_bos_and_uses_eos_as_pad_fallback(self):
+        raw = FakePretrainedTokenizer(token_ids=[10, 11, 12, 13], pad_token_id=None, bos_token_id=2, eos_token_id=3)
+        tokenizer = PretrainedTextTokenizer(raw, add_bos=True)
+
+        token_ids, mask = tokenizer.encode("長いテキスト", max_length=3)
+
+        self.assertEqual(raw.pad_token, "</s>")
+        np.testing.assert_array_equal(np.array(token_ids), np.array([[2, 10, 11]], dtype=np.int32))
+        np.testing.assert_array_equal(np.array(mask), np.array([[True, True, True]]))
+
+    @require_mlx
+    def test_runtime_normalizes_prompt_text_before_tokenization_and_duration_features(self):
+        cfg = replace(
+            tiny_config(),
+            use_duration_predictor=True,
+            duration_aux_dim=14,
+            duration_hidden_dim=8,
+            duration_layers=1,
+            duration_dropout=0.0,
+            duration_attention_heads=2,
+        )
+        raw = FakePretrainedTokenizer(token_ids=[5, 6])
+        tokenizer = PretrainedTextTokenizer(raw, add_bos=True)
+        bridge = FakeBridge()
+        model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(3.0)))
+        captured_duration_features = []
+
+        def fake_build_duration_features(texts, **kwargs):
+            captured_duration_features.append((list(texts), kwargs))
+            return mx.zeros((1, int(cfg.duration_aux_dim)), dtype=mx.float32)
+
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=4),
+            model=model,
+            bridge=bridge,
+            tokenizer=tokenizer,
+        )
+
+        with tempfile.TemporaryDirectory() as td, patch(
+            "irodori_mlx.runtime.build_duration_features", side_effect=fake_build_duration_features
+        ):
+            runtime.generate(
+                GenerationRequest(
+                    text="（今日は　いい天気ですね！）",
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=None,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(raw.calls, [("今日はいい天気ですね!", False)])
+        self.assertEqual(captured_duration_features[0][0], ["今日はいい天気ですね!"])
+
+    @require_mlx
+    def test_runtime_rejects_prompt_that_normalizes_to_empty(self):
+        cfg = tiny_config()
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            model=FakeModel(cfg),
+            bridge=FakeBridge(),
+            tokenizer=FakeTokenizer(),
+        )
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaisesRegex(ValueError, "text became empty after normalization"):
+                runtime.generate(
+                    GenerationRequest(
+                        text="[n]\t　",
+                        output_wav=str(Path(td) / "out.wav"),
+                        no_reference=True,
+                        seconds=0.02,
+                        num_steps=1,
+                        cfg_scale_text=0.0,
+                        cfg_scale_speaker=0.0,
+                    )
+                )
+
     @require_mlx
     def test_runtime_encodes_reference_samples_mlx_latents_and_decodes_wav(self):
         cfg = tiny_config()

@@ -18,6 +18,7 @@ from .duration import build_duration_features
 from .layers import unpatch_latents
 from .model import TextToLatentRFDiT
 from .sampling import sample_euler_rf_cfg
+from .text_normalization import normalize_text
 from .weights import assign_named_weights, load_npz_weights, rf_dit_required_keys
 
 
@@ -507,9 +508,13 @@ class MLXDACVAERuntime:
         if request.reference_wav is None and not request.no_reference and self.config.model_config.use_speaker_condition:
             raise ValueError("Specify reference_wav, or set no_reference=True for an unconditional speaker path.")
 
+        normalized_text = normalize_text(request.text).strip()
+        if normalized_text == "":
+            raise ValueError("text became empty after normalization.")
+
         started = time.perf_counter()
         text_ids, text_mask = self.tokenizer.encode(
-            request.text,
+            normalized_text,
             max_length=int(self.config.text_max_length),
         )
         caption_ids = caption_mask = None
@@ -560,7 +565,7 @@ class MLXDACVAERuntime:
             if ref_mask is not None:
                 has_speaker = ref_mask.any(axis=1)
             duration_features = build_duration_features(
-                [request.text],
+                [normalized_text],
                 token_counts=text_mask.sum(axis=1),
                 max_text_len=int(self.config.text_max_length),
                 has_speaker=has_speaker,
