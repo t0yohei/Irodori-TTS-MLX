@@ -742,9 +742,13 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+def cli_main() -> int:
     try:
-        raise SystemExit(main())
+        return main()
     except (ConversionError, InspectionError) as exc:
         print(f"error: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_main())

@@ -94,10 +94,10 @@ python -m pip install -e ".[runtime]"
 python -m pip install -e /path/to/Irodori-TTS
 ```
 
-Then run:
+Then run the installed generation command:
 
 ```bash
-python scripts/generate_wav.py \
+irodori-tts-generate \
   --weights /path/to/irodori-tts-500m-v2.npz \
   --reference-wav /path/to/reference.wav \
   --text "こんにちは。今日は良い天気です。" \
@@ -105,6 +105,12 @@ python scripts/generate_wav.py \
   --seconds 5 \
   --num-steps 40 \
   --codec-device cpu
+```
+
+The legacy script path is still supported for repository checkouts:
+
+```bash
+python scripts/generate_wav.py --help
 ```
 
 ## Reproducible benchmark setup
@@ -128,9 +134,23 @@ python scripts/benchmark.py --self-test
 python -m unittest discover -s tests -v
 ```
 
-## Notes on local scripts
+## CLI entry points and local scripts
 
-The existing repository scripts remain repo-local entry points:
+Installed environments expose stable command names for the primary runtime surface:
+
+- `irodori-tts-generate` for WAV generation
+- `irodori-tts-convert` for checkpoint conversion
+- `irodori-tts-inspect` for checkpoint inspection
+
+Smoke-check them with:
+
+```bash
+irodori-tts-generate --help
+irodori-tts-convert --help
+irodori-tts-inspect --help
+```
+
+The existing repository scripts remain supported repo-local entry points:
 
 - `python scripts/generate_wav.py`
 - `python scripts/benchmark.py`

@@ -427,5 +427,9 @@ def main() -> int:
     return 0
 
 
+def cli_main() -> int:
+    return main()
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli_main())
