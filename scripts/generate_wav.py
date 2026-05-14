@@ -29,6 +29,7 @@ CONFIG_KEYS = {
     "output",
     "output_wav",
     "text",
+    "preset",
     "reference_wav",
     "no_reference",
     "caption",
@@ -90,8 +91,15 @@ FLOAT_KEYS = {
 }
 NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
+    "preset": {"fast", "balanced", "quality"},
     "codec_runtime_mode": {"persistent", "subprocess"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
+}
+
+PRESET_NUM_STEPS = {
+    "fast": 12,
+    "balanced": 24,
+    "quality": 40,
 }
 
 
@@ -171,6 +179,20 @@ def _default(config: dict[str, Any], key: str, fallback: Any) -> Any:
     return config.get(key, fallback)
 
 
+def _has_cli_override(argv: list[str], option: str) -> bool:
+    return any(token == option or token.startswith(f"{option}=") for token in argv)
+
+
+def _resolve_num_steps(*, preset: str | None, current_num_steps: int, config: dict[str, Any], argv: list[str]) -> int:
+    if not preset:
+        return current_num_steps
+    if _has_cli_override(argv, "--num-steps"):
+        return current_num_steps
+    if "num_steps" in config and not _has_cli_override(argv, "--preset"):
+        return current_num_steps
+    return PRESET_NUM_STEPS[preset]
+
+
 def _add_configurable_bool(
     parser: argparse.ArgumentParser,
     *,
@@ -199,6 +221,15 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument("--weights", required="weights" not in config, default=config.get("weights"), help="Converted MLX .npz RF-DiT weights.")
     parser.add_argument("--output", "--output-wav", dest="output", required="output" not in config, default=config.get("output"), help="Output WAV path.")
     parser.add_argument("--text", required="text" not in config, default=config.get("text"), help="Text prompt to synthesize.")
+    parser.add_argument(
+        "--preset",
+        default=config.get("preset"),
+        choices=tuple(PRESET_NUM_STEPS),
+        help=(
+            "Local generation preset: fast=12 steps, balanced=24 steps, quality=40 steps. "
+            "Explicit --num-steps still wins when provided."
+        ),
+    )
     parser.add_argument("--reference-wav", default=config.get("reference_wav"), help="Speaker/reference audio path for DACVAE encoding.")
     _add_configurable_bool(
         parser,
@@ -250,7 +281,12 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         default=float(_default(config, "duration_scale", 1.0)),
         help="Scale the predicted duration when --seconds is omitted (default: 1.0).",
     )
-    parser.add_argument("--num-steps", type=int, default=int(_default(config, "num_steps", 40)), help="RF sampling steps (default: 40).")
+    parser.add_argument(
+        "--num-steps",
+        type=int,
+        default=int(_default(config, "num_steps", 40)),
+        help="RF sampling steps. Defaults to 40 unless a preset supplies 12/24/40 first.",
+    )
     parser.add_argument("--cfg-scale-text", type=float, default=float(_default(config, "cfg_scale_text", 3.0)), help="Classifier-free guidance scale for text conditioning.")
     parser.add_argument("--cfg-scale-caption", type=float, default=float(_default(config, "cfg_scale_caption", 3.0)), help="Classifier-free guidance scale for caption conditioning.")
     parser.add_argument("--cfg-scale-speaker", type=float, default=float(_default(config, "cfg_scale_speaker", 5.0)), help="Classifier-free guidance scale for speaker/reference conditioning.")
@@ -298,6 +334,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         pre.error(str(exc))
     parser = build_parser(config)
     args = parser.parse_args(argv)
+    args.num_steps = _resolve_num_steps(
+        preset=args.preset,
+        current_num_steps=int(args.num_steps),
+        config=config,
+        argv=argv,
+    )
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
     if args.weights is None or not str(args.weights).strip():
@@ -345,6 +387,7 @@ def build_result_payload(
             "metadata_json": args.metadata_json,
             "json_output": bool(args.json_output),
             "print_boundaries": bool(args.print_boundaries),
+            "preset": args.preset,
         },
     }
 
