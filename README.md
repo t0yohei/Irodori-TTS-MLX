@@ -50,6 +50,8 @@ For Apple Silicon benchmark workflow, current baseline conclusions, and the benc
 
 For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
 
+For the v0.1 checkpoint-family support contract, including supported / experimental / unsupported status and redistribution caveats, see [docs/checkpoint_support.md](docs/checkpoint_support.md).
+
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
 For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
@@ -196,6 +198,19 @@ To keep both READMEs discoverable without letting them drift too far:
 - [README.md](README.md) is the canonical source for exact technical scope, compatibility, and milestone status.
 - [README.ja.md](README.ja.md) provides a Japanese overview, setup entry points, current limitations, and links into the detailed docs.
 - Detailed procedures and validation notes should continue to live under `docs/*.md` so both READMEs can stay concise.
+
+## v0.1 checkpoint family support
+
+v0.1 support is limited to checkpoint families whose tensor layouts and runtime semantics are explicitly validated in this repository. The shorthand is:
+
+| Checkpoint family | Example checkpoint | Inspect | Convert | Generate | v0.1 status |
+| --- | --- | --- | --- | --- | --- |
+| Base v2 speaker-conditioned | `Aratako/Irodori-TTS-500M-v2` | Supported | Supported | Experimental manual path | **Experimental** |
+| VoiceDesign v2 caption-conditioned | `Aratako/Irodori-TTS-500M-v2-VoiceDesign` | Supported | Supported | Supported with `--caption` for the inspected public family | **Supported** |
+| v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported | Supported; omit `--seconds` for predicted duration | **Supported** |
+| Other historical, fine-tuned, LoRA, architecture-modified, or renamed Irodori-TTS checkpoints | Any non-matching layout/config | Best-effort metadata inspection only | Unsupported | Unsupported | **Unsupported** |
+
+Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats.
 
 ## Checkpoint inspection
 
