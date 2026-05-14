@@ -14,14 +14,31 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from irodori_mlx.runtime import (  # noqa: E402
-    DACVAEBridgeConfig,
-    GenerationRequest,
-    MLXDACVAERuntime,
-    MLXRuntimeConfig,
-    iter_messages,
-    load_model_config_json,
-)
+DACVAEBridgeConfig = None
+GenerationRequest = None
+MLXDACVAERuntime = None
+MLXRuntimeConfig = None
+iter_messages = None
+load_model_config_json = None
+
+
+def _ensure_runtime_imports() -> None:
+    """Import runtime dependencies lazily so --help works before optional setup is complete."""
+    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, iter_messages, load_model_config_json
+    from irodori_mlx import runtime as runtime_module
+
+    if DACVAEBridgeConfig is None:
+        DACVAEBridgeConfig = runtime_module.DACVAEBridgeConfig
+    if GenerationRequest is None:
+        GenerationRequest = runtime_module.GenerationRequest
+    if MLXDACVAERuntime is None:
+        MLXDACVAERuntime = runtime_module.MLXDACVAERuntime
+    if MLXRuntimeConfig is None:
+        MLXRuntimeConfig = runtime_module.MLXRuntimeConfig
+    if iter_messages is None:
+        iter_messages = runtime_module.iter_messages
+    if load_model_config_json is None:
+        load_model_config_json = runtime_module.load_model_config_json
 
 
 CONFIG_KEYS = {
@@ -451,6 +468,7 @@ def build_result_payload(
 
 
 def build_runtime_config(args: argparse.Namespace, model_config: Any) -> MLXRuntimeConfig:
+    _ensure_runtime_imports()
     return MLXRuntimeConfig(
         model_config=model_config,
         weights_path=args.weights,
@@ -473,6 +491,7 @@ def _merged_request_value(args: argparse.Namespace, overrides: dict[str, Any], k
 
 
 def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any] | None = None) -> GenerationRequest:
+    _ensure_runtime_imports()
     overrides = dict(overrides or {})
     text = _merged_request_value(args, overrides, "text")
     output = _merged_request_value(args, overrides, "output")
@@ -528,6 +547,7 @@ def write_metadata_json(path: str | Path, payload: dict[str, Any]) -> None:
 
 def main() -> int:
     args = parse_args()
+    _ensure_runtime_imports()
     model_config = load_model_config_json(args.model_config_json)
     request_overrides = load_generation_requests_json(args.requests_json) if args.requests_json else [{}]
     if model_config.use_speaker_condition:
@@ -579,5 +599,13 @@ def main() -> int:
     return 0
 
 
+def cli_main() -> int:
+    try:
+        return main()
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli_main())

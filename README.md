@@ -239,25 +239,29 @@ Unsupported means outside the v0.1 conversion/runtime contract, not merely untes
 
 ## Checkpoint inspection
 
-Use `scripts/inspect_checkpoint.py` to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
+Use the installed `irodori-tts-inspect` command to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
 
 ```bash
-python3 scripts/inspect_checkpoint.py Aratako/Irodori-TTS-500M-v2
-python3 scripts/inspect_checkpoint.py Aratako/Irodori-TTS-500M-v2 --json > checkpoint.json
-python3 scripts/inspect_checkpoint.py /path/to/model.safetensors --all-tensors
+irodori-tts-inspect Aratako/Irodori-TTS-500M-v2
+irodori-tts-inspect Aratako/Irodori-TTS-500M-v2 --json > checkpoint.json
+irodori-tts-inspect /path/to/model.safetensors --all-tensors
 ```
+
+The legacy `python3 scripts/inspect_checkpoint.py ...` path remains supported for repository checkouts.
 
 The script prints metadata/config, tensor names, shapes, dtypes, and parameter totals for weight-converter planning.
 
 ## Weight conversion
 
-Use `scripts/convert_weights.py` to convert a local base v2, v3, or VoiceDesign checkpoint into an MLX-friendly `.npz` archive:
+Use the installed `irodori-tts-convert` command to convert a local base v2, v3, or VoiceDesign checkpoint into an MLX-friendly `.npz` archive:
 
 ```bash
-python3 scripts/convert_weights.py /path/to/model.safetensors /path/to/irodori-tts-500m-v2.npz
-python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run
-python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run --json
+irodori-tts-convert /path/to/model.safetensors /path/to/irodori-tts-500m-v2.npz
+irodori-tts-convert /path/to/model.safetensors --dry-run
+irodori-tts-convert /path/to/model.safetensors --dry-run --json
 ```
+
+The legacy `python3 scripts/convert_weights.py ...` path remains supported for repository checkouts.
 
 The converter now supports the base `Aratako/Irodori-TTS-500M-v2` layout, the `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned layout, and the `Aratako/Irodori-TTS-500M-v3` duration-predictor layout. It validates the documented key mapping, shape expectations, float32 dtypes, and family-specific config assumptions before writing output. Use `--dry-run --json` to confirm the detected `checkpoint_family` before exporting large checkpoints. V3 is now supported through conversion plus the MLX bridge runtime, with duration semantics documented in [docs/dacvae_bridge.md](docs/dacvae_bridge.md) and reproducible validation coverage documented in [docs/v3_support.md](docs/v3_support.md). See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the separate VoiceDesign support matrix.
 
@@ -315,7 +319,7 @@ The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available fo
 
 `irodori_mlx.sampling.sample_euler_rf_cfg` adds the first RF Euler sampling loop on top of the MLX model path. It can generate patched latent sequences with fixed-seed noise, upstream-style timesteps, optional context K/V cache, and text/speaker/caption CFG modes.
 
-`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets, user-facing `--preset fast|balanced|quality` step-count shortcuts, `--requests-json` persistent batch mode for repeated local generations that reuse one initialized runtime, plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can now use the documented conversion + runtime path as long as their metadata and tensor layout match the inspected VoiceDesign family, and the public `Aratako/Irodori-TTS-500M-v3` path is supported with predicted-duration semantics when `--seconds` is omitted. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, preset mappings, persistent batch examples, and boundary notes, [docs/caption_condition_support.md](docs/caption_condition_support.md) for the VoiceDesign support statement, and [docs/v3_support.md](docs/v3_support.md) for the v3 validation story.
+`irodori-tts-generate` (also available as the legacy `python scripts/generate_wav.py` path) and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: tokenize text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets, user-facing `--preset fast|balanced|quality` step-count shortcuts, `--requests-json` persistent batch mode for repeated local generations that reuse one initialized runtime, plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can now use the documented conversion + runtime path as long as their metadata and tensor layout match the inspected VoiceDesign family, and the public `Aratako/Irodori-TTS-500M-v3` path is supported with predicted-duration semantics when `--seconds` is omitted. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, preset mappings, persistent batch examples, and boundary notes, [docs/caption_condition_support.md](docs/caption_condition_support.md) for the VoiceDesign support statement, and [docs/v3_support.md](docs/v3_support.md) for the v3 validation story.
 
 ## Public API direction
 

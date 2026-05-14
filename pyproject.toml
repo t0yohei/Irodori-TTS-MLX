@@ -61,5 +61,10 @@ Homepage = "https://github.com/t0yohei/irodori-tts-mlx"
 Repository = "https://github.com/t0yohei/irodori-tts-mlx"
 Issues = "https://github.com/t0yohei/irodori-tts-mlx/issues"
 
+[project.scripts]
+irodori-tts-generate = "scripts.generate_wav:cli_main"
+irodori-tts-convert = "scripts.convert_weights:cli_main"
+irodori-tts-inspect = "scripts.inspect_checkpoint:cli_main"
+
 [tool.setuptools.packages.find]
-include = ["irodori_mlx*"]
+include = ["irodori_mlx*", "scripts*"]
