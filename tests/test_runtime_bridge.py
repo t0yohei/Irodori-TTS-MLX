@@ -106,6 +106,17 @@ class FakeModel:
         return mx.zeros_like(x_t)
 
 
+class FakeDurationModel(FakeModel):
+    def __init__(self, cfg, *, predicted_log_frames: float):
+        super().__init__(cfg)
+        self.predicted_log_frames = predicted_log_frames
+        self.duration_calls = []
+
+    def predict_duration_log_frames(self, **kwargs):
+        self.duration_calls.append(kwargs)
+        return mx.array([self.predicted_log_frames], dtype=mx.float32)
+
+
 def tiny_config() -> ModelConfig:
     return ModelConfig(
         latent_dim=4,
@@ -175,6 +186,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIn("sample_rf", result.timings_ms)
         self.assertIn("decode_dacvae", result.timings_ms)
         self.assertIn("total_to_decode", result.timings_ms)
+        self.assertEqual(result.duration_mode, "manual")
+        self.assertAlmostEqual(result.requested_seconds, 0.04)
 
     @require_mlx
     def test_no_reference_builds_unconditional_speaker_mask(self):
@@ -258,6 +271,87 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
 
         self.assertIn((1, 1, 4), eval_shapes)
+
+    @require_mlx
+    def test_runtime_uses_duration_predictor_when_seconds_omitted(self):
+        cfg = replace(
+            tiny_config(),
+            use_duration_predictor=True,
+            duration_aux_dim=14,
+            duration_hidden_dim=8,
+            duration_layers=1,
+            duration_dropout=0.0,
+            duration_attention_heads=2,
+        )
+        bridge = FakeBridge()
+        model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(3.0)))
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=4),
+            model=model,
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            result = runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=None,
+                    duration_scale=2.0,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(result.duration_mode, "predicted")
+        self.assertIsNone(result.requested_seconds)
+        self.assertAlmostEqual(result.resolved_seconds, 0.12, places=3)
+        self.assertEqual(result.latent_steps, 6)
+        self.assertEqual(len(model.duration_calls), 1)
+        self.assertIn("predict_duration", result.timings_ms)
+        self.assertIn("predicted duration active", "\n".join(result.messages))
+
+    @require_mlx
+    def test_manual_seconds_override_skips_duration_predictor(self):
+        cfg = replace(
+            tiny_config(),
+            use_duration_predictor=True,
+            duration_aux_dim=14,
+            duration_hidden_dim=8,
+            duration_layers=1,
+            duration_dropout=0.0,
+            duration_attention_heads=2,
+        )
+        bridge = FakeBridge()
+        model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(3.0)))
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=4),
+            model=model,
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            result = runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=0.04,
+                    duration_scale=3.0,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(result.duration_mode, "manual")
+        self.assertEqual(len(model.duration_calls), 0)
+        self.assertAlmostEqual(result.resolved_seconds, 0.04, places=3)
+        self.assertIn("manual duration override active", "\n".join(result.messages))
 
     @require_mlx
     def test_model_config_exposes_tokenizer_defaults(self):
