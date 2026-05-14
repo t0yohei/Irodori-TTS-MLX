@@ -79,24 +79,37 @@ def _artifact_summary(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _assert_required_v3_metadata(result: dict[str, Any]) -> None:
-    generation = result.get("generation", {})
-    request = generation.get("request", {}) if isinstance(generation, dict) else {}
-    generated = generation.get("result", {}) if isinstance(generation, dict) else {}
-    duration_mode = generated.get("duration_mode")
-    if duration_mode != "predicted":
-        raise RuntimeError(f"v0.1 required gate expected duration_mode='predicted', got {duration_mode!r}.")
-    if request.get("seconds") is not None:
-        raise RuntimeError("v0.1 required gate expected the v3 generation request to omit manual seconds.")
-    if int(result.get("output_wav_bytes", 0)) <= 0:
-        raise RuntimeError("v0.1 required gate generated an empty WAV artifact.")
-    if int(result.get("weights_bytes", 0)) <= 0:
-        raise RuntimeError("v0.1 required gate generated an empty converted-weight artifact.")
     metadata_json = result.get("metadata_json")
     if not metadata_json:
         raise RuntimeError("v0.1 required gate did not report a metadata JSON artifact path.")
     metadata_path = Path(str(metadata_json))
     if not metadata_path.is_file() or metadata_path.stat().st_size <= 0:
         raise RuntimeError(f"v0.1 required gate generated an empty or missing metadata artifact: {metadata_path}")
+    try:
+        metadata_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"v0.1 required gate metadata artifact is not valid JSON: {metadata_path}") from exc
+    if not isinstance(metadata_payload, dict):
+        raise RuntimeError(f"v0.1 required gate metadata artifact must contain a JSON object: {metadata_path}")
+
+    generation = result.get("generation", {})
+    if not isinstance(generation, dict):
+        generation = {}
+    request = metadata_payload.get("request", {})
+    generated = metadata_payload.get("result", {})
+    if not isinstance(request, dict) or not isinstance(generated, dict):
+        raise RuntimeError("v0.1 required gate metadata artifact must contain request and result objects.")
+    duration_mode = generated.get("duration_mode")
+    if duration_mode != "predicted":
+        raise RuntimeError(f"v0.1 required gate expected metadata duration_mode='predicted', got {duration_mode!r}.")
+    if request.get("seconds") is not None:
+        raise RuntimeError("v0.1 required gate expected the metadata v3 generation request to omit manual seconds.")
+    if generation and generation != metadata_payload:
+        raise RuntimeError("v0.1 required gate stdout and metadata JSON payloads differ.")
+    if int(result.get("output_wav_bytes", 0)) <= 0:
+        raise RuntimeError("v0.1 required gate generated an empty WAV artifact.")
+    if int(result.get("weights_bytes", 0)) <= 0:
+        raise RuntimeError("v0.1 required gate generated an empty converted-weight artifact.")
 
 
 def run_release_gate(

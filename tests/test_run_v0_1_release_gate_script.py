@@ -153,6 +153,48 @@ class RunV01ReleaseGateScriptTests(unittest.TestCase):
                         include_optional_voicedesign=False,
                     )
 
+    def test_release_gate_rejects_metadata_artifact_with_wrong_duration_mode(self):
+        with tempfile.TemporaryDirectory() as td:
+            def fake_v3(**kwargs):
+                result = _fake_generation_result(Path(kwargs["output_dir"]), family="v3")
+                metadata_path = Path(result["metadata_json"])
+                payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+                payload["result"]["duration_mode"] = "manual"
+                metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+                return result
+
+            with patch.object(run_v0_1_release_gate.run_v3_generation_ci, "run_generation", side_effect=fake_v3):
+                with self.assertRaisesRegex(RuntimeError, "metadata duration_mode"):
+                    run_v0_1_release_gate.run_release_gate(
+                        output_dir=str(Path(td) / "artifacts"),
+                        download_dir=None,
+                        upstream_root=None,
+                        codec_device="cpu",
+                        num_steps=4,
+                        include_optional_voicedesign=False,
+                    )
+
+    def test_release_gate_rejects_mismatched_stdout_and_metadata_payloads(self):
+        with tempfile.TemporaryDirectory() as td:
+            def fake_v3(**kwargs):
+                result = _fake_generation_result(Path(kwargs["output_dir"]), family="v3")
+                metadata_path = Path(result["metadata_json"])
+                payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+                payload["result"]["samples"] = 9999
+                metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+                return result
+
+            with patch.object(run_v0_1_release_gate.run_v3_generation_ci, "run_generation", side_effect=fake_v3):
+                with self.assertRaisesRegex(RuntimeError, "stdout and metadata"):
+                    run_v0_1_release_gate.run_release_gate(
+                        output_dir=str(Path(td) / "artifacts"),
+                        download_dir=None,
+                        upstream_root=None,
+                        codec_device="cpu",
+                        num_steps=4,
+                        include_optional_voicedesign=False,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
