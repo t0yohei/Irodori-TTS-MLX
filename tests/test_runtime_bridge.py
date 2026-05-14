@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import os
 import sys
 import tempfile
@@ -378,6 +379,25 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
         self.assertIs(runtime.bridge, fake_bridge)
         patched.assert_called_once()
+
+    @require_mlx
+    def test_pytorch_bridge_reports_upstream_install_options_when_missing(self):
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "irodori_tts.codec":
+                raise ImportError("No module named 'irodori_tts'")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with patch("irodori_mlx.runtime._require_torch", return_value=SimpleNamespace()), patch(
+            "builtins.__import__", side_effect=fake_import
+        ):
+            with self.assertRaisesRegex(RuntimeError, "upstream irodori_tts.codec.DACVAECodec") as ctx:
+                PyTorchDACVAEBridge(config=DACVAEBridgeConfig())
+
+        message = str(ctx.exception)
+        self.assertIn("Install the upstream Irodori-TTS package", message)
+        self.assertIn("PYTHONPATH", message)
 
     @require_mlx
     def test_pytorch_bridge_retries_without_enable_watermark_for_legacy_upstream_codec(self):

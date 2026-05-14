@@ -62,12 +62,15 @@ python -m pip install -e ".[dev]"
 
 ## Upstream dependency boundary
 
-The v0 runtime still reuses upstream `irodori_tts.codec.DACVAECodec` for reference encode / waveform decode.
+The v0.1 runtime still reuses upstream `irodori_tts.codec.DACVAECodec` for reference encode / waveform decode.
 That means the local environment must also be able to import upstream `irodori_tts`.
+This is intentional: this MLX repo owns the text/caption conditioning, RF-DiT, converted-weight runtime, duration handling, and sampler path, while upstream still owns the PyTorch DACVAE codec boundary.
+A full MLX DACVAE port is not required for v0.1 WAV generation.
+See [upstream_dependency.md](upstream_dependency.md) for the full responsibility split and import-failure guidance.
 
-Supported ways to provide it:
+Supported ways to provide upstream:
 
-### Option A: install the upstream checkout into the same venv
+### Option A: install the upstream checkout into the same venv (recommended)
 
 ```bash
 git clone https://github.com/Aratako/Irodori-TTS.git /path/to/Irodori-TTS
@@ -77,7 +80,7 @@ python -m pip install -e /path/to/Irodori-TTS
 ### Option B: leave upstream uninstalled and expose it with `PYTHONPATH`
 
 ```bash
-export PYTHONPATH=/path/to/Irodori-TTS:$PYTHONPATH
+export PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}
 ```
 
 The local benchmark harness already supports this pattern through `--upstream-root`.

@@ -48,7 +48,7 @@ For the initial MLX rectified-flow Euler sampler and CFG behavior, see [docs/rf_
 
 For Apple Silicon benchmark workflow, current baseline conclusions, and the benchmark harness for upstream vs MLX bridge comparison, see [docs/benchmark.md](docs/benchmark.md).
 
-For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
+For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md). For the v0.1 upstream dependency boundary and install choices, see [docs/upstream_dependency.md](docs/upstream_dependency.md).
 
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
@@ -71,7 +71,7 @@ python -m pip install -e ".[bench]"    # benchmark + conversion workflow
 python -m pip install -e ".[dev]"      # local contributor environment
 ```
 
-The bridge runtime still depends on upstream `irodori_tts` for `DACVAECodec`, so either install the upstream checkout into the same venv or expose it on `PYTHONPATH`. The full setup guide lives in [docs/packaging.md](docs/packaging.md).
+The bridge runtime still depends on upstream `irodori_tts` for `irodori_tts.codec.DACVAECodec`. Prefer installing the upstream checkout into the same venv with `python -m pip install -e /path/to/Irodori-TTS`; use `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}` only when you intentionally want an uninstalled checkout. This is an intentional v0.1 boundary: the MLX repo owns the text/caption conditioning, RF-DiT, conversion, duration, and sampler path, while upstream still owns PyTorch DACVAE encode/decode. See [docs/upstream_dependency.md](docs/upstream_dependency.md) and [docs/packaging.md](docs/packaging.md).
 
 ## README split
 
