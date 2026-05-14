@@ -116,7 +116,7 @@ class ConvertWeightsScriptTests(unittest.TestCase):
         self.assertEqual(validation["checkpoint_family"], convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN)
         self.assertIn("caption_norm.weight", validation["missing_keys"])
 
-    def test_validate_records_rejects_voicedesign_with_speaker_metadata(self):
+    def test_validate_records_accepts_voicedesign_with_legacy_speaker_metadata(self):
         config = self._config(family=convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN)
         config["speaker_layers"] = 8
         config["speaker_dim"] = 768
@@ -124,9 +124,8 @@ class ConvertWeightsScriptTests(unittest.TestCase):
             self._records(family=convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN),
             config,
         )
-        self.assertFalse(validation["ok"])
-        self.assertIsNone(validation["checkpoint_family"])
-        self.assertTrue(any("speaker fields" in error or "ambiguous" in error for error in validation["config_errors"]))
+        self.assertTrue(validation["ok"])
+        self.assertEqual(validation["checkpoint_family"], convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN)
 
     def test_validate_records_reports_missing_v3_duration_keys(self):
         records = self._records(family=convert_weights.CHECKPOINT_FAMILY_V3)
