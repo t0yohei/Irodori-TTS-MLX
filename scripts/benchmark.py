@@ -537,6 +537,14 @@ def format_seconds(value: float | None) -> str:
     return f"{value:.2f} s"
 
 
+def format_case_seconds(kind: str, seconds: float | None) -> str:
+    if seconds is not None:
+        return f"`{seconds}`"
+    if kind == "mlx":
+        return "predicted duration (`--seconds` omitted)"
+    return "n/a (upstream)"
+
+
 def summarize_numeric(values: list[float | int]) -> dict[str, float | int] | None:
     if not values:
         return None
@@ -648,7 +656,7 @@ def build_report(
             f"- Kind: `{aggregate['kind']}`",
             f"- Reference mode: `{aggregate['reference_mode']}`",
             f"- Num steps: `{aggregate['num_steps']}`",
-            f"- Seconds: `{aggregate['seconds']}`" if aggregate["seconds"] is not None else "- Seconds: n/a (upstream)",
+            f"- Seconds: {format_case_seconds(str(aggregate['kind']), aggregate['seconds'])}",
             f"- Runs: `{aggregate['runs']}`",
             f"- Status counts: `{json.dumps(aggregate['status_counts'], ensure_ascii=False, sort_keys=True)}`",
             "",

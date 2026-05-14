@@ -321,6 +321,35 @@ class BenchmarkScriptTests(unittest.TestCase):
         self.assertIn("Raw runs:", report)
         self.assertIn("python scripts/generate_wav.py ...", report)
 
+    def test_build_report_labels_mlx_none_seconds_as_predicted_duration(self):
+        results = [
+            benchmark.BenchmarkResult(
+                name="mlx-predicted-measured-run-01",
+                case_name="mlx-predicted",
+                kind="mlx",
+                phase="measured",
+                run_index=1,
+                overall_run_index=1,
+                cache_state="warm",
+                reference_mode="no-reference",
+                seconds=None,
+                num_steps=12,
+                command="python scripts/generate_wav.py ...",
+                cwd="/tmp/repo",
+                output_wav="/tmp/out.wav",
+                stdout_log="/tmp/out.stdout.log",
+                stderr_log="/tmp/out.stderr.log",
+                status="passed",
+                timings_ms={"sample_rf": 1200.0},
+                wall_seconds=3.25,
+                max_rss_bytes=1024,
+            )
+        ]
+        report = benchmark.build_report(results, text="hello", seed=1, repeat=1, warmup_runs=0, cache_state_mode="auto")
+        self.assertIn("- Kind: `mlx`", report)
+        self.assertIn("- Seconds: predicted duration (`--seconds` omitted)", report)
+        self.assertNotIn("- Seconds: n/a (upstream)", report)
+
     def test_write_json_summary_emits_schema_v2_payload(self):
         results = [
             benchmark.BenchmarkResult(

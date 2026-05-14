@@ -28,7 +28,7 @@
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `12`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -67,7 +67,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `12`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -106,7 +106,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `16`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -145,7 +145,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `16`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -184,7 +184,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `24`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -223,7 +223,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `24`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -262,7 +262,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `40`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -301,7 +301,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `40`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -340,7 +340,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `8`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
@@ -379,7 +379,7 @@ Command:
 - Kind: `mlx`
 - Reference mode: `reference`
 - Num steps: `8`
-- Seconds: n/a (upstream)
+- Seconds: predicted duration (`--seconds` omitted)
 - Runs: `1`
 - Status counts: `{"passed": 1}`
 
