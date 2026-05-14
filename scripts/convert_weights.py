@@ -497,6 +497,9 @@ def validation_error_message(validation: Mapping[str, Any]) -> str:
     family = validation.get("checkpoint_family")
     if family:
         parts.append(f"checkpoint_family: {family}")
+    else:
+        supported = ", ".join(SUPPORTED_CHECKPOINTS.values())
+        parts.append(f"supported v0.1 checkpoint families: {supported}")
     for label in (
         "config_errors",
         "missing_keys",
@@ -510,6 +513,11 @@ def validation_error_message(validation: Mapping[str, Any]) -> str:
             preview = values[:5]
             suffix = "" if len(values) <= 5 else f" ... +{len(values) - 5} more"
             parts.append(f"{label}: {preview}{suffix}")
+    parts.append(
+        "next steps: inspect the checkpoint with scripts/inspect_checkpoint.py, verify metadata.config_json "
+        "matches one of the supported families, then rerun conversion. See README.md Quickstart and "
+        "docs/checkpoint_support.md."
+    )
     return "\n".join(parts)
 
 

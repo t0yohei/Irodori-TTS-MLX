@@ -24,6 +24,7 @@ try:
         MLXRuntimeConfig,
         PyTorchDACVAEBridge,
         SubprocessDACVAEBridge,
+        load_mlx_model,
         load_model_config_json,
         mlx_to_torch_latents,
         torch_to_mlx_latents,
@@ -398,6 +399,58 @@ class RuntimeBridgeTests(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("Install the upstream Irodori-TTS package", message)
         self.assertIn("PYTHONPATH", message)
+        self.assertIn("README.md 'If the quickstart fails'", message)
+
+    @require_mlx
+    def test_load_mlx_model_reports_weights_config_mismatch_guidance(self):
+        cfg = tiny_config()
+        with tempfile.TemporaryDirectory() as td:
+            weights_path = Path(td) / "empty.npz"
+            np.savez(weights_path)
+            with self.assertRaisesRegex(RuntimeError, "weights/config family mismatch") as ctx:
+                load_mlx_model(cfg, weights_path)
+
+        message = str(ctx.exception)
+        self.assertIn("--model-config-json", message)
+        self.assertIn("docs/checkpoint_support.md", message)
+
+    @require_mlx
+    def test_load_model_config_json_reports_unsupported_config_guidance(self):
+        with self.assertRaisesRegex(ValueError, "unsupported keys") as ctx:
+            load_model_config_json('{"not_a_model_config_field": true}')
+
+        message = str(ctx.exception)
+        self.assertIn("scripts/inspect_checkpoint.py", message)
+        self.assertIn("README.md 'If the quickstart fails'", message)
+
+    @require_mlx
+    def test_runtime_reports_caption_tokenizer_loading_guidance(self):
+        cfg = replace(
+            tiny_config(),
+            use_caption_condition=True,
+            caption_vocab_size=32,
+            caption_tokenizer_repo="example/caption-tokenizer",
+            caption_dim=8,
+            caption_layers=1,
+            caption_heads=2,
+            caption_mlp_ratio=1.5,
+        )
+
+        def fail_tokenizer(repo_id, *, add_bos=True):
+            del add_bos
+            if repo_id == "example/caption-tokenizer":
+                raise RuntimeError("Could not load tokenizer 'example/caption-tokenizer': offline")
+            return FakeTokenizer()
+
+        with patch("irodori_mlx.runtime.PretrainedTextTokenizer.from_pretrained", side_effect=fail_tokenizer):
+            with self.assertRaisesRegex(RuntimeError, "Failed to initialize caption tokenizer") as ctx:
+                MLXDACVAERuntime(
+                    config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz"),
+                    model=FakeModel(cfg),
+                    bridge=FakeBridge(),
+                )
+
+        self.assertIn("caption-tokenizer", str(ctx.exception))
 
     @require_mlx
     def test_pytorch_bridge_retries_without_enable_watermark_for_legacy_upstream_codec(self):
