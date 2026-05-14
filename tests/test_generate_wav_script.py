@@ -76,6 +76,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             no_context_kv_cache=False,
             print_boundaries=False,
             config_json=None,
+            requests_json=None,
             metadata_json=None,
             json_output=False,
         )
@@ -185,6 +186,54 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         self.assertEqual(args.preset, "balanced")
         self.assertEqual(args.num_steps, 24)
+
+    def test_parse_args_allows_batch_requests_to_supply_text_and_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            requests_path = Path(td) / "requests.json"
+            requests_path.write_text(
+                '[{"text": "first", "output": "first.wav"}, {"text": "second", "output": "second.wav"}]',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--requests-json",
+                    str(requests_path),
+                ]
+            )
+
+        self.assertEqual(args.weights, "weights.npz")
+        self.assertIsNone(args.text)
+        self.assertIsNone(args.output)
+        self.assertEqual(args.requests_json, str(requests_path))
+
+    def test_load_generation_requests_json_validates_request_keys(self):
+        with tempfile.TemporaryDirectory() as td:
+            requests_path = Path(td) / "requests.json"
+            requests_path.write_text('[{"text": "hello", "output": "out.wav", "unexpected": true}]', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                generate_wav.load_generation_requests_json(str(requests_path))
+
+    def test_build_generation_request_applies_per_request_preset(self):
+        args = self._args("default.wav")
+        args.num_steps = 40
+        request = generate_wav.build_generation_request(
+            args,
+            {
+                "text": "override",
+                "output": "override.wav",
+                "preset": "fast",
+                "seed": 123,
+                "no_context_kv_cache": True,
+            },
+        )
+
+        self.assertEqual(request.text, "override")
+        self.assertEqual(request.output_wav, "override.wav")
+        self.assertEqual(request.num_steps, 12)
+        self.assertEqual(request.seed, 123)
+        self.assertFalse(request.use_context_kv_cache)
 
     def test_parse_args_allows_omitted_seconds_for_auto_duration(self):
         with tempfile.TemporaryDirectory() as td:
@@ -317,6 +366,49 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["request"]["caption"], "calm")
         self.assertEqual(payload["request"]["duration_scale"], 1.0)
         self.assertEqual(written["result"]["samples"], 2400)
+
+    def test_main_batch_requests_reuse_one_runtime(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            requests_path = Path(td) / "requests.json"
+            first_wav = str(Path(td) / "first.wav")
+            second_wav = str(Path(td) / "second.wav")
+            requests_path.write_text(
+                json.dumps(
+                    [
+                        {"text": "first", "output": first_wav, "preset": "fast"},
+                        {"text": "second", "output": second_wav, "num_steps": 7, "seed": 42},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            args = self._args("")
+            args.output = None
+            args.text = None
+            args.requests_json = str(requests_path)
+            args.json_output = True
+            stdout = StringIO()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
+                rc = generate_wav.main()
+
+            payload = json.loads(stdout.getvalue())
+
+        runtime = runtime_holder["runtime"]
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(runtime.requests), 2)
+        self.assertEqual(runtime.requests[0].text, "first")
+        self.assertEqual(runtime.requests[0].num_steps, 12)
+        self.assertEqual(runtime.requests[1].text, "second")
+        self.assertEqual(runtime.requests[1].num_steps, 7)
+        self.assertEqual(payload["batch"]["count"], 2)
+        self.assertEqual(len(payload["results"]), 2)
 
     def test_main_print_boundaries_uses_stderr_in_json_mode(self):
         def fake_runtime_factory(*, config):
