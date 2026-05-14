@@ -5,7 +5,7 @@
 An unofficial MLX inference port of [Irodori-TTS](https://github.com/Aratako/Irodori-TTS) for Apple Silicon.
 
 > [!IMPORTANT]
-> This is an alpha inference prototype, not a polished product. The MLX RF-DiT path can generate WAV files through the upstream PyTorch DACVAE bridge when you provide compatible local checkpoints and runtime dependencies, but checkpoint redistribution, training, Web UI, and a full MLX DACVAE port are out of scope.
+> This is an alpha inference prototype, not a polished product. The shortest supported path is local checkpoint inspection/conversion plus `scripts/generate_wav.py`; the MLX RF-DiT path can generate WAV files through the upstream PyTorch DACVAE bridge when you provide compatible local checkpoints and runtime dependencies. Model weights, upstream `irodori_tts`, DACVAE assets, checkpoint redistribution, training, Web UI, and a full MLX DACVAE port are out of scope.
 
 ## Current v0.1 scope
 
@@ -73,11 +73,129 @@ For the initial MLX rectified-flow Euler sampler and CFG behavior, see [docs/rf_
 
 For Apple Silicon benchmark workflow, current baseline conclusions, and the benchmark harness for upstream vs MLX bridge comparison, see [docs/benchmark.md](docs/benchmark.md).
 
-For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
+For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md). For the v0.1 upstream dependency boundary and install choices, see [docs/upstream_dependency.md](docs/upstream_dependency.md).
+
+For the v0.1 checkpoint-family support contract, including supported / experimental / unsupported status and redistribution caveats, see [docs/checkpoint_support.md](docs/checkpoint_support.md).
 
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
 For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
+
+## Quickstart: checkpoint to WAV
+
+This is the shortest v0.1 path from a fresh checkout to a generated WAV. It assumes an Apple Silicon macOS host and a checkpoint you are allowed to download and use locally. This repository does **not** redistribute upstream code, model weights, DACVAE assets, or reference audio; check the upstream repository and model cards before reusing or sharing outputs.
+
+The recommended first smoke path is **v3 no-reference generation** because it does not require a committed reference WAV and it exercises the predicted-duration runtime. Use the reference-WAV variant below when you want speaker-conditioned output from a local sample.
+
+### 1. Create the Python environment
+
+```bash
+git clone https://github.com/t0yohei/irodori-tts-mlx.git
+cd irodori-tts-mlx
+
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[runtime]" safetensors
+```
+
+Use Python 3.11 through 3.14. Python 3.11 is the reference version used by the project examples and benchmark notes. The explicit `safetensors` install is required for the non-dry-run checkpoint conversion step.
+
+### 2. Make upstream `irodori_tts` importable
+
+The WAV path still uses the upstream PyTorch DACVAE bridge. Clone/install upstream Irodori-TTS into the same environment, or point `PYTHONPATH` at an existing checkout:
+
+```bash
+git clone https://github.com/Aratako/Irodori-TTS.git ../Irodori-TTS
+python -m pip install -e ../Irodori-TTS
+
+# Alternative if you do not install it:
+# export PYTHONPATH="$(pwd)/../Irodori-TTS:${PYTHONPATH}"
+```
+
+If your upstream checkout requires extra DACVAE/audio dependencies, install them in this same venv. See [docs/packaging.md](docs/packaging.md) and [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for runtime dependency details.
+
+### 3. Inspect and convert a local checkpoint
+
+Download or otherwise place a supported upstream `model.safetensors` on disk. For v3, keep the upstream config metadata as a small JSON file so generation can enable the duration predictor:
+
+```bash
+CHECKPOINT=/path/to/Irodori-TTS-500M-v3/model.safetensors
+WORK=/tmp/irodori-quickstart
+mkdir -p "$WORK"
+
+python scripts/inspect_checkpoint.py "$CHECKPOINT" --json > "$WORK/checkpoint-inspect.json"
+python - "$WORK/checkpoint-inspect.json" > "$WORK/v3-model-config.json" <<'PY'
+import json
+import sys
+from dataclasses import fields
+from irodori_mlx.config import ModelConfig
+payload = json.load(open(sys.argv[1]))
+allowed = {field.name for field in fields(ModelConfig)}
+config = {key: value for key, value in payload['config'].items() if key in allowed}
+if config.get('use_duration_predictor') is not True:
+    raise SystemExit('expected a v3 checkpoint config with use_duration_predictor=true')
+print(json.dumps(config, ensure_ascii=False, indent=2, sort_keys=True))
+PY
+
+python scripts/convert_weights.py "$CHECKPOINT" "$WORK/irodori-v3.npz" --dry-run --json \
+  > "$WORK/convert-dry-run.json"
+python scripts/convert_weights.py "$CHECKPOINT" "$WORK/irodori-v3.npz"
+```
+
+Expected files after this step:
+
+- `$WORK/checkpoint-inspect.json` — checkpoint metadata and tensor header summary
+- `$WORK/convert-dry-run.json` — converter validation report, including detected checkpoint family
+- `$WORK/v3-model-config.json` — model config consumed by `generate_wav.py`
+- `$WORK/irodori-v3.npz` — converted MLX weights
+
+### 4. Generate a WAV
+
+```bash
+PYTHONPATH="$(pwd)/../Irodori-TTS:${PYTHONPATH}" \
+python scripts/generate_wav.py \
+  --weights "$WORK/irodori-v3.npz" \
+  --model-config-json "$WORK/v3-model-config.json" \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output "$WORK/irodori-v3.wav" \
+  --preset balanced \
+  --metadata-json "$WORK/irodori-v3-metadata.json" \
+  --json > "$WORK/irodori-v3-result.json"
+```
+
+Expected output files:
+
+- `$WORK/irodori-v3.wav` — generated audio
+- `$WORK/irodori-v3-metadata.json` — generation metadata, request fields, timings, and runtime boundary details
+- `$WORK/irodori-v3-result.json` — stdout JSON for shell/CI pipelines
+
+For this v3 smoke path, omit `--seconds` intentionally. Successful metadata should report `duration_mode: "predicted"`. Add `--seconds N` only when you want a manual duration override.
+
+### Reference-WAV variant
+
+For speaker-conditioned local checks, replace `--no-reference` with a local sample you have rights to use:
+
+```bash
+python scripts/generate_wav.py \
+  --weights "$WORK/irodori-v3.npz" \
+  --model-config-json "$WORK/v3-model-config.json" \
+  --text "こんにちは。今日は良い天気です。" \
+  --reference-wav /path/to/reference.wav \
+  --output "$WORK/irodori-v3-reference.wav" \
+  --preset balanced \
+  --metadata-json "$WORK/irodori-v3-reference-metadata.json"
+```
+
+Base v2 checkpoints normally use this reference-audio path and can use the default model config unless your converted checkpoint requires an explicit `--model-config-json`.
+
+### If the quickstart fails
+
+- `No module named irodori_tts`: install upstream Irodori-TTS in the active venv or set `PYTHONPATH` to its checkout.
+- converter rejects the checkpoint family or shapes: confirm the checkpoint is one of the supported inspected families in [docs/v3_support.md](docs/v3_support.md) and [docs/caption_condition_support.md](docs/caption_condition_support.md).
+- `--reference-wav` / `--no-reference` validation errors: choose exactly the conditioning mode supported by your checkpoint/config; see [docs/dacvae_bridge.md](docs/dacvae_bridge.md).
+- runtime dependency or audio I/O failures: revisit [docs/packaging.md](docs/packaging.md) and the upstream Irodori-TTS dependency setup.
 
 ## Supported Python and install targets
 
@@ -96,33 +214,7 @@ python -m pip install -e ".[bench]"    # benchmark + conversion workflow
 python -m pip install -e ".[dev]"      # local contributor environment
 ```
 
-The bridge runtime still depends on upstream `irodori_tts` for `DACVAECodec`, so either install the upstream checkout into the same venv or expose it on `PYTHONPATH`. The full setup guide lives in [docs/packaging.md](docs/packaging.md).
-
-## Quickstart: checkpoint to WAV
-
-Install the package with both runtime and converter dependencies, then make upstream `irodori_tts` available in the same environment:
-
-```bash
-python3.11 -m venv .venv  # or: python3.12/3.13/3.14 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[runtime,bench]"
-python -m pip install -e /path/to/Irodori-TTS  # or set PYTHONPATH=/path/to/Irodori-TTS
-```
-
-Convert a compatible local checkpoint and generate a WAV:
-
-```bash
-python3 scripts/convert_weights.py /path/to/model.safetensors /path/to/irodori-tts.npz
-python3 scripts/generate_wav.py \
-  --weights /path/to/irodori-tts.npz \
-  --text "こんにちは、いろどりです。" \
-  --reference-wav /path/to/reference.wav \
-  --output out.wav \
-  --preset balanced
-```
-
-For VoiceDesign checkpoints, add both the matching caption-enabled `--model-config-json` and `--caption "..."` as described in [docs/caption_condition_support.md](docs/caption_condition_support.md). For v3 checkpoints, pass the matching v3 `--model-config-json`, see [docs/v3_support.md](docs/v3_support.md), and omit `--seconds` to use predicted duration. If you only want to validate converter family detection before exporting large tensors, use `scripts/convert_weights.py ... --dry-run --json`.
+The bridge runtime still depends on upstream `irodori_tts` for `irodori_tts.codec.DACVAECodec`. Prefer installing the upstream checkout into the same venv with `python -m pip install -e /path/to/Irodori-TTS`; use `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}` only when you intentionally want an uninstalled checkout. This is an intentional v0.1 boundary: the MLX repo owns the text/caption conditioning, RF-DiT, conversion, duration, and sampler path, while upstream still owns PyTorch DACVAE encode/decode. See [docs/upstream_dependency.md](docs/upstream_dependency.md) and [docs/packaging.md](docs/packaging.md).
 
 ## README split
 
@@ -131,6 +223,19 @@ To keep both READMEs discoverable without letting them drift too far:
 - [README.md](README.md) is the canonical source for exact technical scope, compatibility, and milestone status.
 - [README.ja.md](README.ja.md) provides a Japanese overview, setup entry points, current limitations, and links into the detailed docs.
 - Detailed procedures and validation notes should continue to live under `docs/*.md` so both READMEs can stay concise.
+
+## v0.1 checkpoint family support
+
+v0.1 support is limited to checkpoint families whose tensor layouts and runtime semantics are explicitly validated in this repository. The shorthand is:
+
+| Checkpoint family | Example checkpoint | Inspect | Convert | Generate | v0.1 status |
+| --- | --- | --- | --- | --- | --- |
+| Base v2 speaker-conditioned | `Aratako/Irodori-TTS-500M-v2` | Supported | Supported | Experimental manual path | **Experimental** |
+| VoiceDesign v2 caption-conditioned | `Aratako/Irodori-TTS-500M-v2-VoiceDesign` | Supported | Supported | Supported with `--caption` for the inspected public family | **Supported** |
+| v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported | Supported; omit `--seconds` for predicted duration | **Supported** |
+| Other historical, fine-tuned, LoRA, architecture-modified, or renamed Irodori-TTS checkpoints | Any non-matching layout/config | Best-effort metadata inspection only | Unsupported | Unsupported | **Unsupported** |
+
+Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats.
 
 ## Checkpoint inspection
 
@@ -160,7 +265,9 @@ The initial converter accepts only local `.safetensors` checkpoints. Converting 
 
 For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. That lightweight automation validates inspect + converter family detection without forcing full `.npz` export on every run.
 
-For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows now target the standard GitHub-hosted Apple Silicon M1 runner (`macos-14`), so public-repository runs stay on the free hosted macOS tier without needing self-hosted infrastructure.
+For the v0.1 release gate, use `scripts/run_v0_1_release_gate.py` or `.github/workflows/v0.1-release-gate.yml`; see [docs/v0_1_release_gate.md](docs/v0_1_release_gate.md). The required gate downloads the public v3 checkpoint, inspects it, converts it, runs no-reference predicted-duration WAV generation, validates JSON metadata, and preserves artifacts. VoiceDesign caption-conditioned generation is available as an optional heavier gate via `--include-optional-voicedesign` / the workflow input.
+
+For focused full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows now target the standard GitHub-hosted Apple Silicon M1 runner (`macos-14`), so public-repository runs stay on the free hosted macOS tier without needing self-hosted infrastructure.
 
 ## Benchmarking
 

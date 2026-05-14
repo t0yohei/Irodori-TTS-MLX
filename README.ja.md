@@ -76,13 +76,13 @@ python -m pip install -e ".[runtime,bench]"  # WAV 生成 + checkpoint 変換
 python -m pip install -e ".[dev]"            # contributor environment
 ```
 
-bridge runtime を使う場合は、同じ仮想環境に upstream `irodori_tts` を入れるか、`PYTHONPATH` から参照できるようにしてください。
+bridge runtime を使う場合は、upstream `irodori_tts` の `irodori_tts.codec.DACVAECodec` が import できる必要があります。推奨は同じ仮想環境で `python -m pip install -e /path/to/Irodori-TTS` する方法で、`PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}` は未インストール checkout を使いたい場合の代替です。これは v0.1 の意図した境界で、この repo は text/caption conditioning、RF-DiT、変換、duration、sampler を持ち、PyTorch DACVAE encode/decode は upstream に残します。
 
 ```bash
 python -m pip install -e /path/to/Irodori-TTS  # または PYTHONPATH=/path/to/Irodori-TTS
 ```
 
-再現性のある環境構築や依存関係の詳細は [docs/packaging.md](docs/packaging.md) を参照してください。
+再現性のある環境構築や依存関係の詳細は [docs/upstream_dependency.md](docs/upstream_dependency.md) と [docs/packaging.md](docs/packaging.md) を参照してください.
 
 ## 使い始めの入口
 
@@ -129,6 +129,7 @@ python3 scripts/benchmark.py --self-test
 - RF-DiT forward parity: [docs/rf_dit_forward.md](docs/rf_dit_forward.md)
 - RF sampler: [docs/rf_sampler.md](docs/rf_sampler.md)
 - DACVAE bridge / WAV 生成: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
+- upstream `irodori_tts` 依存境界: [docs/upstream_dependency.md](docs/upstream_dependency.md)
 - packaging / install: [docs/packaging.md](docs/packaging.md)
 - benchmark: [docs/benchmark.md](docs/benchmark.md)
 - VoiceDesign サポート: [docs/caption_condition_support.md](docs/caption_condition_support.md)
