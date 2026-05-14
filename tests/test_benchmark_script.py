@@ -32,6 +32,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights="weights.npz",
             reference_wav=None,
             text="hello",
+            caption="soft voice",
             seconds=5.0,
             num_steps=40,
             seed=123,
@@ -46,16 +47,41 @@ class BenchmarkScriptTests(unittest.TestCase):
         )
         argv, env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=5.0, num_steps=40)
         self.assertIn("--no-reference", argv)
+        self.assertIn("--caption", argv)
+        self.assertEqual(argv[argv.index("--caption") + 1], "soft voice")
         self.assertIn("--codec-runtime-mode", argv)
         self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "subprocess")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
         self.assertEqual(argv[argv.index("--output") + 1], "/tmp/out.wav")
+
+    def test_build_mlx_command_can_omit_seconds_for_predicted_duration(self):
+        args = Namespace(
+            weights="weights.npz",
+            reference_wav=None,
+            text="hello",
+            caption=None,
+            seconds=5.0,
+            num_steps=40,
+            seed=123,
+            codec_repo="codec-repo",
+            codec_device="cpu",
+            codec_runtime_mode="persistent",
+            model_config_json=None,
+            text_tokenizer_repo=None,
+            caption_tokenizer_repo=None,
+            upstream_root=None,
+            mlx_python="python3",
+        )
+        argv, _env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=None, num_steps=12)
+        self.assertNotIn("--seconds", argv)
+        self.assertEqual(argv[argv.index("--num-steps") + 1], "12")
 
     def test_resolve_case_cwd_raises_benchmark_error_when_upstream_root_missing(self):
         case = benchmark.BenchmarkCase(
             name="upstream-base-no-reference-steps-40",
             slug="upstream-base-no-reference-steps-40",
             kind="upstream",
+            case_label="base",
             reference_mode="no-reference",
             seconds=None,
             num_steps=40,
@@ -74,10 +100,13 @@ class BenchmarkScriptTests(unittest.TestCase):
             repeat=2,
             warmup_runs=1,
             reference_wav="ref.wav",
+            omit_seconds=False,
+            case_label="v3-text",
         )
         cases = benchmark.build_cases(args)
         self.assertEqual(len(cases), 4)
         self.assertEqual(cases[0].kind, "mlx")
+        self.assertEqual(cases[0].case_label, "v3-text")
         self.assertEqual(cases[0].reference_mode, "reference")
         self.assertEqual({case.seconds for case in cases}, {3.0, 5.0})
         self.assertEqual({case.num_steps for case in cases}, {20, 40})
@@ -92,6 +121,8 @@ class BenchmarkScriptTests(unittest.TestCase):
             repeat=1,
             warmup_runs=0,
             reference_wav=None,
+            omit_seconds=False,
+            case_label=None,
         )
         with self.assertRaises(benchmark.BenchmarkError):
             benchmark.build_cases(args)
@@ -106,16 +137,54 @@ class BenchmarkScriptTests(unittest.TestCase):
             repeat=1,
             warmup_runs=0,
             reference_wav=None,
+            omit_seconds=False,
+            case_label=None,
         )
         with self.assertRaises(benchmark.BenchmarkError) as ctx:
             benchmark.build_cases(args)
         self.assertIn("duplicate benchmark cases/log paths", str(ctx.exception))
+
+    def test_build_cases_supports_predicted_duration_labeling(self):
+        args = Namespace(
+            mode="mlx",
+            seconds=5.0,
+            seconds_sweep=None,
+            omit_seconds=True,
+            num_steps=12,
+            num_steps_sweep="8,12",
+            repeat=1,
+            warmup_runs=0,
+            reference_wav=None,
+            case_label="v3-text",
+        )
+        cases = benchmark.build_cases(args)
+        self.assertEqual([case.seconds for case in cases], [None, None])
+        self.assertTrue(all("predicted" in case.name for case in cases))
+        self.assertTrue(all(case.case_label == "v3-text" for case in cases))
+
+    def test_build_cases_rejects_omit_seconds_with_seconds_sweep(self):
+        args = Namespace(
+            mode="mlx",
+            seconds=5.0,
+            seconds_sweep="3,5",
+            omit_seconds=True,
+            num_steps=12,
+            num_steps_sweep=None,
+            repeat=1,
+            warmup_runs=0,
+            reference_wav=None,
+            case_label=None,
+        )
+        with self.assertRaises(benchmark.BenchmarkError) as ctx:
+            benchmark.build_cases(args)
+        self.assertIn("--omit-seconds cannot be combined with --seconds-sweep", str(ctx.exception))
 
     def test_run_case_dry_run_preserves_warmup_and_measured_metadata(self):
         case = benchmark.BenchmarkCase(
             name="mlx-bridge-reference-seconds-5-steps-40",
             slug="mlx-bridge-reference-seconds-5-steps-40",
             kind="mlx",
+            case_label="base",
             reference_mode="reference",
             seconds=5.0,
             num_steps=40,
@@ -127,6 +196,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights="weights.npz",
             reference_wav="ref.wav",
             text="hello",
+            caption=None,
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
@@ -277,13 +347,16 @@ class BenchmarkScriptTests(unittest.TestCase):
         ]
         args = Namespace(
             mode="mlx",
+            case_label="v3-text",
             text="hello",
+            caption="soft voice",
             seed=1,
             repeat=1,
             warmup_runs=0,
             cache_state="auto",
             seconds=5.0,
             seconds_sweep=None,
+            omit_seconds=True,
             num_steps=40,
             num_steps_sweep=None,
             reference_wav=None,
@@ -295,6 +368,9 @@ class BenchmarkScriptTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(payload["schema_version"], 2)
         self.assertEqual(payload["invocation"]["mode"], "mlx")
+        self.assertEqual(payload["invocation"]["case_label"], "v3-text")
+        self.assertEqual(payload["invocation"]["caption"], "soft voice")
+        self.assertTrue(payload["invocation"]["omit_seconds"])
         self.assertEqual(payload["invocation"]["codec_runtime_mode"], "persistent")
         self.assertEqual(payload["results"][0]["case_name"], "mlx-case")
         self.assertEqual(payload["aggregates"][0]["timings_ms"]["sample_rf"]["median"], 1000.0)

@@ -52,6 +52,7 @@ class BenchmarkCase:
     name: str
     slug: str
     kind: str
+    case_label: str
     reference_mode: str
     seconds: float | None
     num_steps: int
@@ -88,9 +89,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="benchmark-runs", help="Directory for logs, wavs, and JSON summaries.")
     parser.add_argument("--report", help="Optional Markdown report path to write.")
     parser.add_argument("--text", default=DEFAULT_TEXT)
+    parser.add_argument("--caption", help="Optional caption/style prompt for caption-conditioned MLX runs.")
     parser.add_argument("--seed", type=int, default=20260512)
     parser.add_argument("--seconds", type=float, default=5.0, help="Target output seconds for MLX bridge runs.")
     parser.add_argument("--seconds-sweep", help="Optional comma-separated MLX output-length sweep, e.g. 3,5,8.")
+    parser.add_argument(
+        "--omit-seconds",
+        action="store_true",
+        help="Omit --seconds on MLX runs so checkpoints with predicted duration can exercise their automatic duration path.",
+    )
     parser.add_argument("--num-steps", type=int, default=40)
     parser.add_argument("--num-steps-sweep", help="Optional comma-separated diffusion-step sweep, e.g. 20,40,60.")
     parser.add_argument("--repeat", type=int, default=1, help="Number of measured runs per benchmark case.")
@@ -122,6 +129,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-config-json", help="Optional inline/path JSON for MLX ModelConfig.")
     parser.add_argument("--text-tokenizer-repo")
     parser.add_argument("--caption-tokenizer-repo")
+    parser.add_argument(
+        "--case-label",
+        help="Optional label to prefix benchmark case names/log slugs, e.g. v3-text or voicedesign-caption.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print commands and exit without running them.")
     return parser.parse_args()
 
@@ -213,7 +224,10 @@ def build_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
     if args.warmup_runs < 0:
         raise BenchmarkError("--warmup-runs must be >= 0")
 
-    seconds_values = [float(args.seconds)]
+    if args.omit_seconds and args.seconds_sweep:
+        raise BenchmarkError("--omit-seconds cannot be combined with --seconds-sweep")
+
+    seconds_values: list[float | None] = [None] if args.omit_seconds else [float(args.seconds)]
     if args.seconds_sweep:
         seconds_values = [float(v) for v in parse_number_list(args.seconds_sweep, cast=float, option_name="--seconds-sweep")]
     step_values = [int(args.num_steps)]
@@ -224,16 +238,18 @@ def build_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
         raise BenchmarkError("--seconds-sweep is only supported for --mode mlx because upstream infer.py has no output-length flag")
 
     reference_mode = "reference" if args.reference_wav else "no-reference"
+    case_label = slug_token(args.case_label) if getattr(args, "case_label", None) else "base"
     cases: list[BenchmarkCase] = []
 
     if args.mode in {"upstream", "both"}:
         for steps in step_values:
-            suffix = f"{reference_mode}-steps-{steps}"
+            suffix = f"{case_label}-{reference_mode}-steps-{steps}"
             cases.append(
                 BenchmarkCase(
-                    name=f"upstream-base-{suffix}",
-                    slug=f"upstream-base-{slug_token(suffix)}",
+                    name=f"upstream-{suffix}",
+                    slug=f"upstream-{slug_token(suffix)}",
                     kind="upstream",
+                    case_label=case_label,
                     reference_mode=reference_mode,
                     seconds=None,
                     num_steps=steps,
@@ -243,14 +259,16 @@ def build_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
     if args.mode in {"mlx", "both"}:
         for seconds in seconds_values:
             for steps in step_values:
-                suffix = f"{reference_mode}-seconds-{seconds:g}-steps-{steps}"
+                seconds_label = "predicted" if seconds is None else f"seconds-{seconds:g}"
+                suffix = f"{case_label}-{reference_mode}-{seconds_label}-steps-{steps}"
                 cases.append(
                     BenchmarkCase(
                         name=f"mlx-bridge-{suffix}",
                         slug=f"mlx-bridge-{slug_token(suffix)}",
                         kind="mlx",
+                        case_label=case_label,
                         reference_mode=reference_mode,
-                        seconds=float(seconds),
+                        seconds=None if seconds is None else float(seconds),
                         num_steps=steps,
                     )
                 )
@@ -314,7 +332,7 @@ def build_upstream_command(args: argparse.Namespace, output_wav: Path, *, num_st
     return argv
 
 
-def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Path, *, seconds: float, num_steps: int) -> tuple[list[str], dict[str, str]]:
+def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Path, *, seconds: float | None, num_steps: int) -> tuple[list[str], dict[str, str]]:
     if not args.weights:
         raise BenchmarkError("--weights is required for MLX mode")
     argv = [
@@ -328,8 +346,6 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
         str(output_wav),
         "--text",
         args.text,
-        "--seconds",
-        str(seconds),
         "--num-steps",
         str(num_steps),
         "--seed",
@@ -341,10 +357,14 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
         "--codec-runtime-mode",
         args.codec_runtime_mode,
     ]
+    if seconds is not None:
+        argv.extend(["--seconds", str(seconds)])
     if args.reference_wav:
         argv.extend(["--reference-wav", args.reference_wav])
     else:
         argv.append("--no-reference")
+    if args.caption:
+        argv.extend(["--caption", args.caption])
     if args.model_config_json:
         argv.extend(["--model-config-json", args.model_config_json])
     if args.text_tokenizer_repo:
@@ -452,7 +472,7 @@ def run_case(case: BenchmarkCase, args: argparse.Namespace, repo_root: Path, out
             if case.kind == "upstream":
                 argv = build_upstream_command(args, output_wav, num_steps=case.num_steps)
             else:
-                argv, _env = build_mlx_command(args, repo_root, output_wav, seconds=float(case.seconds), num_steps=case.num_steps)
+                argv, _env = build_mlx_command(args, repo_root, output_wav, seconds=case.seconds, num_steps=case.num_steps)
             dry_results.append(BenchmarkResult(name=run_name, case_name=case.name, kind=case.kind, phase=phase, run_index=phase_run_index, overall_run_index=overall_run_index, cache_state=cache_state, reference_mode=case.reference_mode, seconds=case.seconds, num_steps=case.num_steps, command=shell_join(argv), cwd=str(cwd), output_wav=str(output_wav), stdout_log="", stderr_log="", status="dry-run", timings_ms={}, wall_seconds=None, max_rss_bytes=None))
         return dry_results
 
@@ -476,7 +496,7 @@ def run_case(case: BenchmarkCase, args: argparse.Namespace, repo_root: Path, out
             argv = build_upstream_command(args, output_wav, num_steps=case.num_steps)
             env = None
         else:
-            argv, env = build_mlx_command(args, repo_root, output_wav, seconds=float(case.seconds), num_steps=case.num_steps)
+            argv, env = build_mlx_command(args, repo_root, output_wav, seconds=case.seconds, num_steps=case.num_steps)
         command_result = run_command(argv, cwd=cwd, env=env)
         stdout_log, stderr_log = write_logs(output_dir / run_slug, command_result)
         results.append(
@@ -708,13 +728,16 @@ def write_json_summary(results: list[BenchmarkResult], path: Path, *, args: argp
         "schema_version": 2,
         "invocation": {
             "mode": args.mode,
+            "case_label": args.case_label,
             "text": args.text,
+            "caption": args.caption,
             "seed": args.seed,
             "repeat": args.repeat,
             "warmup_runs": args.warmup_runs,
             "cache_state": args.cache_state,
             "seconds": args.seconds,
             "seconds_sweep": args.seconds_sweep,
+            "omit_seconds": bool(args.omit_seconds),
             "num_steps": args.num_steps,
             "num_steps_sweep": args.num_steps_sweep,
             "reference_wav": args.reference_wav,
