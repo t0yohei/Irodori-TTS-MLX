@@ -50,16 +50,17 @@ For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation C
 
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
-For the packaged install story, supported Python version, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
+For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
 
 ## Supported Python and install targets
 
-The current packaged environment targets **Python 3.11**.
+The current packaged environment supports **Python 3.11 and 3.12**.
+Python 3.11 remains the reference environment for the published benchmark notes and examples in this repository.
 
 Install this repo in editable mode depending on your use case:
 
 ```bash
-python3.11 -m venv .venv
+python3.11 -m venv .venv  # or: python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
@@ -102,7 +103,7 @@ For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, 
 
 ## Benchmarking
 
-Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. For the recommended Python 3.11 benchmark environment, install `.[bench]` as described in [docs/packaging.md](docs/packaging.md).
+Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. Python 3.11 and 3.12 are supported for packaging, while Python 3.11 remains the recommended benchmark reference environment described in [docs/packaging.md](docs/packaging.md).
 
 
 ```bash
