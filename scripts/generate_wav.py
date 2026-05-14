@@ -58,6 +58,29 @@ CONFIG_KEYS = {
     "print_boundaries",
     "metadata_json",
     "json_output",
+    "requests_json",
+}
+
+REQUEST_KEYS = {
+    "output",
+    "output_wav",
+    "text",
+    "preset",
+    "reference_wav",
+    "no_reference",
+    "caption",
+    "seconds",
+    "duration_scale",
+    "num_steps",
+    "cfg_scale_text",
+    "cfg_scale_caption",
+    "cfg_scale_speaker",
+    "cfg_guidance_mode",
+    "cfg_min_t",
+    "cfg_max_t",
+    "seed",
+    "max_reference_seconds",
+    "no_context_kv_cache",
 }
 
 REQUIRED_STRING_KEYS = {"weights", "output", "text"}
@@ -70,6 +93,7 @@ OPTIONAL_STRING_KEYS = {
     "codec_repo",
     "codec_device",
     "metadata_json",
+    "requests_json",
 }
 BOOL_KEYS = {
     "no_reference",
@@ -103,21 +127,23 @@ PRESET_NUM_STEPS = {
 }
 
 
-def _load_json_object(value: str | None, *, label: str) -> dict[str, Any]:
+def _load_json_value(value: str | None, *, label: str) -> Any:
     if value is None:
         return {}
     raw = str(value).strip()
-    if raw.startswith("{"):
+    if raw.startswith("{") or raw.startswith("["):
         try:
-            payload = json.loads(raw)
+            return json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError(f"Inline {label} is invalid JSON.") from exc
-        source = f"inline {label}"
-    else:
-        source = str(Path(value).expanduser())
-        with Path(value).expanduser().open("r", encoding="utf-8") as fh:
-            payload = json.load(fh)
+    with Path(value).expanduser().open("r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _load_json_object(value: str | None, *, label: str) -> dict[str, Any]:
+    payload = _load_json_value(value, label=label)
     if not isinstance(payload, dict):
+        source = f"inline {label}" if str(value or "").strip().startswith("{") else str(Path(value or "").expanduser())
         raise ValueError(f"{label} must contain a JSON object: {source}")
     return payload
 
@@ -175,6 +201,29 @@ def load_generation_config_json(value: str | None) -> dict[str, Any]:
     return _validate_generation_config(payload)
 
 
+def load_generation_requests_json(value: str | None) -> list[dict[str, Any]]:
+    payload = _load_json_value(value, label="generation requests")
+    if isinstance(payload, dict) and "requests" in payload:
+        payload = payload["requests"]
+    if not isinstance(payload, list):
+        raise ValueError("generation requests must be a JSON array or an object with a 'requests' array")
+    requests: list[dict[str, Any]] = []
+    for index, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"generation request #{index} must be a JSON object")
+        request = dict(item)
+        if "output_wav" in request and "output" not in request:
+            request["output"] = request.pop("output_wav")
+        unexpected = sorted(set(request) - REQUEST_KEYS)
+        if unexpected:
+            raise ValueError(f"Unsupported generation request #{index} keys: " + ", ".join(unexpected))
+        _validate_generation_config(request)
+        requests.append(request)
+    if not requests:
+        raise ValueError("generation requests must contain at least one request")
+    return requests
+
+
 def _default(config: dict[str, Any], key: str, fallback: Any) -> Any:
     return config.get(key, fallback)
 
@@ -218,9 +267,10 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         ),
     )
     parser.add_argument("--config-json", help="Optional inline JSON object or path with common generation/runtime defaults.")
+    parser.add_argument("--requests-json", default=config.get("requests_json"), help="Optional inline JSON array or path with repeated generation requests. Reuses one initialized runtime.")
     parser.add_argument("--weights", required="weights" not in config, default=config.get("weights"), help="Converted MLX .npz RF-DiT weights.")
-    parser.add_argument("--output", "--output-wav", dest="output", required="output" not in config, default=config.get("output"), help="Output WAV path.")
-    parser.add_argument("--text", required="text" not in config, default=config.get("text"), help="Text prompt to synthesize.")
+    parser.add_argument("--output", "--output-wav", dest="output", default=config.get("output"), help="Output WAV path for one-shot mode, or a default for batch requests.")
+    parser.add_argument("--text", default=config.get("text"), help="Text prompt for one-shot mode, or a default for batch requests.")
     parser.add_argument(
         "--preset",
         default=config.get("preset"),
@@ -344,10 +394,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("choose either --reference-wav or --no-reference, not both")
     if args.weights is None or not str(args.weights).strip():
         parser.error("--weights must not be empty")
-    if args.output is None or not str(args.output).strip():
-        parser.error("--output must not be empty")
-    if args.text is None or not str(args.text).strip():
-        parser.error("--text must not be empty")
+    if not args.requests_json:
+        if args.output is None or not str(args.output).strip():
+            parser.error("--output must not be empty unless --requests-json supplies per-request outputs")
+        if args.text is None or not str(args.text).strip():
+            parser.error("--text must not be empty unless --requests-json supplies per-request text")
     if args.seconds is not None and args.seconds <= 0:
         parser.error("--seconds must be > 0")
     if args.duration_scale <= 0:
@@ -363,27 +414,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _result_to_dict(result: Any) -> dict[str, Any]:
+    if hasattr(result, "__dataclass_fields__"):
+        return asdict(result)
+    return {
+        "output_wav": result.output_wav,
+        "sample_rate": result.sample_rate,
+        "samples": result.samples,
+        "latent_steps": result.latent_steps,
+        "patched_steps": result.patched_steps,
+        "seed": result.seed,
+        "duration_mode": getattr(result, "duration_mode", None),
+        "requested_seconds": getattr(result, "requested_seconds", None),
+        "resolved_seconds": getattr(result, "resolved_seconds", None),
+        "timings_ms": result.timings_ms,
+        "messages": list(result.messages),
+    }
+
+
 def build_result_payload(
     *, result: Any, request: GenerationRequest, runtime: MLXDACVAERuntime, args: argparse.Namespace
 ) -> dict[str, Any]:
     return {
-        "result": asdict(result) if hasattr(result, "__dataclass_fields__") else {
-            "output_wav": result.output_wav,
-            "sample_rate": result.sample_rate,
-            "samples": result.samples,
-            "latent_steps": result.latent_steps,
-            "patched_steps": result.patched_steps,
-            "seed": result.seed,
-            "duration_mode": getattr(result, "duration_mode", None),
-            "requested_seconds": getattr(result, "requested_seconds", None),
-            "resolved_seconds": getattr(result, "resolved_seconds", None),
-            "timings_ms": result.timings_ms,
-            "messages": list(result.messages),
-        },
+        "result": _result_to_dict(result),
         "request": asdict(request),
         "boundaries": runtime.describe_boundaries(),
         "cli": {
             "config_json": args.config_json,
+            "requests_json": args.requests_json,
             "metadata_json": args.metadata_json,
             "json_output": bool(args.json_output),
             "print_boundaries": bool(args.print_boundaries),
@@ -392,21 +450,8 @@ def build_result_payload(
     }
 
 
-def write_metadata_json(path: str | Path, payload: dict[str, Any]) -> None:
-    target = Path(path).expanduser()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, default=str), encoding="utf-8")
-
-
-def main() -> int:
-    args = parse_args()
-    model_config = load_model_config_json(args.model_config_json)
-    if model_config.use_speaker_condition and not args.no_reference and not args.reference_wav:
-        raise SystemExit(
-            "error: speaker-conditioned checkpoints require --reference-wav unless you explicitly pass --no-reference"
-        )
-
-    runtime_config = MLXRuntimeConfig(
+def build_runtime_config(args: argparse.Namespace, model_config: Any) -> MLXRuntimeConfig:
+    return MLXRuntimeConfig(
         model_config=model_config,
         weights_path=args.weights,
         text_tokenizer_repo=args.text_tokenizer_repo,
@@ -421,6 +466,80 @@ def main() -> int:
             normalize_db=None if args.disable_codec_normalize else -16.0,
         ),
     )
+
+
+def _merged_request_value(args: argparse.Namespace, overrides: dict[str, Any], key: str) -> Any:
+    return overrides[key] if key in overrides else getattr(args, key)
+
+
+def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any] | None = None) -> GenerationRequest:
+    overrides = dict(overrides or {})
+    text = _merged_request_value(args, overrides, "text")
+    output = _merged_request_value(args, overrides, "output")
+    if text is None or not str(text).strip():
+        raise ValueError("generation request requires a non-empty text field")
+    if output is None or not str(output).strip():
+        raise ValueError("generation request requires a non-empty output field")
+    reference_wav = _merged_request_value(args, overrides, "reference_wav")
+    no_reference = bool(_merged_request_value(args, overrides, "no_reference"))
+    if reference_wav and no_reference:
+        raise ValueError("generation request cannot set both reference_wav and no_reference")
+    preset = _merged_request_value(args, overrides, "preset")
+    num_steps = int(_merged_request_value(args, overrides, "num_steps"))
+    if "preset" in overrides and "num_steps" not in overrides and preset:
+        num_steps = PRESET_NUM_STEPS[preset]
+    seconds = _merged_request_value(args, overrides, "seconds")
+    duration_scale = float(_merged_request_value(args, overrides, "duration_scale"))
+    max_reference_seconds = _merged_request_value(args, overrides, "max_reference_seconds")
+    if seconds is not None and float(seconds) <= 0:
+        raise ValueError("seconds must be > 0 when provided")
+    if duration_scale <= 0:
+        raise ValueError("duration_scale must be > 0")
+    if num_steps <= 0:
+        raise ValueError("num_steps must be > 0")
+    if max_reference_seconds is not None and float(max_reference_seconds) <= 0:
+        raise ValueError("max_reference_seconds must be > 0 when provided")
+    return GenerationRequest(
+        text=str(text),
+        output_wav=str(output),
+        reference_wav=reference_wav,
+        no_reference=no_reference,
+        caption=_merged_request_value(args, overrides, "caption"),
+        seconds=None if seconds is None else float(seconds),
+        duration_scale=duration_scale,
+        num_steps=num_steps,
+        cfg_scale_text=float(_merged_request_value(args, overrides, "cfg_scale_text")),
+        cfg_scale_caption=float(_merged_request_value(args, overrides, "cfg_scale_caption")),
+        cfg_scale_speaker=float(_merged_request_value(args, overrides, "cfg_scale_speaker")),
+        cfg_guidance_mode=_merged_request_value(args, overrides, "cfg_guidance_mode"),
+        cfg_min_t=float(_merged_request_value(args, overrides, "cfg_min_t")),
+        cfg_max_t=float(_merged_request_value(args, overrides, "cfg_max_t")),
+        seed=int(_merged_request_value(args, overrides, "seed")),
+        max_reference_seconds=max_reference_seconds,
+        use_context_kv_cache=not bool(_merged_request_value(args, overrides, "no_context_kv_cache")),
+    )
+
+
+def write_metadata_json(path: str | Path, payload: dict[str, Any]) -> None:
+    target = Path(path).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, default=str), encoding="utf-8")
+
+
+def main() -> int:
+    args = parse_args()
+    model_config = load_model_config_json(args.model_config_json)
+    request_overrides = load_generation_requests_json(args.requests_json) if args.requests_json else [{}]
+    if model_config.use_speaker_condition:
+        for item in request_overrides:
+            request_reference = item.get("reference_wav", args.reference_wav)
+            request_no_reference = bool(item.get("no_reference", args.no_reference))
+            if not request_no_reference and not request_reference:
+                raise SystemExit(
+                    "error: speaker-conditioned checkpoints require reference_wav unless no_reference is true"
+                )
+
+    runtime_config = build_runtime_config(args, model_config)
     runtime = MLXDACVAERuntime(config=runtime_config)
     if args.print_boundaries:
         print(
@@ -429,34 +548,34 @@ def main() -> int:
             file=sys.stderr if args.json_output else sys.stdout,
         )
 
-    request = GenerationRequest(
-        text=args.text,
-        output_wav=args.output,
-        reference_wav=args.reference_wav,
-        no_reference=bool(args.no_reference),
-        caption=args.caption,
-        seconds=None if args.seconds is None else float(args.seconds),
-        duration_scale=float(args.duration_scale),
-        num_steps=int(args.num_steps),
-        cfg_scale_text=float(args.cfg_scale_text),
-        cfg_scale_caption=float(args.cfg_scale_caption),
-        cfg_scale_speaker=float(args.cfg_scale_speaker),
-        cfg_guidance_mode=args.cfg_guidance_mode,
-        cfg_min_t=float(args.cfg_min_t),
-        cfg_max_t=float(args.cfg_max_t),
-        seed=int(args.seed),
-        max_reference_seconds=args.max_reference_seconds,
-        use_context_kv_cache=not bool(args.no_context_kv_cache),
-    )
-    result = runtime.generate(request)
-    payload = build_result_payload(result=result, request=request, runtime=runtime, args=args)
+    payloads: list[dict[str, Any]] = []
+    for index, overrides in enumerate(request_overrides, start=1):
+        try:
+            request = build_generation_request(args, overrides)
+        except ValueError as exc:
+            raise SystemExit(f"error: generation request #{index}: {exc}") from exc
+        result = runtime.generate(request)
+        payload = build_result_payload(result=result, request=request, runtime=runtime, args=args)
+        payload["batch"] = {"index": index, "count": len(request_overrides), "overrides": dict(overrides)}
+        payloads.append(payload)
+
+    output_payload: dict[str, Any] | list[dict[str, Any]] = payloads[0] if len(payloads) == 1 and not args.requests_json else {
+        "results": payloads,
+        "boundaries": runtime.describe_boundaries(),
+        "cli": payloads[0]["cli"],
+        "batch": {"count": len(payloads)},
+    }
     if args.metadata_json:
-        write_metadata_json(args.metadata_json, payload)
+        write_metadata_json(args.metadata_json, output_payload)
     if args.json_output:
-        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, default=str))
+        print(json.dumps(output_payload, ensure_ascii=False, indent=2, sort_keys=True, default=str))
         return 0
-    for line in iter_messages(result):
-        print(line)
+    for index, payload in enumerate(payloads, start=1):
+        if len(payloads) > 1:
+            print(f"[request {index}/{len(payloads)}] {payload['request']['text']}")
+        result_dict = payload["result"]
+        for line in iter_messages(type("ResultView", (), result_dict)()):
+            print(line)
     return 0
 
 

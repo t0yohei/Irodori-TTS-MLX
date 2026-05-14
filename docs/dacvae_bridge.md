@@ -69,6 +69,46 @@ python3 scripts/generate_wav.py \
   --text "こんにちは。今日は良い天気です。"
 ```
 
+For repeated local experimentation, use `--requests-json` to keep one
+`MLXDACVAERuntime` alive for multiple requests. Runtime-level fields such as
+weights, model config, tokenizer repos, codec settings, and max token lengths are
+loaded once from the CLI/config. Each request can override the generation fields
+that change between outputs:
+
+```json
+[
+  {
+    "text": "最初のサンプルです。",
+    "output": "/tmp/irodori-01.wav",
+    "preset": "fast",
+    "seed": 101
+  },
+  {
+    "text": "少し落ち着いた読み方にします。",
+    "caption": "落ち着いた自然な声",
+    "output": "/tmp/irodori-02.wav",
+    "num_steps": 24,
+    "seed": 102
+  }
+]
+```
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:$PYTHONPATH \
+python3 scripts/generate_wav.py \
+  --config-json /path/to/generate-base.json \
+  --requests-json /path/to/requests.json \
+  --metadata-json /tmp/irodori-batch.json
+```
+
+The request objects support `text`, `output`/`output_wav`, `reference_wav`,
+`no_reference`, `caption`, `seconds`, `duration_scale`, `preset`, `num_steps`,
+the CFG knobs, `seed`, `max_reference_seconds`, and `no_context_kv_cache`. Use
+one-shot mode for isolated commands and shell pipelines; use batch mode when you
+are iterating on prompts or seeds and want to avoid paying model/tokenizer/codec
+startup cost for every output. `--json` and `--metadata-json` return a `results`
+array in batch mode.
+
 For automation, use `--json` to emit a machine-readable payload to stdout or
 `--metadata-json /path/to/result.json` to save the same generation metadata,
 timings, request fields, and runtime boundary description to disk.
