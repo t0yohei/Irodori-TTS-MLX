@@ -334,9 +334,15 @@ class RuntimeBridgeTests(unittest.TestCase):
 
     @require_mlx
     def test_load_model_config_json_accepts_inline_object_or_path(self):
-        inline = load_model_config_json('{"use_caption_condition": true, "caption_vocab_size": 32}')
-        self.assertTrue(inline.use_caption_condition)
-        self.assertEqual(inline.caption_vocab_size_resolved, 32)
+        inline = load_model_config_json(
+            '{"use_duration_predictor": true, "duration_attention_heads": 8, "duration_layers": 2}'
+        )
+        self.assertTrue(inline.use_duration_predictor)
+        self.assertEqual(inline.duration_layers, 2)
+        self.assertEqual(inline.duration_architecture, "token_sum_adarn_zero_no_aux")
+        caption_inline = load_model_config_json('{"use_caption_condition": true, "caption_vocab_size": 32}')
+        self.assertTrue(caption_inline.use_caption_condition)
+        self.assertEqual(caption_inline.caption_vocab_size_resolved, 32)
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "config.json"
             path.write_text('{"latent_dim": 8, "text_vocab_size": 64}', encoding="utf-8")

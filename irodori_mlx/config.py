@@ -37,6 +37,61 @@ class ModelConfig:
     timestep_embed_dim: int = 512
     adaln_rank: int = 192
     norm_eps: float = 1e-5
+    use_duration_predictor: bool = False
+    duration_aux_dim: int = 14
+    duration_hidden_dim: int = 1024
+    duration_layers: int = 3
+    duration_dropout: float = 0.1
+    duration_attention_heads: int = 8
+    duration_architecture: str = "token_sum_adarn_zero_no_aux"
+    duration_token_init_frames: float = 9.0
+    duration_speaker_fusion: str = "adarn_zero"
+
+    def __post_init__(self) -> None:
+        architecture = str(self.duration_architecture).strip().lower()
+        speaker_fusion = str(self.duration_speaker_fusion).strip().lower()
+        object.__setattr__(self, "duration_architecture", architecture)
+        object.__setattr__(self, "duration_speaker_fusion", speaker_fusion)
+
+        if not self.use_duration_predictor:
+            return
+        if self.duration_aux_dim <= 0:
+            raise ValueError(f"duration_aux_dim must be > 0, got {self.duration_aux_dim}")
+        if self.duration_hidden_dim <= 0:
+            raise ValueError(f"duration_hidden_dim must be > 0, got {self.duration_hidden_dim}")
+        if self.duration_layers <= 0:
+            raise ValueError(f"duration_layers must be > 0, got {self.duration_layers}")
+        if not (0.0 <= self.duration_dropout <= 1.0):
+            raise ValueError(f"duration_dropout must be in [0, 1], got {self.duration_dropout}")
+        if self.duration_attention_heads <= 0:
+            raise ValueError(
+                f"duration_attention_heads must be > 0, got {self.duration_attention_heads}"
+            )
+        if self.text_dim % self.duration_attention_heads != 0:
+            raise ValueError(
+                "text_dim must be divisible by duration_attention_heads: "
+                f"text_dim={self.text_dim} duration_attention_heads={self.duration_attention_heads}"
+            )
+        if self.duration_token_init_frames <= 0:
+            raise ValueError(
+                "duration_token_init_frames must be > 0, "
+                f"got {self.duration_token_init_frames}"
+            )
+        if architecture != "token_sum_adarn_zero_no_aux":
+            raise ValueError(
+                "Unsupported duration_architecture for MLX: "
+                f"{self.duration_architecture!r}"
+            )
+        if speaker_fusion != "adarn_zero":
+            raise ValueError(
+                "Unsupported duration_speaker_fusion for MLX: "
+                f"{self.duration_speaker_fusion!r}"
+            )
+        if not self.use_speaker_condition:
+            raise ValueError(
+                "MLX duration predictor currently requires speaker-conditioned configs "
+                "(use_caption_condition must be false)."
+            )
 
     @property
     def patched_latent_dim(self) -> int:

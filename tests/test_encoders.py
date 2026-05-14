@@ -49,6 +49,40 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(caption.caption_dim_resolved, caption.text_dim)
         self.assertEqual(caption.caption_layers_resolved, caption.text_layers)
 
+    def test_duration_predictor_config_normalizes_and_validates(self):
+        cfg = ModelConfig(
+            text_dim=8,
+            speaker_dim=8,
+            use_duration_predictor=True,
+            duration_attention_heads=2,
+            duration_architecture=" Token_Sum_AdaRN_Zero_No_Aux ",
+            duration_speaker_fusion=" AdaRN_Zero ",
+        )
+        self.assertEqual(cfg.duration_architecture, "token_sum_adarn_zero_no_aux")
+        self.assertEqual(cfg.duration_speaker_fusion, "adarn_zero")
+
+        with self.assertRaisesRegex(ValueError, "duration_attention_heads"):
+            ModelConfig(text_dim=10, speaker_dim=8, use_duration_predictor=True, duration_attention_heads=3)
+        with self.assertRaisesRegex(ValueError, "duration_architecture"):
+            ModelConfig(
+                text_dim=8,
+                speaker_dim=8,
+                use_duration_predictor=True,
+                duration_attention_heads=2,
+                duration_architecture="pooled",
+            )
+        with self.assertRaisesRegex(ValueError, "speaker-conditioned"):
+            ModelConfig(
+                text_dim=8,
+                use_caption_condition=True,
+                caption_vocab_size=32,
+                caption_dim=8,
+                caption_layers=1,
+                caption_heads=2,
+                use_duration_predictor=True,
+                duration_attention_heads=2,
+            )
+
 
 class EncoderRuntimeTests(unittest.TestCase):
     @require_mlx

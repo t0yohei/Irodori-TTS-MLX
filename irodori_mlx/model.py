@@ -31,6 +31,10 @@ def _attention_mask_floor(dtype: mx.Dtype) -> mx.array:
     return mx.array(mx.finfo(dtype).min, dtype=dtype)
 
 
+def _softplus(x: mx.array) -> mx.array:
+    return mx.maximum(x, 0) + mx.log1p(mx.exp(-mx.abs(x)))
+
+
 class JointAttention(nn.Module):
     """Joint attention over latent tokens plus text/speaker/caption contexts.
 
@@ -279,6 +283,162 @@ class DiffusionBlock(nn.Module):
         return x
 
 
+class DurationSwiGLUBlock(nn.Module):
+    """Residual SwiGLU block used by the v3 token-sum duration predictor."""
+
+    def __init__(
+        self,
+        *,
+        dim: int,
+        hidden_dim: int,
+        dropout: float,
+        norm_eps: float,
+        cond_dim: int | None = None,
+    ):
+        super().__init__()
+        self.norm = RMSNorm(dim, eps=norm_eps)
+        self.mlp = SwiGLU(dim, hidden_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.cond_dim = cond_dim
+        self.modulation = None
+        if cond_dim is not None:
+            self.modulation = nn.Linear(cond_dim, dim * 3, bias=True)
+            self.modulation.weight = mx.zeros_like(self.modulation.weight)
+            if self.modulation.bias is not None:
+                self.modulation.bias = mx.zeros_like(self.modulation.bias)
+
+    def __call__(self, x: mx.array, cond: mx.array | None = None) -> mx.array:
+        h = self.norm(x)
+        if self.modulation is not None:
+            if cond is None:
+                raise ValueError("cond is required for AdaRN-Zero duration blocks")
+            shift, scale, gate = mx.split(self.modulation(nn.silu(cond)), 3, axis=-1)
+            if len(h.shape) == 3 and len(shift.shape) == 2:
+                shift = shift[:, None, :]
+                scale = scale[:, None, :]
+                gate = gate[:, None, :]
+            h = h * (1.0 + scale.astype(mx.float32)) + shift.astype(mx.float32)
+            return x + self.dropout(mx.tanh(gate).astype(h.dtype) * self.mlp(h))
+        return x + self.dropout(self.mlp(h))
+
+
+class DurationPredictor(nn.Module):
+    """MLX port of the v3 token-sum AdaRN-Zero duration predictor."""
+
+    def __init__(
+        self,
+        *,
+        text_dim: int,
+        aux_dim: int,
+        hidden_dim: int,
+        layers: int,
+        dropout: float,
+        speaker_dim: int,
+        norm_eps: float,
+        token_init_frames: float,
+    ):
+        super().__init__()
+        if text_dim <= 0:
+            raise ValueError(f"duration predictor text_dim must be > 0, got {text_dim}")
+        if aux_dim <= 0:
+            raise ValueError(f"duration predictor aux_dim must be > 0, got {aux_dim}")
+        if hidden_dim <= 0:
+            raise ValueError(f"duration predictor hidden_dim must be > 0, got {hidden_dim}")
+        if layers <= 0:
+            raise ValueError(f"duration predictor layers must be > 0, got {layers}")
+        if speaker_dim <= 0:
+            raise ValueError(f"duration predictor speaker_dim must be > 0, got {speaker_dim}")
+        if token_init_frames <= 0:
+            raise ValueError(
+                f"duration token_init_frames must be > 0, got {token_init_frames}"
+            )
+
+        self.text_dim = int(text_dim)
+        self.aux_dim = int(aux_dim)
+        self.hidden_dim = int(hidden_dim)
+        self.speaker_dim = int(speaker_dim)
+        self.null_speaker = mx.zeros((self.speaker_dim,), dtype=mx.float32)
+        self.token_input_proj = nn.Linear(self.text_dim, self.hidden_dim)
+        self.token_blocks = [
+            DurationSwiGLUBlock(
+                dim=self.hidden_dim,
+                hidden_dim=self.hidden_dim,
+                dropout=float(dropout),
+                norm_eps=float(norm_eps),
+                cond_dim=self.speaker_dim,
+            )
+            for _ in range(int(layers))
+        ]
+        self.token_out_norm = RMSNorm(self.hidden_dim, eps=float(norm_eps))
+        self.token_out_proj = nn.Linear(self.hidden_dim, 1)
+        self.token_out_proj.weight = mx.zeros_like(self.token_out_proj.weight)
+        if self.token_out_proj.bias is not None:
+            self.token_out_proj.bias = mx.zeros_like(self.token_out_proj.bias) + float(
+                math.log(math.expm1(float(token_init_frames)))
+            )
+
+    def _speaker_vec(
+        self,
+        *,
+        batch_size: int,
+        dtype: mx.Dtype,
+        speaker_state: mx.array | None,
+        has_speaker: mx.array,
+    ) -> mx.array:
+        null_vec = self.null_speaker.astype(dtype)[None, :]
+        null_vec = mx.broadcast_to(null_vec, (batch_size, self.speaker_dim))
+        if speaker_state is None:
+            return null_vec
+        if len(speaker_state.shape) != 3 or speaker_state.shape[0] != batch_size:
+            raise ValueError(
+                f"speaker_state must have shape (B, S, D), got {speaker_state.shape}"
+            )
+        if speaker_state.shape[-1] != self.speaker_dim:
+            raise ValueError(
+                f"speaker_state last dim must be {self.speaker_dim}, got {speaker_state.shape[-1]}"
+            )
+        speaker_vec = speaker_state[:, 0, :].astype(dtype)
+        return mx.where(has_speaker[:, None], speaker_vec, null_vec)
+
+    def __call__(
+        self,
+        *,
+        text_state: mx.array,
+        text_mask: mx.array,
+        aux_features: mx.array,
+        speaker_state: mx.array | None,
+        has_speaker: mx.array,
+    ) -> mx.array:
+        if len(text_state.shape) != 3 or text_state.shape[-1] != self.text_dim:
+            raise ValueError(
+                f"text_state must have shape (B, S, {self.text_dim}), got {text_state.shape}"
+            )
+        if len(text_mask.shape) != 2 or text_mask.shape != text_state.shape[:2]:
+            raise ValueError(
+                f"text_mask must have shape {text_state.shape[:2]}, got {text_mask.shape}"
+            )
+        if len(aux_features.shape) != 2 or aux_features.shape != (text_state.shape[0], self.aux_dim):
+            raise ValueError(
+                f"aux_features must have shape ({text_state.shape[0]}, {self.aux_dim}), got {aux_features.shape}"
+            )
+        if len(has_speaker.shape) != 1 or has_speaker.shape[0] != text_state.shape[0]:
+            raise ValueError(f"has_speaker must have shape ({text_state.shape[0]},), got {has_speaker.shape}")
+
+        speaker_vec = self._speaker_vec(
+            batch_size=text_state.shape[0],
+            dtype=text_state.dtype,
+            speaker_state=speaker_state,
+            has_speaker=has_speaker.astype(mx.bool_),
+        )
+        h = self.token_input_proj(text_state)
+        for block in self.token_blocks:
+            h = block(h, cond=speaker_vec)
+        token_logits = self.token_out_proj(self.token_out_norm(h)).squeeze(-1)
+        token_frames = _softplus(token_logits.astype(mx.float32))
+        total_frames = (token_frames * text_mask.astype(token_frames.dtype)).sum(axis=1)
+        return mx.log1p(mx.maximum(total_frames, 0.0)).astype(text_state.dtype)
+
+
 class TextToLatentRFDiT(nn.Module):
     """Text/reference-latent conditioned RF-DiT over patched DACVAE latents."""
 
@@ -294,6 +454,18 @@ class TextToLatentRFDiT(nn.Module):
         self.speaker_norm = self.condition_encoders.speaker_norm
         self.caption_encoder = self.condition_encoders.caption_encoder
         self.caption_norm = self.condition_encoders.caption_norm
+        self.duration_predictor = None
+        if cfg.use_duration_predictor:
+            self.duration_predictor = DurationPredictor(
+                text_dim=cfg.text_dim,
+                aux_dim=cfg.duration_aux_dim,
+                hidden_dim=cfg.duration_hidden_dim,
+                layers=cfg.duration_layers,
+                dropout=cfg.duration_dropout,
+                speaker_dim=cfg.speaker_dim,
+                norm_eps=cfg.norm_eps,
+                token_init_frames=cfg.duration_token_init_frames,
+            )
         self.cond_module = [
             nn.Linear(cfg.timestep_embed_dim, cfg.model_dim, bias=False),
             nn.SiLU(),
@@ -429,3 +601,35 @@ class TextToLatentRFDiT(nn.Module):
             )
             for block in self.blocks
         ]
+
+    def predict_duration_log_frames(
+        self,
+        *,
+        text_state: mx.array,
+        text_mask: mx.array,
+        speaker_state: mx.array | None,
+        speaker_mask: mx.array | None,
+        duration_features: mx.array,
+        has_speaker: mx.array | None,
+    ) -> mx.array:
+        if self.duration_predictor is None:
+            raise RuntimeError("Duration predictor is disabled for this model")
+        if len(duration_features.shape) != 2:
+            raise ValueError(
+                f"duration_features must have shape (B, D), got {duration_features.shape}"
+            )
+        if duration_features.shape[1] != self.cfg.duration_aux_dim:
+            raise ValueError(
+                "duration_features dim mismatch: "
+                f"expected {self.cfg.duration_aux_dim}, got {duration_features.shape[1]}"
+            )
+        del speaker_mask
+        if has_speaker is None:
+            raise ValueError("has_speaker is required for duration prediction")
+        return self.duration_predictor(
+            text_state=text_state,
+            text_mask=text_mask,
+            aux_features=duration_features,
+            speaker_state=speaker_state,
+            has_speaker=has_speaker,
+        ).astype(mx.float32)
