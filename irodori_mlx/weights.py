@@ -186,6 +186,29 @@ def rf_dit_required_keys(cfg: ModelConfig) -> tuple[str, ...]:
             "out_proj.bias",
         ]
     )
+    if cfg.use_duration_predictor:
+        keys.extend(
+            [
+                "duration_predictor.null_speaker",
+                "duration_predictor.token_input_proj.weight",
+                "duration_predictor.token_input_proj.bias",
+                "duration_predictor.token_out_norm.weight",
+                "duration_predictor.token_out_proj.weight",
+                "duration_predictor.token_out_proj.bias",
+            ]
+        )
+        for i in range(cfg.duration_layers):
+            block = f"duration_predictor.token_blocks.{i}"
+            keys.extend(
+                [
+                    f"{block}.modulation.weight",
+                    f"{block}.modulation.bias",
+                    f"{block}.norm.weight",
+                    f"{block}.mlp.w1.weight",
+                    f"{block}.mlp.w2.weight",
+                    f"{block}.mlp.w3.weight",
+                ]
+            )
     for i in range(cfg.num_layers):
         block = f"blocks.{i}"
         keys.extend(

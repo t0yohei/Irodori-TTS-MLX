@@ -26,7 +26,7 @@ def to_np(value):
 
 
 class RFDiTModelTests(unittest.TestCase):
-    def tiny_config(self, *, caption: bool = False) -> ModelConfig:
+    def tiny_config(self, *, caption: bool = False, duration: bool = False) -> ModelConfig:
         return ModelConfig(
             latent_dim=4,
             latent_patch_size=1,
@@ -50,6 +50,12 @@ class RFDiTModelTests(unittest.TestCase):
             caption_dim=8 if caption else None,
             caption_layers=1 if caption else None,
             caption_heads=2 if caption else None,
+            use_duration_predictor=duration,
+            duration_aux_dim=4 if duration else 14,
+            duration_hidden_dim=8 if duration else 1024,
+            duration_layers=1 if duration else 3,
+            duration_dropout=0.0 if duration else 0.1,
+            duration_attention_heads=2 if duration else 8,
         )
 
     @require_mlx
@@ -158,6 +164,65 @@ class RFDiTModelTests(unittest.TestCase):
             "cond_module.4.weight": mx.zeros_like(model.cond_module[4].weight),
             "in_proj.bias": mx.zeros_like(model.in_proj.bias),
             "out_proj.weight": mx.zeros_like(model.out_proj.weight),
+        }
+        report = assign_named_weights(model, subset, strict=False)
+        self.assertEqual(set(report.assigned), set(subset))
+
+    @require_mlx
+    def test_duration_predictor_forward_runs_for_v3_shape(self):
+        cfg = self.tiny_config(duration=True)
+        model = TextToLatentRFDiT(cfg)
+        encoded = model.encode_conditions(
+            text_input_ids=mx.array([[1, 2, 0]], dtype=mx.int32),
+            text_mask=mx.array([[True, True, False]]),
+            ref_latent=mx.array(np.ones((1, 2, 4), dtype=np.float32)),
+            ref_mask=mx.array([[True, True]]),
+        )
+        pred = model.predict_duration_log_frames(
+            text_state=encoded.text_state,
+            text_mask=encoded.text_mask,
+            speaker_state=encoded.speaker_state,
+            speaker_mask=encoded.speaker_mask,
+            duration_features=mx.zeros((1, 4), dtype=mx.float32),
+            has_speaker=mx.array([True]),
+        )
+        self.assertEqual(pred.shape, (1,))
+        self.assertTrue(np.isfinite(to_np(pred)).all())
+
+    @require_mlx
+    def test_duration_predictor_rejects_wrong_feature_dim(self):
+        cfg = self.tiny_config(duration=True)
+        model = TextToLatentRFDiT(cfg)
+        encoded = model.encode_conditions(
+            text_input_ids=mx.array([[1, 2]], dtype=mx.int32),
+            text_mask=mx.array([[True, True]]),
+            ref_latent=mx.array(np.ones((1, 2, 4), dtype=np.float32)),
+            ref_mask=mx.array([[True, True]]),
+        )
+        with self.assertRaisesRegex(ValueError, "duration_features dim mismatch"):
+            model.predict_duration_log_frames(
+                text_state=encoded.text_state,
+                text_mask=encoded.text_mask,
+                speaker_state=encoded.speaker_state,
+                speaker_mask=encoded.speaker_mask,
+                duration_features=mx.zeros((1, 3), dtype=mx.float32),
+                has_speaker=mx.array([True]),
+            )
+
+    @require_mlx
+    def test_required_keys_cover_duration_predictor_weights(self):
+        cfg = self.tiny_config(duration=True)
+        model = TextToLatentRFDiT(cfg)
+        keys = rf_dit_required_keys(cfg)
+        self.assertIn("duration_predictor.null_speaker", keys)
+        self.assertIn("duration_predictor.token_blocks.0.modulation.weight", keys)
+        self.assertIn("duration_predictor.token_out_proj.bias", keys)
+
+        subset = {
+            "duration_predictor.null_speaker": mx.zeros_like(model.duration_predictor.null_speaker),
+            "duration_predictor.token_input_proj.weight": mx.zeros_like(model.duration_predictor.token_input_proj.weight),
+            "duration_predictor.token_blocks.0.modulation.bias": mx.zeros_like(model.duration_predictor.token_blocks[0].modulation.bias),
+            "duration_predictor.token_out_proj.bias": mx.zeros_like(model.duration_predictor.token_out_proj.bias),
         }
         report = assign_named_weights(model, subset, strict=False)
         self.assertEqual(set(report.assigned), set(subset))
