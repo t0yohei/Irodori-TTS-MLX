@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,13 +8,12 @@ version = "0.0.0"
 description = "Apple Silicon-focused MLX inference prototype for Irodori-TTS"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
-license = { text = "License not finalized; see README.md" }
+license = "MIT"
 authors = [{ name = "t0yohei" }]
 keywords = ["mlx", "apple-silicon", "tts", "audio", "machine-learning"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "License :: Other/Proprietary License",
   "Operating System :: MacOS :: MacOS X",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
@@ -61,5 +60,10 @@ Homepage = "https://github.com/t0yohei/irodori-tts-mlx"
 Repository = "https://github.com/t0yohei/irodori-tts-mlx"
 Issues = "https://github.com/t0yohei/irodori-tts-mlx/issues"
 
+[project.scripts]
+irodori-tts-generate = "scripts.generate_wav:cli_main"
+irodori-tts-convert = "scripts.convert_weights:cli_main"
+irodori-tts-inspect = "scripts.inspect_checkpoint:cli_main"
+
 [tool.setuptools.packages.find]
-include = ["irodori_mlx*"]
+include = ["irodori_mlx*", "scripts*"]

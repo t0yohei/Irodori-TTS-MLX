@@ -20,8 +20,16 @@ def load_npz_weights(path: str | Path) -> dict[str, mx.array]:
     """Load a converted `.npz` archive into MLX arrays keyed by upstream names."""
     import numpy as np
 
-    with np.load(Path(path), allow_pickle=False) as archive:
-        return {name: mx.array(archive[name]) for name in archive.files}
+    resolved = Path(path).expanduser()
+    try:
+        with np.load(resolved, allow_pickle=False) as archive:
+            return {name: mx.array(archive[name]) for name in archive.files}
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Converted MLX weights were not found: {resolved}. "
+            "Run scripts/convert_weights.py on a supported checkpoint first, then pass the produced .npz "
+            "with --weights. See README.md Quickstart and docs/checkpoint_support.md."
+        ) from exc
 
 
 def _resolve_parent(root: object, path: str) -> tuple[object, str] | None:
@@ -71,7 +79,12 @@ def assign_named_weights(
             continue
         current = getattr(parent, attr)
         if hasattr(current, "shape") and tuple(current.shape) != tuple(value.shape):
-            raise ValueError(f"shape mismatch for {name}: expected {current.shape}, got {value.shape}")
+            raise ValueError(
+                f"shape mismatch for {name}: expected {current.shape}, got {value.shape}. "
+                "This usually means --model-config-json does not match the converted checkpoint family. "
+                "Recreate the config from scripts/inspect_checkpoint.py metadata.config_json, or reconvert/pass "
+                "weights for one of the v0.1 supported families in docs/checkpoint_support.md."
+            )
         setattr(parent, attr, value)
         assigned.append(name)
 
@@ -82,7 +95,13 @@ def assign_named_weights(
             problems.append("missing=" + ", ".join(missing[:10]))
         if unexpected:
             problems.append("unexpected=" + ", ".join(unexpected[:10]))
-        raise ValueError("weight assignment failed: " + "; ".join(problems))
+        raise ValueError(
+            "weight assignment failed: "
+            + "; ".join(problems)
+            + ". The converted .npz and --model-config-json must come from the same supported checkpoint "
+            "family. Re-run scripts/inspect_checkpoint.py and scripts/convert_weights.py as shown in the "
+            "README Quickstart; supported families are documented in docs/checkpoint_support.md."
+        )
     return WeightLoadReport(
         assigned=tuple(sorted(assigned)),
         missing=tuple(sorted(missing)),

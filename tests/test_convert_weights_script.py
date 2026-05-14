@@ -181,6 +181,13 @@ class ConvertWeightsScriptTests(unittest.TestCase):
         self.assertIn("checkpoint_family: v3", message)
         self.assertIn("duration_predictor.token_out_proj.bias", message)
 
+    def test_validation_error_message_guides_unsupported_checkpoint_family(self):
+        validation = convert_weights.validate_records({}, {"latent_dim": 32})
+        message = convert_weights.validation_error_message(validation)
+        self.assertIn("supported v0.1 checkpoint families", message)
+        self.assertIn("scripts/inspect_checkpoint.py", message)
+        self.assertIn("docs/checkpoint_support.md", message)
+
 
 if __name__ == "__main__":
     unittest.main()

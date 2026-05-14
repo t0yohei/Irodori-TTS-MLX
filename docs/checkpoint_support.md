@@ -41,13 +41,17 @@ For unsupported families, documentation should say exactly that: inspection may 
 
 ## Redistribution and licensing caveats
 
-This repository does **not** redistribute Irodori-TTS checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain checkpoints from their original upstream sources and follow the upstream repository/model-card terms.
+This repository does **not** redistribute Irodori-TTS checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, reference audio, or generated audio artifacts. Users must obtain checkpoints from their original upstream sources and follow the upstream repository/model-card terms.
 
 Converted weights are derived artifacts from upstream checkpoints. Do not commit them to this repository unless the project license and upstream model terms explicitly allow it.
+
+The repository's own source code and documentation are MIT-licensed, but that license does not extend to upstream or user-supplied artifacts. See [docs/license_and_distribution.md](license_and_distribution.md) for the v0.1 license and distribution policy.
 
 ## Related docs
 
 - [`docs/weight_mapping.md`](weight_mapping.md): observed tensor layouts and family differences.
 - [`docs/caption_condition_support.md`](caption_condition_support.md): VoiceDesign-specific support evidence.
 - [`docs/v3_support.md`](v3_support.md): v3-specific support evidence and predicted-duration behavior.
+- [`docs/v0_1_release_gate.md`](v0_1_release_gate.md): required v0.1 fresh-environment WAV-generation release gate and optional heavier validation.
 - [`docs/dacvae_bridge.md`](dacvae_bridge.md): generation CLI and runtime boundary notes.
+- [`docs/license_and_distribution.md`](license_and_distribution.md): repository license, upstream terms links, and non-redistribution rules.

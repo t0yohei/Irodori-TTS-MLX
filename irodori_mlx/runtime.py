@@ -22,6 +22,9 @@ from .text_normalization import normalize_text
 from .weights import assign_named_weights, load_npz_weights, rf_dit_required_keys
 
 
+QUICKSTART_TROUBLESHOOTING = "See README.md 'If the quickstart fails' and docs/checkpoint_support.md."
+
+
 @dataclass(frozen=True)
 class DACVAEBridgeConfig:
     """Configuration for the v0 PyTorch DACVAE bridge."""
@@ -150,7 +153,20 @@ def load_model_config_json(value: str | Path | None) -> ModelConfig:
         source = str(value)
     if not isinstance(payload, dict):
         raise ValueError(f"Model config JSON must contain an object: {source}")
-    return ModelConfig(**payload)
+    try:
+        return ModelConfig(**payload)
+    except TypeError as exc:
+        raise ValueError(
+            f"Model config JSON contains unsupported keys for irodori_mlx.config.ModelConfig: {source}. "
+            "Use the config object emitted by scripts/inspect_checkpoint.py and keep only ModelConfig fields. "
+            f"{QUICKSTART_TROUBLESHOOTING}"
+        ) from exc
+    except ValueError as exc:
+        raise ValueError(
+            f"Model config JSON is not supported by the MLX runtime: {source}: {exc}. "
+            "Confirm the checkpoint family and config match the converted weights. "
+            f"{QUICKSTART_TROUBLESHOOTING}"
+        ) from exc
 
 
 def patch_latents_drop_tail(latents: mx.array, patch_size: int) -> mx.array:
@@ -171,13 +187,21 @@ def load_mlx_model(config: ModelConfig, weights_path: str | Path) -> TextToLaten
     """Load a converted MLX RF-DiT model from an `.npz` archive."""
 
     model = TextToLatentRFDiT(config)
-    weights = load_npz_weights(weights_path)
-    assign_named_weights(
-        model,
-        weights,
-        required=rf_dit_required_keys(config),
-        strict=True,
-    )
+    try:
+        weights = load_npz_weights(weights_path)
+        assign_named_weights(
+            model,
+            weights,
+            required=rf_dit_required_keys(config),
+            strict=True,
+        )
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(
+            f"Could not load converted MLX weights from {Path(weights_path).expanduser()}: {exc}. "
+            "Most first-run failures here are a weights/config family mismatch. Re-run the Quickstart: "
+            "inspect the checkpoint, derive --model-config-json from metadata.config_json, then convert the "
+            f"same checkpoint to .npz. {QUICKSTART_TROUBLESHOOTING}"
+        ) from exc
     mx.eval(model.parameters())
     return model
 
@@ -203,10 +227,20 @@ class PretrainedTextTokenizer:
             from transformers import AutoTokenizer
         except ImportError as exc:  # pragma: no cover - optional runtime dependency.
             raise RuntimeError(
-                "transformers is required for text tokenization. Install transformers and sentencepiece."
+                "transformers is required for text tokenization. Install the runtime extra with "
+                "`python -m pip install -e \".[runtime]\"` or install transformers and sentencepiece. "
+                f"{QUICKSTART_TROUBLESHOOTING}"
             ) from exc
-        tokenizer = AutoTokenizer.from_pretrained(repo_id, use_fast=True, trust_remote_code=False)
-        return cls(tokenizer, add_bos=add_bos)
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(repo_id, use_fast=True, trust_remote_code=False)
+            return cls(tokenizer, add_bos=add_bos)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not load tokenizer {repo_id!r}: {exc}. "
+                "Check network/cache access and make sure --text-tokenizer-repo / --caption-tokenizer-repo "
+                "matches the checkpoint config. For VoiceDesign checkpoints, the caption tokenizer must also "
+                f"be available. {QUICKSTART_TROUBLESHOOTING}"
+            ) from exc
 
     def encode(self, text: str, *, max_length: int) -> tuple[mx.array, mx.array]:
         token_ids = self.tokenizer.encode(str(text), add_special_tokens=False)
@@ -233,7 +267,10 @@ class PyTorchDACVAEBridge:
         except ImportError as exc:  # pragma: no cover - optional runtime dependency.
             raise RuntimeError(
                 "The PyTorch DACVAE bridge currently reuses upstream irodori_tts.codec.DACVAECodec. "
-                "Install the upstream Irodori-TTS package or add its checkout to PYTHONPATH."
+                "Install the upstream Irodori-TTS package in the active venv, for example "
+                "`python -m pip install -e /path/to/Irodori-TTS`, or add its checkout to PYTHONPATH "
+                "(`PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}`). This repo intentionally still uses "
+                f"upstream for DACVAE encode/decode in v0.1. {QUICKSTART_TROUBLESHOOTING}"
             ) from exc
         load_kwargs = dict(
             repo_id=config.codec_repo,
@@ -484,17 +521,25 @@ class MLXDACVAERuntime:
                 f"DACVAE latent_dim={self.bridge.latent_dim} does not match model latent_dim={config.model_config.latent_dim}."
             )
         text_repo = config.text_tokenizer_repo or config.model_config.text_tokenizer_repo
-        self.tokenizer = tokenizer or PretrainedTextTokenizer.from_pretrained(
-            text_repo,
-            add_bos=bool(config.model_config.text_add_bos),
-        )
+        try:
+            self.tokenizer = tokenizer or PretrainedTextTokenizer.from_pretrained(
+                text_repo,
+                add_bos=bool(config.model_config.text_add_bos),
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(f"Failed to initialize text tokenizer for repo {text_repo!r}: {exc}") from exc
         self.caption_tokenizer = caption_tokenizer
         if config.model_config.use_caption_condition and self.caption_tokenizer is None:
             caption_repo = config.caption_tokenizer_repo or config.model_config.caption_tokenizer_repo_resolved
-            self.caption_tokenizer = PretrainedTextTokenizer.from_pretrained(
-                caption_repo,
-                add_bos=bool(config.model_config.caption_add_bos_resolved),
-            )
+            try:
+                self.caption_tokenizer = PretrainedTextTokenizer.from_pretrained(
+                    caption_repo,
+                    add_bos=bool(config.model_config.caption_add_bos_resolved),
+                )
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    f"Failed to initialize caption tokenizer for repo {caption_repo!r}: {exc}"
+                ) from exc
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         messages: list[str] = []

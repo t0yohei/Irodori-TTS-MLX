@@ -5,19 +5,44 @@
 An unofficial MLX inference port of [Irodori-TTS](https://github.com/Aratako/Irodori-TTS) for Apple Silicon.
 
 > [!IMPORTANT]
-> This project is an early prototype. The shortest supported path is local checkpoint inspection/conversion plus `scripts/generate_wav.py`; model weights, upstream `irodori_tts`, and DACVAE runtime dependencies are not redistributed by this repository.
+> This is an alpha inference prototype, not a polished product. The shortest supported path is local checkpoint inspection/conversion plus `scripts/generate_wav.py`; the MLX RF-DiT path can generate WAV files through the upstream PyTorch DACVAE bridge when you provide compatible local checkpoints and runtime dependencies. Model weights, upstream `irodori_tts`, DACVAE assets, checkpoint redistribution, training, Web UI, and a full MLX DACVAE port are out of scope.
 
-## Project goal
+## Current v0.1 scope
 
-The first practical target is a v0 inference prototype with this boundary:
+`irodori-tts-mlx` currently provides an Apple Silicon-focused path for:
+
+- inspecting supported Irodori-TTS checkpoints without loading all tensor payloads
+- converting supported `.safetensors` checkpoints into MLX-friendly `.npz` RF-DiT weights
+- running MLX text/condition encoders, RF-DiT, and rectified-flow sampling
+- encoding reference audio and decoding generated latents through upstream `irodori_tts` / PyTorch `DACVAECodec`
+- writing generated WAV files with `scripts/generate_wav.py`
+- benchmarking and validating the prototype through local scripts and hosted Apple Silicon workflows
+
+The implementation boundary is still:
 
 > MLX RF-DiT inference + PyTorch DACVAE encode/decode bridge
 
-In other words, the initial implementation should port the Irodori-TTS text/condition encoders, RF-DiT model, and rectified-flow sampler to MLX, while continuing to use the upstream PyTorch DACVAE path for reference audio encoding and waveform decoding.
+This keeps the MLX port focused on the model path most likely to benefit from Apple Silicon while relying on the upstream DACVAE implementation for audio-codec behavior.
 
-This keeps the first milestone focused on the part most likely to benefit from MLX, without taking on a full DACVAE port before the core model path is validated.
+## What works and what does not
 
-## Intended v0 architecture
+Supported for the v0.1 prototype:
+
+- base `Aratako/Irodori-TTS-500M-v2`-style checkpoints
+- `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned checkpoints
+- `Aratako/Irodori-TTS-500M-v3` checkpoints with predicted-duration semantics when `--seconds` is omitted
+- Python **3.11 through 3.14** packaging targets; Python 3.11 remains the benchmark reference environment
+
+Not supported yet:
+
+- training or fine-tuning
+- full MLX DACVAE encode/decode
+- checkpoint or generated-model redistribution
+- GUI / Gradio / hosted demo
+- broad compatibility with every historical or third-party Irodori-TTS checkpoint
+- stable public Python API guarantees
+
+## Architecture
 
 ```text
 text prompt ───────────────┐
@@ -212,29 +237,33 @@ v0.1 support is limited to checkpoint families whose tensor layouts and runtime 
 | v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported | Supported; omit `--seconds` for predicted duration | **Supported** |
 | Other historical, fine-tuned, LoRA, architecture-modified, or renamed Irodori-TTS checkpoints | Any non-matching layout/config | Best-effort metadata inspection only | Unsupported | Unsupported | **Unsupported** |
 
-Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats.
+Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats, and [docs/license_and_distribution.md](docs/license_and_distribution.md) for the repository license and non-redistribution policy.
 
 ## Checkpoint inspection
 
-Use `scripts/inspect_checkpoint.py` to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
+Use the installed `irodori-tts-inspect` command to inspect local or Hugging Face `model.safetensors` checkpoints without loading tensor payloads:
 
 ```bash
-python3 scripts/inspect_checkpoint.py Aratako/Irodori-TTS-500M-v2
-python3 scripts/inspect_checkpoint.py Aratako/Irodori-TTS-500M-v2 --json > checkpoint.json
-python3 scripts/inspect_checkpoint.py /path/to/model.safetensors --all-tensors
+irodori-tts-inspect Aratako/Irodori-TTS-500M-v2
+irodori-tts-inspect Aratako/Irodori-TTS-500M-v2 --json > checkpoint.json
+irodori-tts-inspect /path/to/model.safetensors --all-tensors
 ```
+
+The legacy `python3 scripts/inspect_checkpoint.py ...` path remains supported for repository checkouts.
 
 The script prints metadata/config, tensor names, shapes, dtypes, and parameter totals for weight-converter planning.
 
 ## Weight conversion
 
-Use `scripts/convert_weights.py` to convert a local base v2, v3, or VoiceDesign checkpoint into an MLX-friendly `.npz` archive:
+Use the installed `irodori-tts-convert` command to convert a local base v2, v3, or VoiceDesign checkpoint into an MLX-friendly `.npz` archive:
 
 ```bash
-python3 scripts/convert_weights.py /path/to/model.safetensors /path/to/irodori-tts-500m-v2.npz
-python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run
-python3 scripts/convert_weights.py /path/to/model.safetensors --dry-run --json
+irodori-tts-convert /path/to/model.safetensors /path/to/irodori-tts-500m-v2.npz
+irodori-tts-convert /path/to/model.safetensors --dry-run
+irodori-tts-convert /path/to/model.safetensors --dry-run --json
 ```
+
+The legacy `python3 scripts/convert_weights.py ...` path remains supported for repository checkouts.
 
 The converter now supports the base `Aratako/Irodori-TTS-500M-v2` layout, the `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned layout, and the `Aratako/Irodori-TTS-500M-v3` duration-predictor layout. It validates the documented key mapping, shape expectations, float32 dtypes, and family-specific config assumptions before writing output. Use `--dry-run --json` to confirm the detected `checkpoint_family` before exporting large checkpoints. V3 is now supported through conversion plus the MLX bridge runtime, with duration semantics documented in [docs/dacvae_bridge.md](docs/dacvae_bridge.md) and reproducible validation coverage documented in [docs/v3_support.md](docs/v3_support.md). See [docs/caption_condition_support.md](docs/caption_condition_support.md) for the separate VoiceDesign support matrix.
 
@@ -242,7 +271,9 @@ The initial converter accepts only local `.safetensors` checkpoints. Converting 
 
 For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. That lightweight automation validates inspect + converter family detection without forcing full `.npz` export on every run.
 
-For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows now target the standard GitHub-hosted Apple Silicon M1 runner (`macos-14`), so public-repository runs stay on the free hosted macOS tier without needing self-hosted infrastructure.
+For the v0.1 release gate, use `scripts/run_v0_1_release_gate.py` or `.github/workflows/v0.1-release-gate.yml`; see [docs/v0_1_release_gate.md](docs/v0_1_release_gate.md). The required gate downloads the public v3 checkpoint, inspects it, converts it, runs no-reference predicted-duration WAV generation, validates JSON metadata, and preserves artifacts. VoiceDesign caption-conditioned generation is available as an optional heavier gate via `--include-optional-voicedesign` / the workflow input.
+
+For focused full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows now target the standard GitHub-hosted Apple Silicon M1 runner (`macos-14`), so public-repository runs stay on the free hosted macOS tier without needing self-hosted infrastructure.
 
 ## Benchmarking
 
@@ -290,21 +321,15 @@ The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available fo
 
 `irodori_mlx.sampling.sample_euler_rf_cfg` adds the first RF Euler sampling loop on top of the MLX model path. It can generate patched latent sequences with fixed-seed noise, upstream-style timesteps, optional context K/V cache, and text/speaker/caption CFG modes.
 
-`scripts/generate_wav.py` and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: normalize and tokenize prompt text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets, user-facing `--preset fast|balanced|quality` step-count shortcuts, `--requests-json` persistent batch mode for repeated local generations that reuse one initialized runtime, plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can now use the documented conversion + runtime path as long as their metadata and tensor layout match the inspected VoiceDesign family, and the public `Aratako/Irodori-TTS-500M-v3` path is supported with predicted-duration semantics when `--seconds` is omitted. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, preset mappings, persistent batch examples, and boundary notes, [docs/text_preprocessing.md](docs/text_preprocessing.md) for the v0.1 normalization/tokenization contract, [docs/caption_condition_support.md](docs/caption_condition_support.md) for the VoiceDesign support statement, and [docs/v3_support.md](docs/v3_support.md) for the v3 validation story.
+`irodori-tts-generate` (also available as the legacy `python scripts/generate_wav.py` path) and `irodori_mlx.runtime.MLXDACVAERuntime` provide the first prototype WAV-generation path: normalize and tokenize prompt text, encode reference audio with upstream/PyTorch DACVAE, sample generated latents with MLX RF-DiT, decode them back to waveform with PyTorch DACVAE, and save a WAV. The CLI now supports repeatable `--config-json` presets, user-facing `--preset fast|balanced|quality` step-count shortcuts, `--requests-json` persistent batch mode for repeated local generations that reuse one initialized runtime, plus `--json` / `--metadata-json` output for automation-friendly metadata and timings. Caption-conditioned checkpoints can now use the documented conversion + runtime path as long as their metadata and tensor layout match the inspected VoiceDesign family, and the public `Aratako/Irodori-TTS-500M-v3` path is supported with predicted-duration semantics when `--seconds` is omitted. See [docs/dacvae_bridge.md](docs/dacvae_bridge.md) for dependencies, invocation patterns, preset mappings, persistent batch examples, and boundary notes, [docs/text_preprocessing.md](docs/text_preprocessing.md) for the v0.1 normalization/tokenization contract, [docs/caption_condition_support.md](docs/caption_condition_support.md) for the VoiceDesign support statement, and [docs/v3_support.md](docs/v3_support.md) for the v3 validation story.
 
 ## Public API direction
 
-The first user-facing interface should be CLI-first, with a small Python API underneath it.
+The project is currently CLI-first. `scripts/generate_wav.py`, `scripts/convert_weights.py`, `scripts/inspect_checkpoint.py`, and `scripts/benchmark.py` are the supported user entry points for local experimentation. Internal Python modules are available for the CLI and tests, but no stable public Python API is promised before v0.1 is finalized.
 
-Planned shape:
+## Non-goals for v0.1
 
-- CLI: simple generation commands for local experimentation
-- Python API: reusable loading and generation functions used by the CLI
-- No stable API guarantee until the first end-to-end inference prototype works
-
-## Non-goals for v0
-
-The initial prototype should not include:
+The v0.1 prototype does not include:
 
 - training or fine-tuning support
 - a full MLX DACVAE port
@@ -315,6 +340,7 @@ The initial prototype should not include:
 ## Related resources
 
 - Upstream Irodori-TTS: <https://github.com/Aratako/Irodori-TTS>
+- License and distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
 - MLX: <https://github.com/ml-explore/mlx>
 - Irodori-TTS 500M v2 model card: <https://huggingface.co/Aratako/Irodori-TTS-500M-v2>
 - Irodori-TTS 500M v2 VoiceDesign model card: <https://huggingface.co/Aratako/Irodori-TTS-500M-v2-VoiceDesign>
@@ -342,4 +368,6 @@ Current status by milestone:
 
 ## License notes
 
-The project license has not been finalized yet. Upstream code and model weights may have different license terms. Check the upstream repository and model cards before reusing or redistributing any derived artifacts.
+This repository's own source code and documentation are licensed under the [MIT License](LICENSE), unless a file explicitly states otherwise.
+
+The MIT License does not cover upstream code, checkpoint files, DACVAE weights, tokenizer assets, reference audio, converted `.npz` archives, generated audio, or other artifacts that are not redistributed here. This repository does **not** redistribute checkpoints or derived model/audio artifacts for v0.1; users must obtain upstream artifacts themselves and follow the relevant upstream repository and model-card terms. See [docs/license_and_distribution.md](docs/license_and_distribution.md) for the full policy.
