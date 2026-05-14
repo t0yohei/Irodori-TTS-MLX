@@ -57,9 +57,9 @@ This means the RF-DiT module graph and converter path now line up for the inspec
 
 ## Known gaps
 
-### 1. Hosted full generation depends on paid Apple Silicon runner availability
+### 1. Hosted full generation depends on standard Apple Silicon runner availability
 
-The repository now has a GitHub-hosted Apple Silicon workflow for full VoiceDesign generation, but it uses macOS larger runners. That means coverage no longer requires self-hosted infrastructure, yet it still depends on billing, queueing, and runner availability.
+The repository now has a GitHub-hosted Apple Silicon workflow for full VoiceDesign generation, and it uses the standard `macos-14` M1 runner. That means public-repository coverage no longer requires self-hosted infrastructure or paid larger runners, though it still depends on GitHub-hosted queueing and the smaller standard-runner resource envelope.
 
 ### 2. Manual end-to-end VoiceDesign recipe still needs a real checkpoint
 
@@ -82,7 +82,7 @@ This document is only about the inspected VoiceDesign / caption-conditioned fami
 
 The next concrete functional expansion should be:
 
-1. monitor the hosted Apple Silicon workflow runtime, cost, and artifact usefulness over a few runs
+1. monitor the hosted Apple Silicon workflow runtime and artifact usefulness over a few runs
 2. decide whether broader caption-conditioned families beyond the inspected VoiceDesign layout should be supported explicitly
 3. decide whether any of the hosted-generation setup should be shared with future benchmark or parity workflows
 
@@ -109,8 +109,8 @@ Check the `checkpoint_family` field in the dry-run JSON/text report before runni
 For automated regression coverage, the repository now includes two workflows:
 
 - `.github/workflows/voicedesign-real-checkpoint.yml` downloads the public VoiceDesign checkpoint on a schedule or manual dispatch and runs `scripts/run_voicedesign_integration.py` for inspect + converter validation.
-- `.github/workflows/voicedesign-hosted-generation.yml` runs `scripts/run_voicedesign_generation_ci.py` on a GitHub-hosted Apple Silicon larger runner and executes the full `generate_wav.py --caption ...` path.
+- `.github/workflows/voicedesign-hosted-generation.yml` runs `scripts/run_voicedesign_generation_ci.py` on the standard GitHub-hosted Apple Silicon `macos-14` runner and executes the full `generate_wav.py --caption ...` path.
 
 ## Current user-facing support statement
 
-> VoiceDesign / caption-conditioned checkpoints are supported for the inspected `Aratako/Irodori-TTS-500M-v2-VoiceDesign` family through conversion, MLX weight loading, and runtime generation. The repository now has real checkpoint-backed hosted automation for both inspect + converter validation and the full `generate_wav.py --caption ...` path; the main remaining caveat is that the full hosted run depends on paid Apple Silicon larger-runner availability.
+> VoiceDesign / caption-conditioned checkpoints are supported for the inspected `Aratako/Irodori-TTS-500M-v2-VoiceDesign` family through conversion, MLX weight loading, and runtime generation. The repository now has real checkpoint-backed hosted automation for both inspect + converter validation and the full `generate_wav.py --caption ...` path on the standard GitHub-hosted `macos-14` Apple Silicon runner.

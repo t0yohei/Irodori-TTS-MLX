@@ -50,16 +50,17 @@ For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation C
 
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
-For the packaged install story, supported Python version, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
+For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
 
 ## Supported Python and install targets
 
-The current packaged environment targets **Python 3.11**.
+The current packaged environment supports **Python 3.11 through 3.14**.
+Python 3.11 remains the reference environment for the published benchmark notes and examples in this repository.
 
 Install this repo in editable mode depending on your use case:
 
 ```bash
-python3.11 -m venv .venv
+python3.11 -m venv .venv  # or: python3.12/3.13/3.14 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
@@ -98,11 +99,11 @@ The initial converter accepts only local `.safetensors` checkpoints. Converting 
 
 For standing integration coverage against the real public VoiceDesign checkpoint, use `scripts/run_voicedesign_integration.py` or the scheduled/manual GitHub Actions workflow in `.github/workflows/voicedesign-real-checkpoint.yml`. That lightweight automation validates inspect + converter family detection without forcing full `.npz` export on every run.
 
-For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows target GitHub-hosted Apple Silicon macOS larger runners (`macos-latest-xlarge`), so they avoid self-hosted infrastructure but should be scheduled conservatively because larger-runner billing and availability still apply.
+For full end-to-end hosted coverage of `scripts/generate_wav.py --caption ...`, use `scripts/run_voicedesign_generation_ci.py` or `.github/workflows/voicedesign-hosted-generation.yml`. For equivalent v3 coverage on the predicted-duration path, use `scripts/run_v3_generation_ci.py` or `.github/workflows/v3-hosted-generation.yml`. These workflows now target the standard GitHub-hosted Apple Silicon M1 runner (`macos-14`), so public-repository runs stay on the free hosted macOS tier without needing self-hosted infrastructure.
 
 ## Benchmarking
 
-Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. For the recommended Python 3.11 benchmark environment, install `.[bench]` as described in [docs/packaging.md](docs/packaging.md).
+Use `scripts/benchmark.py` to orchestrate reproducible upstream PyTorch and MLX bridge timing runs, collect `/usr/bin/time -l` memory observations, repeat runs with warm/cold labeling, and emit Markdown + JSON summaries. Python 3.11 through 3.14 are supported for packaging, while Python 3.11 remains the recommended benchmark reference environment described in [docs/packaging.md](docs/packaging.md).
 
 
 ```bash

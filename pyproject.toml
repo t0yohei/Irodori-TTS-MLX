@@ -7,7 +7,7 @@ name = "irodori-tts-mlx"
 version = "0.0.0"
 description = "Apple Silicon-focused MLX inference prototype for Irodori-TTS"
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11,<3.15"
 license = { text = "License not finalized; see README.md" }
 authors = [{ name = "t0yohei" }]
 keywords = ["mlx", "apple-silicon", "tts", "audio", "machine-learning"]
@@ -18,6 +18,9 @@ classifiers = [
   "Operating System :: MacOS :: MacOS X",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]

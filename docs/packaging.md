@@ -6,11 +6,14 @@ The repository now exposes a project-level `pyproject.toml` so contributors can 
 
 ## Supported Python
 
-For now, the supported Python version for packaging, runtime, and benchmark reproduction is:
+The currently supported Python versions for packaging and editable installs are:
 
 - **Python 3.11**
+- **Python 3.12**
+- **Python 3.13**
+- **Python 3.14**
 
-This matches the environment used for the current Apple Silicon benchmark reports and keeps the MLX + PyTorch bridge setup predictable while the packaging surface is still stabilizing.
+Python 3.11 remains the reference environment for the current Apple Silicon benchmark reports, so benchmark reproduction examples below continue to use 3.11 even though the packaging surface now supports 3.12 through 3.14 as well.
 
 ## Dependency groups
 
@@ -23,10 +26,10 @@ The project defines these install targets:
 
 ## Quick start
 
-### 1. Create a Python 3.11 virtual environment
+### 1. Create a supported Python virtual environment
 
 ```bash
-python3.11 -m venv .venv
+python3.11 -m venv .venv  # or: python3.12/3.13/3.14 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 ```
@@ -84,7 +87,7 @@ The local benchmark harness already supports this pattern through `--upstream-ro
 For the current bridge prototype, the minimal practical setup is:
 
 ```bash
-python3.11 -m venv .venv
+python3.11 -m venv .venv  # or: python3.12/3.13/3.14 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[runtime]"
@@ -106,7 +109,7 @@ python scripts/generate_wav.py \
 
 ## Reproducible benchmark setup
 
-A benchmark-oriented environment should include the benchmark extra plus an accessible upstream checkout:
+A benchmark-oriented environment should include the benchmark extra plus an accessible upstream checkout. The example keeps Python 3.11 because that is the benchmark reference environment used by the current reports, even though packaging support now extends through Python 3.14.
 
 ```bash
 python3.11 -m venv .venv-bench311
@@ -139,5 +142,6 @@ They continue to work with the packaged dependency layout because the repo is in
 ## Current limitations
 
 - The packaging surface is still prototype-grade; there is no stable API guarantee yet.
-- The supported Python version is intentionally narrow until more runtime combinations are validated.
+- Python 3.11 through 3.14 are the currently supported packaged environments; newer Python versions should stay unsupported until they are validated.
+- The repository's packaging smoke test workflow exercises editable-install resolution and metadata checks across Python 3.11, 3.12, 3.13, and 3.14 on GitHub Actions macOS runners.
 - Benchmark reproducibility still depends on access to upstream `irodori_tts`, model weights, and Apple Silicon hardware.
