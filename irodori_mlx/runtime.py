@@ -234,7 +234,7 @@ class PyTorchDACVAEBridge:
                 "The PyTorch DACVAE bridge currently reuses upstream irodori_tts.codec.DACVAECodec. "
                 "Install the upstream Irodori-TTS package or add its checkout to PYTHONPATH."
             ) from exc
-        self.codec = DACVAECodec.load(
+        load_kwargs = dict(
             repo_id=config.codec_repo,
             device=config.codec_device,
             deterministic_encode=config.deterministic_encode,
@@ -242,6 +242,13 @@ class PyTorchDACVAEBridge:
             enable_watermark=config.enable_watermark,
             normalize_db=config.normalize_db,
         )
+        try:
+            self.codec = DACVAECodec.load(**load_kwargs)
+        except TypeError as exc:
+            if "enable_watermark" not in str(exc):
+                raise
+            load_kwargs.pop("enable_watermark", None)
+            self.codec = DACVAECodec.load(**load_kwargs)
         self.sample_rate = int(self.codec.sample_rate)
         self.latent_dim = int(self.codec.latent_dim)
         self.hop_length = int(getattr(self.codec.model, "hop_length"))

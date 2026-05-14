@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import call, patch
 
 import numpy as np
@@ -20,6 +21,7 @@ try:
         GenerationRequest,
         MLXDACVAERuntime,
         MLXRuntimeConfig,
+        PyTorchDACVAEBridge,
         SubprocessDACVAEBridge,
         load_model_config_json,
         mlx_to_torch_latents,
@@ -376,6 +378,36 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
         self.assertIs(runtime.bridge, fake_bridge)
         patched.assert_called_once()
+
+    @require_mlx
+    def test_pytorch_bridge_retries_without_enable_watermark_for_legacy_upstream_codec(self):
+        calls = []
+
+        class LegacyCodecLoader:
+            @classmethod
+            def load(cls, **kwargs):
+                calls.append(dict(kwargs))
+                if "enable_watermark" in kwargs:
+                    raise TypeError("DACVAECodec.load() got an unexpected keyword argument 'enable_watermark'")
+                return SimpleNamespace(
+                    sample_rate=16000,
+                    latent_dim=4,
+                    model=SimpleNamespace(hop_length=320),
+                )
+
+        fake_module = ModuleType("irodori_tts.codec")
+        fake_module.DACVAECodec = LegacyCodecLoader
+        with patch("irodori_mlx.runtime._require_torch", return_value=SimpleNamespace()), patch.dict(
+            sys.modules, {"irodori_tts.codec": fake_module}
+        ):
+            bridge = PyTorchDACVAEBridge(config=DACVAEBridgeConfig(normalize_db=None))
+
+        self.assertEqual(bridge.sample_rate, 16000)
+        self.assertEqual(bridge.latent_dim, 4)
+        self.assertEqual(bridge.hop_length, 320)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("enable_watermark", calls[0])
+        self.assertNotIn("enable_watermark", calls[1])
 
     @require_mlx
     def test_subprocess_bridge_normalizes_relative_paths_before_spawning_worker(self):

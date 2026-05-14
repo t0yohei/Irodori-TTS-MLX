@@ -15,6 +15,7 @@ We now have both:
 - the measured MLX bridge report from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md](benchmark-reports/2026-05-12-apple-silicon-mlx-bridge.md)
 - the warm-cache / codec-device / memory follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md](benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md)
 - the reference-path memory mitigation follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md](benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md)
+- the local Apple Silicon `num_steps` preset sweep for v3 + VoiceDesign from [docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md)
 
 Current read:
 
@@ -27,6 +28,12 @@ Current read:
 - an experimental helper-process DACVAE boundary did **not** materially improve memory beyond that cleanup, and it made latency much worse
 
 In short: the bridge architecture is already good enough to justify continued optimization on the MLX model/sampler path first, while keeping DACVAE porting as a later optimization if memory or remaining decode cost becomes dominant.
+
+For day-to-day local generation defaults, the later `num_steps` sweep now suggests a more specific operating point:
+
+- `--num-steps 12` for fastest acceptable local iteration
+- `--num-steps 24` for balanced local usage
+- keep `--num-steps 40` as the higher-quality comparison/default anchor when latency matters less
 
 ## Existing upstream baseline numbers
 
@@ -261,6 +268,41 @@ python3 scripts/benchmark.py \
 ```
 
 `--seconds-sweep` is MLX-only because the upstream CLI does not currently expose an output-length flag.
+
+### Predicted-duration and caption-conditioned MLX cases
+
+Two extra options are useful when the benchmark target is not the base v2 speaker-conditioned path:
+
+- `--omit-seconds`: do not pass `--seconds` to `scripts/generate_wav.py`, so v3 checkpoints can use predicted duration
+- `--caption "..."`: add caption/style conditioning for VoiceDesign runs
+- `--case-label NAME`: prefix case names/log slugs so separate runs like `v3` vs `voicedesign-caption` stay distinguishable in reports
+
+Example: v3 predicted-duration sweep
+
+```bash
+python3 scripts/benchmark.py \
+  --mode mlx \
+  --weights /path/to/irodori-v3.npz \
+  --model-config-json /path/to/v3-model-config.json \
+  --upstream-root /path/to/Irodori-TTS \
+  --case-label v3 \
+  --omit-seconds \
+  --num-steps-sweep 8,12,16,24,40
+```
+
+Example: VoiceDesign caption-conditioned sweep
+
+```bash
+python3 scripts/benchmark.py \
+  --mode mlx \
+  --weights /path/to/irodori-voicedesign.npz \
+  --model-config-json /path/to/voicedesign-model-config.json \
+  --upstream-root /path/to/Irodori-TTS \
+  --case-label voicedesign-caption \
+  --caption "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。" \
+  --seconds 2 \
+  --num-steps-sweep 8,12,16,24,40
+```
 
 ### Combined run
 
