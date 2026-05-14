@@ -5,19 +5,44 @@
 An unofficial MLX inference port of [Irodori-TTS](https://github.com/Aratako/Irodori-TTS) for Apple Silicon.
 
 > [!IMPORTANT]
-> This project is in the planning and early prototype stage. It does not provide usable inference code yet.
+> This is an alpha inference prototype, not a polished product. The MLX RF-DiT path can generate WAV files through the upstream PyTorch DACVAE bridge when you provide compatible local checkpoints and runtime dependencies, but checkpoint redistribution, training, Web UI, and a full MLX DACVAE port are out of scope.
 
-## Project goal
+## Current v0.1 scope
 
-The first practical target is a v0 inference prototype with this boundary:
+`irodori-tts-mlx` currently provides an Apple Silicon-focused path for:
+
+- inspecting supported Irodori-TTS checkpoints without loading all tensor payloads
+- converting supported `.safetensors` checkpoints into MLX-friendly `.npz` RF-DiT weights
+- running MLX text/condition encoders, RF-DiT, and rectified-flow sampling
+- encoding reference audio and decoding generated latents through upstream `irodori_tts` / PyTorch `DACVAECodec`
+- writing generated WAV files with `scripts/generate_wav.py`
+- benchmarking and validating the prototype through local scripts and hosted Apple Silicon workflows
+
+The implementation boundary is still:
 
 > MLX RF-DiT inference + PyTorch DACVAE encode/decode bridge
 
-In other words, the initial implementation should port the Irodori-TTS text/condition encoders, RF-DiT model, and rectified-flow sampler to MLX, while continuing to use the upstream PyTorch DACVAE path for reference audio encoding and waveform decoding.
+This keeps the MLX port focused on the model path most likely to benefit from Apple Silicon while relying on the upstream DACVAE implementation for audio-codec behavior.
 
-This keeps the first milestone focused on the part most likely to benefit from MLX, without taking on a full DACVAE port before the core model path is validated.
+## What works and what does not
 
-## Intended v0 architecture
+Supported for the v0.1 prototype:
+
+- base `Aratako/Irodori-TTS-500M-v2`-style checkpoints
+- `Aratako/Irodori-TTS-500M-v2-VoiceDesign` caption-conditioned checkpoints
+- `Aratako/Irodori-TTS-500M-v3` checkpoints with predicted-duration semantics when `--seconds` is omitted
+- Python **3.11 through 3.14** packaging targets; Python 3.11 remains the benchmark reference environment
+
+Not supported yet:
+
+- training or fine-tuning
+- full MLX DACVAE encode/decode
+- checkpoint or generated-model redistribution
+- GUI / Gradio / hosted demo
+- broad compatibility with every historical or third-party Irodori-TTS checkpoint
+- stable public Python API guarantees
+
+## Architecture
 
 ```text
 text prompt ───────────────┐
@@ -72,6 +97,32 @@ python -m pip install -e ".[dev]"      # local contributor environment
 ```
 
 The bridge runtime still depends on upstream `irodori_tts` for `DACVAECodec`, so either install the upstream checkout into the same venv or expose it on `PYTHONPATH`. The full setup guide lives in [docs/packaging.md](docs/packaging.md).
+
+## Quickstart: checkpoint to WAV
+
+Install the package with both runtime and converter dependencies, then make upstream `irodori_tts` available in the same environment:
+
+```bash
+python3.11 -m venv .venv  # or: python3.12/3.13/3.14 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[runtime,bench]"
+python -m pip install -e /path/to/Irodori-TTS  # or set PYTHONPATH=/path/to/Irodori-TTS
+```
+
+Convert a compatible local checkpoint and generate a WAV:
+
+```bash
+python3 scripts/convert_weights.py /path/to/model.safetensors /path/to/irodori-tts.npz
+python3 scripts/generate_wav.py \
+  --weights /path/to/irodori-tts.npz \
+  --text "こんにちは、いろどりです。" \
+  --reference-wav /path/to/reference.wav \
+  --output out.wav \
+  --preset balanced
+```
+
+For VoiceDesign checkpoints, add both the matching caption-enabled `--model-config-json` and `--caption "..."` as described in [docs/caption_condition_support.md](docs/caption_condition_support.md). For v3 checkpoints, pass the matching v3 `--model-config-json`, see [docs/v3_support.md](docs/v3_support.md), and omit `--seconds` to use predicted duration. If you only want to validate converter family detection before exporting large tensors, use `scripts/convert_weights.py ... --dry-run --json`.
 
 ## README split
 
@@ -161,17 +212,11 @@ The first `irodori_mlx.model.TextToLatentRFDiT` forward path is now available fo
 
 ## Public API direction
 
-The first user-facing interface should be CLI-first, with a small Python API underneath it.
+The project is currently CLI-first. `scripts/generate_wav.py`, `scripts/convert_weights.py`, `scripts/inspect_checkpoint.py`, and `scripts/benchmark.py` are the supported user entry points for local experimentation. Internal Python modules are available for the CLI and tests, but no stable public Python API is promised before v0.1 is finalized.
 
-Planned shape:
+## Non-goals for v0.1
 
-- CLI: simple generation commands for local experimentation
-- Python API: reusable loading and generation functions used by the CLI
-- No stable API guarantee until the first end-to-end inference prototype works
-
-## Non-goals for v0
-
-The initial prototype should not include:
+The v0.1 prototype does not include:
 
 - training or fine-tuning support
 - a full MLX DACVAE port
