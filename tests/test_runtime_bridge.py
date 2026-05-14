@@ -173,11 +173,16 @@ def tiny_config() -> ModelConfig:
 
 class RuntimeBridgeTests(unittest.TestCase):
     @require_mlx
-    def test_normalize_text_collapses_long_ascii_ellipsis_after_nfkc(self):
-        self.assertEqual(normalize_text("待って........."), "待って……")
-        self.assertEqual(normalize_text("待って......."), "待って……")
-        self.assertEqual(normalize_text("待って...."), "待って…")
+    def test_normalize_text_matches_upstream_ascii_ellipsis_after_nfkc(self):
+        self.assertEqual(normalize_text("待って........."), "待って………")
+        self.assertEqual(normalize_text("待って......."), "待って…….")
+        self.assertEqual(normalize_text("待って...."), "待って….")
         self.assertEqual(normalize_text("１２３円です..."), "123円です…")
+
+    @require_mlx
+    def test_normalize_text_preserves_upstream_ascii_space_and_bracket_cleanup(self):
+        self.assertEqual(normalize_text("今日は いい 天気 です"), "今日はいい天気です")
+        self.assertEqual(normalize_text("〖今日は　いい 天気 です〗"), "今日はいい天気です")
 
     @require_mlx
     def test_pretrained_text_tokenizer_matches_upstream_batch_semantics_for_japanese_inputs(self):

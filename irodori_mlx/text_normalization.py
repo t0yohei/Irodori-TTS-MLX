@@ -11,6 +11,7 @@ SIMPLE_REPLACE_MAP: dict[str, str] = {
     "\t": "",
     "[n]": "",
     r"\[n\]": "",
+    " ": "",
     "　": "",
     "？": "?",
     "！": "!",
@@ -31,7 +32,7 @@ REGEX_REPLACE_MAP: dict[re.Pattern[str], str] = {
 def strip_outer_brackets(text: str) -> str:
     """Remove one or more bracket pairs only when they enclose the full string."""
 
-    pairs = {"「": "」", "『": "』", "（": "）", "【": "】", "(": ")"}
+    pairs = {"「": "」", "『": "』", "（": "）", "【": "】", "〖": "〗", "(": ")"}
 
     while True:
         if len(text) < 2:
@@ -75,6 +76,7 @@ def normalize_text(text: str) -> str:
 
     text = strip_outer_brackets(text)
     text = unicodedata.normalize("NFKC", text)
-    text = re.sub(r"\.{3,}", lambda match: "……" if len(match.group(0)) >= 6 else "…", text)
+    text = text.replace("...", "…")
     text = text.replace("..", "…")
-    return re.sub(r"…{3,}", "……", text)
+
+    return text

@@ -18,12 +18,12 @@ The repository still does **not** own upstream checkpoint assets, tokenizer asse
 
 Prompt `--text` is normalized before tokenization and before duration-feature extraction. The policy mirrors upstream `irodori_tts.text_normalization.normalize_text`:
 
-- remove tabs, `[n]`, escaped `\[n\]`, full-width spaces, and a small set of decorative symbols;
+- remove tabs, `[n]`, escaped `\[n\]`, ASCII/full-width spaces, and a small set of decorative symbols;
 - map Japanese full-width question/exclamation marks to ASCII `?` / `!`;
 - map `♥`, `●`, `◯`, and `〇` to their upstream canonical forms;
 - strip one or more outer bracket pairs only when they wrap the whole text;
 - apply Unicode NFKC normalization;
-- collapse ASCII dot ellipses to `…` and long `…` runs to `……`.
+- replace ASCII dot runs with the same sequential `...` / `..` substitutions used upstream.
 
 If the prompt becomes empty after normalization and trimming, generation fails early instead of silently producing an unconditional text path.
 
@@ -32,6 +32,7 @@ Representative examples:
 | Input | Runtime prompt |
 | --- | --- |
 | `（今日は　いい天気ですね！）` | `今日はいい天気ですね!` |
+| `〖今日は いい 天気ですね〗` | `今日はいい天気ですね` |
 | `１２３円です...` | `123円です…` |
 | `あ～～～！` | `あーーー!` |
 | `[n]\t　` | rejected as empty |
