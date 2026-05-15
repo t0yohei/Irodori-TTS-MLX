@@ -295,11 +295,35 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     )
     parser.add_argument("--config-json", help="Optional inline JSON object or path with common generation/runtime defaults.")
     parser.add_argument("--requests-json", default=config.get("requests_json"), help="Optional inline JSON array or path with repeated generation requests. Reuses one initialized runtime.")
-    weights_group = parser.add_mutually_exclusive_group(required=not any(key in config for key in ("weights", "weights_dir", "weights_repo")))
-    weights_group.add_argument("--weights", default=config.get("weights"), help="Converted MLX .npz RF-DiT weights. Keeps the v0.1 local-conversion fallback path.")
-    weights_group.add_argument("--weights-dir", default=config.get("weights_dir"), help="Local converted weights layout directory containing irodori_mlx_manifest.json.")
-    weights_group.add_argument("--weights-repo", default=config.get("weights_repo"), help="Hugging Face repo id containing the hosted converted weights layout.")
-    parser.add_argument("--weights-revision", default=config.get("weights_revision"), help="Optional Hugging Face revision for --weights-repo.")
+    weights_group = parser.add_mutually_exclusive_group(required=not any(config.get(key) for key in ("weights", "weights_dir", "weights_repo")))
+    weights_group.add_argument(
+        "--weights",
+        default=config.get("weights"),
+        help=(
+            "Converted local MLX .npz RF-DiT weights. This direct path remains the local-conversion "
+            "fallback when a hosted/pre-converted layout is unavailable."
+        ),
+    )
+    weights_group.add_argument(
+        "--weights-dir",
+        default=config.get("weights_dir"),
+        help=(
+            "Local directory or archive using the hosted pre-converted weights layout "
+            "(irodori_mlx_manifest.json, model_config.json, weights.npz, metadata)."
+        ),
+    )
+    weights_group.add_argument(
+        "--weights-repo",
+        "--model",
+        dest="weights_repo",
+        default=config.get("weights_repo"),
+        help=(
+            "Hugging Face repo id with a pre-converted MLX weights layout, for example "
+            "t0yohei/irodori-tts-mlx-v3-500m. Alias: --model. If resolution fails, "
+            "use --weights with a locally converted .npz fallback."
+        ),
+    )
+    parser.add_argument("--weights-revision", default=config.get("weights_revision"), help="Optional Hugging Face revision for --weights-repo/--model.")
     parser.add_argument("--output", "--output-wav", dest="output", default=config.get("output"), help="Output WAV path for one-shot mode, or a default for batch requests.")
     parser.add_argument("--text", default=config.get("text"), help="Text prompt for one-shot mode, or a default for batch requests.")
     parser.add_argument(
@@ -417,7 +441,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     explicit_weight_sources = {
         name
-        for option, name in (("--weights", "weights"), ("--weights-dir", "weights_dir"), ("--weights-repo", "weights_repo"))
+        for option, name in (
+            ("--weights", "weights"),
+            ("--weights-dir", "weights_dir"),
+            ("--weights-repo", "weights_repo"),
+            ("--model", "weights_repo"),
+        )
         if _has_cli_override(argv, option)
     }
     if explicit_weight_sources:
@@ -440,13 +469,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
-    weight_sources = [args.weights, args.weights_dir, args.weights_repo]
-    if not any(value is not None and str(value).strip() for value in weight_sources):
-        parser.error("choose one of --weights, --weights-dir, or --weights-repo")
-    if sum(1 for value in weight_sources if value is not None and str(value).strip()) > 1:
-        parser.error("choose only one of --weights, --weights-dir, or --weights-repo")
+    selected_weights = [value for value in (args.weights, args.weights_dir, args.weights_repo) if value is not None and str(value).strip()]
+    if not selected_weights:
+        parser.error("choose one of --weights, --weights-dir, or --weights-repo/--model")
+    if len(selected_weights) > 1:
+        parser.error("choose only one of --weights, --weights-dir, or --weights-repo/--model")
     if args.weights_revision and not args.weights_repo:
-        parser.error("--weights-revision requires --weights-repo")
+        parser.error("--weights-revision requires --weights-repo/--model")
+    args.model_config_json_cli_override = _has_cli_override(argv, "--model-config-json")
     if (args.weights_dir or args.weights_repo) and args.model_config_json:
         parser.error("--model-config-json is loaded from --weights-dir/--weights-repo layouts; use --weights for explicit .npz fallback")
     if not args.requests_json:
@@ -466,6 +496,48 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--caption-max-length must be > 0 when provided")
     if args.max_reference_seconds <= 0:
         parser.error("--max-reference-seconds must be > 0")
+    return args
+
+
+def _download_weights_repo_snapshot(repo_id: str, *, revision: str | None = None):
+    from irodori_mlx.hosted_weights import snapshot_weights_repo
+
+    return snapshot_weights_repo(repo_id, revision=revision)
+
+
+def resolve_weights_layout_source(
+    *, weights_dir: str | Path | None = None, weights_repo: str | None = None, revision: str | None = None
+):
+    from irodori_mlx.hosted_weights import validate_weights_layout
+
+    if weights_dir and weights_repo:
+        raise ValueError("choose either weights_dir or weights_repo, not both")
+    if weights_dir:
+        return validate_weights_layout(weights_dir, source=str(weights_dir), source_kind="local")
+    if weights_repo:
+        snapshot = _download_weights_repo_snapshot(str(weights_repo), revision=revision)
+        source = str(weights_repo) if revision is None else f"{weights_repo}@{revision}"
+        try:
+            return validate_weights_layout(snapshot, source=source, source_kind="repo")
+        except ValueError as exc:
+            raise ValueError(f"{exc}. Use --weights with a locally converted .npz fallback instead.") from exc
+    return None
+
+
+def resolve_preconverted_weights_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Compatibility adapter for the pre-v0.2 generate_wav tests/docs path."""
+
+    layout = resolve_weights_layout_source(
+        weights_dir=args.weights_dir,
+        weights_repo=args.weights_repo,
+        revision=getattr(args, "weights_revision", None),
+    )
+    if layout is None:
+        return args
+    args._resolved_weights_layout = layout
+    args.weights = str(layout.weights_path)
+    if not getattr(args, "model_config_json_cli_override", False):
+        args.model_config_json = str(layout.model_config_path)
     return args
 
 

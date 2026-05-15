@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 from .config import ModelConfig
-from .runtime import load_model_config_json
 
 MANIFEST_NAME = "irodori_mlx_manifest.json"
 REQUIRED_MANIFEST_FILES = {
@@ -67,6 +66,20 @@ def _read_json_object(path: Path, *, label: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HostedWeightsError(f"{label} must contain a JSON object: {path}")
     return payload
+
+
+def _load_model_config_json(path: Path) -> ModelConfig:
+    """Load ModelConfig without importing the MLX runtime module."""
+
+    payload = _read_json_object(path, label="model_config.json")
+    try:
+        return ModelConfig(**payload)
+    except TypeError as exc:
+        raise HostedWeightsError(
+            "model_config.json contains unsupported keys for irodori_mlx.config.ModelConfig"
+        ) from exc
+    except ValueError as exc:
+        raise HostedWeightsError(f"model_config.json is not supported by the MLX runtime: {exc}") from exc
 
 
 def _require_mapping(payload: dict[str, Any], key: str, *, label: str) -> dict[str, Any]:
@@ -249,7 +262,7 @@ def validate_weights_layout(root: str | Path, *, source: str | None = None, sour
     for key, path in paths.items():
         if not path.is_file():
             raise HostedWeightsError(f"required layout file for {key!r} is missing: {path}")
-    model_config = load_model_config_json(paths["model_config"])
+    model_config = _load_model_config_json(paths["model_config"])
     tokenizer_config = _read_json_object(paths["tokenizer_config"], label="tokenizer_config.json")
     conversion_metadata = _read_json_object(paths["conversion_metadata"], label="conversion_metadata.json")
     _validate_tokenizer_config(tokenizer_config, model_config=model_config)
@@ -278,17 +291,26 @@ def snapshot_weights_repo(repo_id: str, *, revision: str | None = None) -> Path:
     """Download a Hugging Face weights repo snapshot using only required layout files."""
 
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import HfApi, hf_hub_download, snapshot_download
     except ImportError as exc:  # pragma: no cover - optional dependency.
         raise HostedWeightsError(
             "huggingface_hub is required for --weights-repo. Install the runtime/bench dependency or pass "
             "--weights-dir for a local converted layout."
         ) from exc
     try:
+        pinned_revision = revision
+        if pinned_revision is None:
+            model_info = HfApi().model_info(repo_id=repo_id)
+            pinned_revision = getattr(model_info, "sha", None)
+            if not isinstance(pinned_revision, str) or not pinned_revision.strip():
+                raise HostedWeightsError(f"could not determine a pinned revision for hosted weights repo {repo_id!r}")
+        manifest_path = Path(hf_hub_download(repo_id=repo_id, filename=MANIFEST_NAME, revision=pinned_revision))
+        manifest = _read_json_object(manifest_path, label=MANIFEST_NAME)
+        _validate_manifest(manifest, source_kind="repo")
         return Path(
             snapshot_download(
                 repo_id=repo_id,
-                revision=revision,
+                revision=pinned_revision,
                 allow_patterns=[
                     "README.md",
                     "LICENSE.md",

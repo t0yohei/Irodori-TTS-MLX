@@ -62,7 +62,7 @@ v0.1 で対応対象としている checkpoint family:
 - 学習・微調整用途は対象外です
 - Web UI / Gradio は対象外です
 - すべての歴史的 / third-party checkpoint 互換を保証するものではありません
-- このリポジトリ自身のコードとドキュメントは MIT License です。ただし upstream code、checkpoint、DACVAE weights、converted `.npz`、生成音声は再配布しません。詳細は [docs/license_and_distribution.md](docs/license_and_distribution.md) を参照してください
+- このリポジトリ自身のコードとドキュメントは MIT License です。ただし upstream code、checkpoint、DACVAE weights、converted `.npz`、生成音声は原則再配布しません。v0.2 の hosted pre-converted weights に限る監査結果と provenance 要件は [docs/preconverted_weights_redistribution_audit.md](docs/preconverted_weights_redistribution_audit.md)、hosted 利用手順と local conversion fallback は [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)、通常の再配布方針は [docs/license_and_distribution.md](docs/license_and_distribution.md) を参照してください
 
 ## セットアップ
 
@@ -85,6 +85,23 @@ python -m pip install -e /path/to/Irodori-TTS  # または PYTHONPATH=/path/to/I
 再現性のある環境構築や依存関係の詳細は [docs/upstream_dependency.md](docs/upstream_dependency.md) と [docs/packaging.md](docs/packaging.md) を参照してください.
 
 ## 使い始めの入口
+
+### 0. v0.2 hosted converted weights を使う場合
+
+v0.2 では、承認済みの hosted converted weights repository を `--weights-repo` で読み込む導線を用意します。この flag は #82 の hosted-loader CLI 実装が入った後の導線です。現在の `main` CLI では、下の local conversion path を使ってください。公開 repo は `irodori_mlx_manifest.json` の `license_review.status` が `approved` で、upstream checkpoint revision、変換元、ライセンス監査へのリンクを README/model card に明記しているものだけを使ってください。
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
+irodori-tts-generate \
+  --weights-repo t0yohei/irodori-tts-mlx-voicedesign-v2-500m \
+  --text "こんにちは。今日は良い天気です。" \
+  --caption "落ち着いた女性の声" \
+  --no-reference \
+  --output /tmp/irodori-hosted.wav \
+  --preset balanced
+```
+
+この経路でも upstream PyTorch DACVAE bridge は必要です。hosted repo が未公開・未承認・監査外の場合は、下の local conversion path を使います。詳細は [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) を参照してください。
 
 ### 1. チェックポイントの中身を確認する
 
@@ -131,6 +148,8 @@ python3 scripts/benchmark.py --self-test
 - DACVAE bridge / WAV 生成: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
 - upstream `irodori_tts` 依存境界: [docs/upstream_dependency.md](docs/upstream_dependency.md)
 - ライセンス / 再配布ポリシー: [docs/license_and_distribution.md](docs/license_and_distribution.md)
+- v0.2 hosted MLX weights layout: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
+- v0.2 hosted weights usage / local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
 - packaging / install: [docs/packaging.md](docs/packaging.md)
 - benchmark: [docs/benchmark.md](docs/benchmark.md)
 - VoiceDesign サポート: [docs/caption_condition_support.md](docs/caption_condition_support.md)
