@@ -18,9 +18,19 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _write_layout(root: Path, *, license_status: str = "pending", family: str = "v3", caption: bool = False) -> None:
+def _write_layout(
+    root: Path,
+    *,
+    license_status: str = "pending",
+    family: str = "v3",
+    caption: bool = False,
+    file_prefix: str = "",
+) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    np.savez(root / "weights.npz", **{"text_norm.weight": np.ones((1,), dtype=np.float32)})
+    prefix = f"{file_prefix.rstrip('/')}/" if file_prefix else ""
+    weights_path = root / prefix / "weights.npz"
+    weights_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(weights_path, **{"text_norm.weight": np.ones((1,), dtype=np.float32)})
     model_config = {
         "latent_dim": 4,
         "latent_patch_size": 2,
@@ -58,7 +68,7 @@ def _write_layout(root: Path, *, license_status: str = "pending", family: str = 
                 "use_duration_predictor": False,
             }
         )
-    (root / "model_config.json").write_text(json.dumps(model_config), encoding="utf-8")
+    (root / prefix / "model_config.json").write_text(json.dumps(model_config), encoding="utf-8")
     tokenizer_config = {
         "schema_version": 1,
         "text_tokenizer": {
@@ -69,7 +79,7 @@ def _write_layout(root: Path, *, license_status: str = "pending", family: str = 
         },
         "caption_tokenizer": {"source": "upstream"} if caption else None,
     }
-    (root / "tokenizer_config.json").write_text(json.dumps(tokenizer_config), encoding="utf-8")
+    (root / prefix / "tokenizer_config.json").write_text(json.dumps(tokenizer_config), encoding="utf-8")
     conversion_metadata = {
         "schema_version": 1,
         "converter": {"repository": "https://github.com/t0yohei/irodori-tts-mlx", "version": "git:test"},
@@ -77,7 +87,7 @@ def _write_layout(root: Path, *, license_status: str = "pending", family: str = 
         "detected_family": family,
         "license_review": {"status": license_status},
     }
-    (root / "conversion_metadata.json").write_text(json.dumps(conversion_metadata), encoding="utf-8")
+    (root / prefix / "conversion_metadata.json").write_text(json.dumps(conversion_metadata), encoding="utf-8")
     manifest = {
         "schema_version": 1,
         "format": "irodori-tts-mlx-weights",
@@ -85,11 +95,11 @@ def _write_layout(root: Path, *, license_status: str = "pending", family: str = 
         "family": family,
         "upstream_checkpoint": "Aratako/Irodori-TTS-500M-v3",
         "files": {
-            "weights": "weights.npz",
-            "model_config": "model_config.json",
-            "tokenizer_config": "tokenizer_config.json",
-            "conversion_metadata": "conversion_metadata.json",
-            "checksums": "checksums.sha256",
+            "weights": f"{prefix}weights.npz",
+            "model_config": f"{prefix}model_config.json",
+            "tokenizer_config": f"{prefix}tokenizer_config.json",
+            "conversion_metadata": f"{prefix}conversion_metadata.json",
+            "checksums": f"{prefix}checksums.sha256",
         },
         "runtime": {
             "minimum_irodori_tts_mlx_version": "0.2.0",
@@ -104,14 +114,14 @@ def _write_layout(root: Path, *, license_status: str = "pending", family: str = 
     (root / "irodori_mlx_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     checksum_lines = []
     for filename in [
-        "weights.npz",
-        "model_config.json",
-        "tokenizer_config.json",
-        "conversion_metadata.json",
+        f"{prefix}weights.npz",
+        f"{prefix}model_config.json",
+        f"{prefix}tokenizer_config.json",
+        f"{prefix}conversion_metadata.json",
         "irodori_mlx_manifest.json",
     ]:
         checksum_lines.append(f"{_sha256(root / filename)}  {filename}")
-    (root / "checksums.sha256").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
+    (root / prefix / "checksums.sha256").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
 
 
 class HostedWeightsRuntimeTests(unittest.TestCase):
@@ -171,16 +181,15 @@ class HostedWeightsRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(HostedWeightsError, "checksum mismatch for weights.npz"):
                 validate_weights_layout(root)
 
-    def test_rejects_manifest_paths_outside_top_level_contract(self):
+    def test_accepts_manifest_defined_relative_file_paths(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "layout"
-            _write_layout(root)
-            manifest = json.loads((root / "irodori_mlx_manifest.json").read_text(encoding="utf-8"))
-            manifest["files"]["weights"] = "mlx/weights.npz"
-            (root / "irodori_mlx_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            _write_layout(root, file_prefix="mlx")
 
-            with self.assertRaisesRegex(HostedWeightsError, "top-level 'weights.npz'"):
-                validate_weights_layout(root)
+            resolved = validate_weights_layout(root)
+
+        self.assertEqual(resolved.weights_path.parent.name, "mlx")
+        self.assertEqual(resolved.model_config_path.parent.name, "mlx")
 
     def test_rejects_caption_layout_without_caption_tokenizer_metadata(self):
         with tempfile.TemporaryDirectory() as td:

@@ -1,0 +1,54 @@
+name: Hosted pre-converted weights smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      weights_repo:
+        description: "Optional approved Hugging Face repo id containing the v0.2 hosted MLX layout"
+        required: false
+        type: string
+
+jobs:
+  contract:
+    name: Contract fixture smoke
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: arm64
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Run hosted-layout contract tests
+        run: python -m unittest tests.test_hosted_weights_smoke -v
+
+  optional-real-artifact:
+    name: Optional real hosted artifact smoke
+    runs-on: macos-14
+    if: ${{ inputs.weights_repo != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: arm64
+      - name: Install package with optional downloader
+        run: |
+          python -m pip install -e .
+          python -m pip install 'huggingface_hub>=0.23,<1'
+      - name: Validate approved hosted layout without generation
+        env:
+          WEIGHTS_REPO: ${{ inputs.weights_repo }}
+        run: |
+          python - <<'PY'
+          import os
+          from irodori_mlx.hosted_weights import resolve_weights_layout_source
+
+          resolved = resolve_weights_layout_source(weights_repo=os.environ["WEIGHTS_REPO"])
+          if resolved is None:
+              raise SystemExit("weights_repo did not resolve to a hosted layout")
+          print(f"weights_path={resolved.weights_path}")
+          print(f"model_config_path={resolved.model_config_path}")
+          print(f"source_kind={resolved.source_kind}")
+          PY
