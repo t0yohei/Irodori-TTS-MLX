@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +43,8 @@ def _ensure_runtime_imports() -> None:
 
 CONFIG_KEYS = {
     "weights",
+    "weights_dir",
+    "weights_repo",
     "output",
     "output_wav",
     "text",
@@ -102,6 +104,8 @@ REQUEST_KEYS = {
 
 REQUIRED_STRING_KEYS = {"weights", "output", "text"}
 OPTIONAL_STRING_KEYS = {
+    "weights_dir",
+    "weights_repo",
     "reference_wav",
     "caption",
     "model_config_json",
@@ -285,7 +289,34 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     )
     parser.add_argument("--config-json", help="Optional inline JSON object or path with common generation/runtime defaults.")
     parser.add_argument("--requests-json", default=config.get("requests_json"), help="Optional inline JSON array or path with repeated generation requests. Reuses one initialized runtime.")
-    parser.add_argument("--weights", required="weights" not in config, default=config.get("weights"), help="Converted MLX .npz RF-DiT weights.")
+    weights_group = parser.add_mutually_exclusive_group(required=not any(config.get(key) for key in ("weights", "weights_dir", "weights_repo")))
+    weights_group.add_argument(
+        "--weights",
+        default=config.get("weights"),
+        help=(
+            "Converted local MLX .npz RF-DiT weights. This direct path remains the local-conversion "
+            "fallback when a hosted/pre-converted layout is unavailable."
+        ),
+    )
+    weights_group.add_argument(
+        "--weights-dir",
+        default=config.get("weights_dir"),
+        help=(
+            "Local directory using the hosted pre-converted weights layout "
+            "(irodori_mlx_manifest.json, model_config.json, weights.npz, metadata)."
+        ),
+    )
+    weights_group.add_argument(
+        "--weights-repo",
+        "--model",
+        dest="weights_repo",
+        default=config.get("weights_repo"),
+        help=(
+            "Hugging Face repo id with a pre-converted MLX weights layout, for example "
+            "t0yohei/irodori-tts-mlx-v3-500m. Alias: --model. If resolution fails, "
+            "use --weights with a locally converted .npz fallback."
+        ),
+    )
     parser.add_argument("--output", "--output-wav", dest="output", default=config.get("output"), help="Output WAV path for one-shot mode, or a default for batch requests.")
     parser.add_argument("--text", default=config.get("text"), help="Text prompt for one-shot mode, or a default for batch requests.")
     parser.add_argument(
@@ -401,6 +432,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         pre.error(str(exc))
     parser = build_parser(config)
     args = parser.parse_args(argv)
+    args.model_config_json_cli_override = _has_cli_override(argv, "--model-config-json")
     args.num_steps = _resolve_num_steps(
         preset=args.preset,
         current_num_steps=int(args.num_steps),
@@ -409,8 +441,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
-    if args.weights is None or not str(args.weights).strip():
-        parser.error("--weights must not be empty")
+    if _has_cli_override(argv, "--weights"):
+        args.weights_dir = None
+        args.weights_repo = None
+    elif _has_cli_override(argv, "--weights-dir"):
+        args.weights = None
+        args.weights_repo = None
+    elif _has_cli_override(argv, "--weights-repo") or _has_cli_override(argv, "--model"):
+        args.weights = None
+        args.weights_dir = None
+    selected_weights = [value for value in (args.weights, args.weights_dir, args.weights_repo) if value is not None and str(value).strip()]
+    if not selected_weights:
+        parser.error("choose one of --weights, --weights-dir, or --weights-repo/--model")
+    if len(selected_weights) > 1:
+        parser.error("choose only one of --weights, --weights-dir, or --weights-repo/--model")
     if not args.requests_json:
         if args.output is None or not str(args.output).strip():
             parser.error("--output must not be empty unless --requests-json supplies per-request outputs")
@@ -428,6 +472,188 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--caption-max-length must be > 0 when provided")
     if args.max_reference_seconds <= 0:
         parser.error("--max-reference-seconds must be > 0")
+    return args
+
+
+HOSTED_WEIGHTS_REQUIRED_FILES = (
+    "manifest",
+    "weights",
+    "model_config",
+    "tokenizer_config",
+    "conversion_metadata",
+    "checksums",
+)
+
+
+def _read_json_file(path: Path, *, label: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"{label} is missing: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label} is invalid JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must contain a JSON object: {path}")
+    return payload
+
+
+def _hosted_manifest_relative_path(manifest_path: str, *, source_label: str, manifest_key: str) -> PurePosixPath:
+    relative_path = PurePosixPath(manifest_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise ValueError(
+            f"{source_label} manifest file entry {manifest_key!r} must stay within the hosted weights layout: {manifest_path!r}"
+        )
+    return relative_path
+
+
+def _resolve_hosted_layout_file(
+    layout_dir: Path, manifest_path: str, *, source_label: str, manifest_key: str
+) -> Path:
+    relative_path = _hosted_manifest_relative_path(
+        manifest_path, source_label=source_label, manifest_key=manifest_key
+    )
+    layout_root = layout_dir.resolve()
+    layout_path = layout_root / Path(*relative_path.parts)
+    if not layout_path.absolute().is_relative_to(layout_root):
+        raise ValueError(
+            f"{source_label} manifest file entry {manifest_key!r} escapes the hosted weights layout: {manifest_path!r}"
+        )
+    return layout_path
+
+
+def _parse_checksum_filenames(checksum_text: str) -> set[str]:
+    filenames: set[str] = set()
+    for line in checksum_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        filename = parts[1].strip()
+        if filename.startswith("*"):
+            filename = filename[1:]
+        if filename:
+            filenames.add(filename)
+    return filenames
+
+
+def _load_hosted_weights_manifest(layout_dir: Path, *, source_label: str, require_approved_license: bool) -> dict[str, Any]:
+    manifest_path = layout_dir / "irodori_mlx_manifest.json"
+    manifest = _read_json_file(manifest_path, label="hosted weights manifest")
+    if manifest.get("schema_version") != 1:
+        raise ValueError(f"{source_label} has unsupported irodori_mlx_manifest.json schema_version; expected 1")
+    if manifest.get("format") != "irodori-tts-mlx-weights":
+        raise ValueError(f"{source_label} is not an irodori-tts-mlx pre-converted weights layout")
+    if manifest.get("format_version") != "0.2":
+        raise ValueError(f"{source_label} has unsupported weights format_version {manifest.get('format_version')!r}; expected '0.2'")
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise ValueError(f"{source_label} manifest must include a files object")
+    files.setdefault("manifest", "irodori_mlx_manifest.json")
+    missing_keys = [key for key in HOSTED_WEIGHTS_REQUIRED_FILES if not isinstance(files.get(key), str) or not files[key].strip()]
+    if missing_keys:
+        raise ValueError(f"{source_label} manifest is missing file entries: {', '.join(missing_keys)}")
+    resolved_files = {
+        key: _resolve_hosted_layout_file(layout_dir, files[key], source_label=source_label, manifest_key=key)
+        for key in HOSTED_WEIGHTS_REQUIRED_FILES
+    }
+    missing_files = [files[key] for key in HOSTED_WEIGHTS_REQUIRED_FILES if not resolved_files[key].is_file()]
+    if missing_files:
+        raise ValueError(
+            f"{source_label} pre-converted weights layout is missing required files: {', '.join(missing_files)}. "
+            "Use --weights with a locally converted .npz fallback after running irodori-tts-convert or scripts/convert_weights.py."
+        )
+    runtime = manifest.get("runtime")
+    if not isinstance(runtime, dict):
+        raise ValueError(f"{source_label} manifest must include runtime metadata")
+    license_review = manifest.get("license_review")
+    if not isinstance(license_review, dict):
+        raise ValueError(f"{source_label} manifest must include license_review metadata")
+    status = license_review.get("status")
+    if require_approved_license and status != "approved":
+        raise ValueError(
+            f"{source_label} hosted weights license_review.status is {status!r}, expected 'approved'. "
+            "Do not use unpublished or unapproved hosted weights; use --weights with a locally converted .npz fallback instead."
+        )
+    checksum_text = resolved_files["checksums"].read_text(encoding="utf-8")
+    checksum_filenames = _parse_checksum_filenames(checksum_text)
+    checksum_manifest_files = [key for key in HOSTED_WEIGHTS_REQUIRED_FILES if key != "checksums"]
+    not_listed = [files[key] for key in checksum_manifest_files if files[key] not in checksum_filenames]
+    if not_listed:
+        raise ValueError(f"{source_label} checksums file does not list required files: {', '.join(not_listed)}")
+    return manifest
+
+
+def _download_weights_repo_snapshot(repo_id: str) -> Path:
+    try:
+        from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+    except ImportError as exc:  # pragma: no cover - depends on optional user setup.
+        raise ValueError(
+            "--weights-repo/--model requires huggingface_hub. Install it or use --weights-dir for a local "
+            "pre-converted layout, or --weights with a locally converted .npz fallback."
+        ) from exc
+    try:
+        revision = HfApi().model_info(repo_id=repo_id).sha
+        if not isinstance(revision, str) or not revision.strip():
+            raise ValueError(f"Could not determine a pinned revision for hosted pre-converted MLX weights repo {repo_id!r}")
+        manifest_path = Path(hf_hub_download(repo_id=repo_id, filename="irodori_mlx_manifest.json", revision=revision))
+        manifest = _read_json_file(manifest_path, label="hosted weights manifest")
+        license_review = manifest.get("license_review")
+        if not isinstance(license_review, dict):
+            raise ValueError(f"{repo_id} manifest must include license_review metadata")
+        status = license_review.get("status")
+        if status != "approved":
+            raise ValueError(
+                f"{repo_id} hosted weights license_review.status is {status!r}, expected 'approved'. "
+                "Do not download unpublished or unapproved hosted weights; use --weights with a locally converted .npz fallback instead."
+            )
+        files = manifest.get("files")
+        if not isinstance(files, dict):
+            raise ValueError(f"{repo_id} manifest must include a files object")
+        files = {**files, "manifest": files.get("manifest", "irodori_mlx_manifest.json")}
+        declared_paths = []
+        for key in HOSTED_WEIGHTS_REQUIRED_FILES:
+            value = files.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            declared_paths.append(str(_hosted_manifest_relative_path(value, source_label=repo_id, manifest_key=key)))
+        return Path(
+            snapshot_download(
+                repo_id=repo_id,
+                revision=revision,
+                allow_patterns=["README.md", "LICENSE.md", *sorted(set(declared_paths))],
+            )
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"Could not resolve hosted pre-converted MLX weights repo {repo_id!r}: {exc}. "
+            "Check the repo id, network/cache access, and artifact license status. Fallback: run local conversion "
+            "and pass --weights /path/to/weights.npz with --model-config-json."
+        ) from exc
+
+
+def resolve_preconverted_weights_args(args: argparse.Namespace) -> argparse.Namespace:
+    if args.weights_dir:
+        layout_dir = Path(args.weights_dir).expanduser()
+        manifest = _load_hosted_weights_manifest(layout_dir, source_label=str(layout_dir), require_approved_license=False)
+    elif args.weights_repo:
+        layout_dir = _download_weights_repo_snapshot(str(args.weights_repo))
+        manifest = _load_hosted_weights_manifest(layout_dir, source_label=str(args.weights_repo), require_approved_license=True)
+    else:
+        return args
+    files = manifest["files"]
+    args.weights = str(
+        _resolve_hosted_layout_file(
+            layout_dir, files["weights"], source_label=str(layout_dir), manifest_key="weights"
+        )
+    )
+    if not getattr(args, "model_config_json_cli_override", False):
+        args.model_config_json = str(
+            _resolve_hosted_layout_file(
+                layout_dir, files["model_config"], source_label=str(layout_dir), manifest_key="model_config"
+            )
+        )
     return args
 
 
@@ -547,6 +773,7 @@ def write_metadata_json(path: str | Path, payload: dict[str, Any]) -> None:
 
 def main() -> int:
     args = parse_args()
+    resolve_preconverted_weights_args(args)
     _ensure_runtime_imports()
     model_config = load_model_config_json(args.model_config_json)
     request_overrides = load_generation_requests_json(args.requests_json) if args.requests_json else [{}]
