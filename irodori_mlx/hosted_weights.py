@@ -119,6 +119,14 @@ def _parse_checksum_file(path: Path) -> dict[str, str]:
     return checksums
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _validate_checksum_coverage(*, root: Path, checksums_path: Path, manifest_files: dict[str, str]) -> None:
     checksums = _parse_checksum_file(checksums_path)
     checksum_targets = {role: rel_path for role, rel_path in manifest_files.items() if role != "checksums"}
@@ -131,7 +139,7 @@ def _validate_checksum_coverage(*, root: Path, checksums_path: Path, manifest_fi
         expected = checksums.get(rel_path)
         if expected is None:
             continue
-        actual = hashlib.sha256(target.read_bytes()).hexdigest()
+        actual = _sha256_file(target)
         if actual != expected:
             raise HostedWeightsError(f"checksum mismatch for {rel_path}: expected {expected}, got {actual}")
 
