@@ -7,7 +7,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -496,6 +496,47 @@ def _read_json_file(path: Path, *, label: str) -> dict[str, Any]:
     return payload
 
 
+def _hosted_manifest_relative_path(manifest_path: str, *, source_label: str, manifest_key: str) -> PurePosixPath:
+    relative_path = PurePosixPath(manifest_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise ValueError(
+            f"{source_label} manifest file entry {manifest_key!r} must stay within the hosted weights layout: {manifest_path!r}"
+        )
+    return relative_path
+
+
+def _resolve_hosted_layout_file(
+    layout_dir: Path, manifest_path: str, *, source_label: str, manifest_key: str
+) -> Path:
+    relative_path = _hosted_manifest_relative_path(
+        manifest_path, source_label=source_label, manifest_key=manifest_key
+    )
+    layout_root = layout_dir.resolve()
+    resolved_path = (layout_root / Path(*relative_path.parts)).resolve()
+    if not resolved_path.is_relative_to(layout_root):
+        raise ValueError(
+            f"{source_label} manifest file entry {manifest_key!r} escapes the hosted weights layout: {manifest_path!r}"
+        )
+    return resolved_path
+
+
+def _parse_checksum_filenames(checksum_text: str) -> set[str]:
+    filenames: set[str] = set()
+    for line in checksum_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        filename = parts[1].strip()
+        if filename.startswith("*"):
+            filename = filename[1:]
+        if filename:
+            filenames.add(filename)
+    return filenames
+
+
 def _load_hosted_weights_manifest(layout_dir: Path, *, source_label: str, require_approved_license: bool) -> dict[str, Any]:
     manifest_path = layout_dir / "irodori_mlx_manifest.json"
     manifest = _read_json_file(manifest_path, label="hosted weights manifest")
@@ -512,7 +553,11 @@ def _load_hosted_weights_manifest(layout_dir: Path, *, source_label: str, requir
     missing_keys = [key for key in HOSTED_WEIGHTS_REQUIRED_FILES if not isinstance(files.get(key), str) or not files[key].strip()]
     if missing_keys:
         raise ValueError(f"{source_label} manifest is missing file entries: {', '.join(missing_keys)}")
-    missing_files = [files[key] for key in HOSTED_WEIGHTS_REQUIRED_FILES if not (layout_dir / files[key]).is_file()]
+    resolved_files = {
+        key: _resolve_hosted_layout_file(layout_dir, files[key], source_label=source_label, manifest_key=key)
+        for key in HOSTED_WEIGHTS_REQUIRED_FILES
+    }
+    missing_files = [files[key] for key in HOSTED_WEIGHTS_REQUIRED_FILES if not resolved_files[key].is_file()]
     if missing_files:
         raise ValueError(
             f"{source_label} pre-converted weights layout is missing required files: {', '.join(missing_files)}. "
@@ -530,10 +575,10 @@ def _load_hosted_weights_manifest(layout_dir: Path, *, source_label: str, requir
             f"{source_label} hosted weights license_review.status is {status!r}, expected 'approved'. "
             "Do not use unpublished or unapproved hosted weights; use --weights with a locally converted .npz fallback instead."
         )
-    checksums_path = layout_dir / files["checksums"]
-    checksum_text = checksums_path.read_text(encoding="utf-8")
+    checksum_text = resolved_files["checksums"].read_text(encoding="utf-8")
+    checksum_filenames = _parse_checksum_filenames(checksum_text)
     checksum_manifest_files = [key for key in HOSTED_WEIGHTS_REQUIRED_FILES if key != "checksums"]
-    not_listed = [files[key] for key in checksum_manifest_files if files[key] not in checksum_text]
+    not_listed = [files[key] for key in checksum_manifest_files if files[key] not in checksum_filenames]
     if not_listed:
         raise ValueError(f"{source_label} checksums file does not list required files: {', '.join(not_listed)}")
     return manifest
@@ -541,26 +586,29 @@ def _load_hosted_weights_manifest(layout_dir: Path, *, source_label: str, requir
 
 def _download_weights_repo_snapshot(repo_id: str) -> Path:
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import hf_hub_download, snapshot_download
     except ImportError as exc:  # pragma: no cover - depends on optional user setup.
         raise ValueError(
             "--weights-repo/--model requires huggingface_hub. Install it or use --weights-dir for a local "
             "pre-converted layout, or --weights with a locally converted .npz fallback."
         ) from exc
     try:
+        manifest_path = Path(hf_hub_download(repo_id=repo_id, filename="irodori_mlx_manifest.json"))
+        manifest = _read_json_file(manifest_path, label="hosted weights manifest")
+        files = manifest.get("files")
+        if not isinstance(files, dict):
+            raise ValueError(f"{repo_id} manifest must include a files object")
+        files = {**files, "manifest": files.get("manifest", "irodori_mlx_manifest.json")}
+        declared_paths = []
+        for key in HOSTED_WEIGHTS_REQUIRED_FILES:
+            value = files.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            declared_paths.append(str(_hosted_manifest_relative_path(value, source_label=repo_id, manifest_key=key)))
         return Path(
             snapshot_download(
                 repo_id=repo_id,
-                allow_patterns=[
-                    "README.md",
-                    "LICENSE.md",
-                    "irodori_mlx_manifest.json",
-                    "model_config.json",
-                    "tokenizer_config.json",
-                    "conversion_metadata.json",
-                    "weights.npz",
-                    "checksums.sha256",
-                ],
+                allow_patterns=["README.md", "LICENSE.md", *sorted(set(declared_paths))],
             )
         )
     except Exception as exc:
@@ -581,9 +629,17 @@ def resolve_preconverted_weights_args(args: argparse.Namespace) -> argparse.Name
     else:
         return args
     files = manifest["files"]
-    args.weights = str((layout_dir / files["weights"]).resolve())
+    args.weights = str(
+        _resolve_hosted_layout_file(
+            layout_dir, files["weights"], source_label=str(layout_dir), manifest_key="weights"
+        )
+    )
     if not args.model_config_json:
-        args.model_config_json = str((layout_dir / files["model_config"]).resolve())
+        args.model_config_json = str(
+            _resolve_hosted_layout_file(
+                layout_dir, files["model_config"], source_label=str(layout_dir), manifest_key="model_config"
+            )
+        )
     return args
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
+import types
 import unittest
 from argparse import Namespace
 from contextlib import redirect_stderr, redirect_stdout
@@ -414,6 +416,80 @@ class GenerateWavScriptTests(unittest.TestCase):
             args = generate_wav.parse_args(["--weights-repo", "org/repo", "--output", "out.wav", "--text", "hello"])
             with patch.object(generate_wav, "_download_weights_repo_snapshot", return_value=root), self.assertRaisesRegex(
                 ValueError, "locally converted .npz fallback"
+            ):
+                generate_wav.resolve_preconverted_weights_args(args)
+
+    def test_download_weights_repo_snapshot_honors_manifest_declared_paths(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            manifest = {
+                "files": {
+                    "weights": "artifacts/weights-v3.npz",
+                    "model_config": "configs/model-v3.json",
+                    "tokenizer_config": "configs/tokenizer.json",
+                    "conversion_metadata": "metadata/conversion.json",
+                    "checksums": "metadata/checksums.sha256",
+                }
+            }
+            manifest_path = root / "irodori_mlx_manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            captured = {}
+
+            fake_hub = types.ModuleType("huggingface_hub")
+            fake_hub.hf_hub_download = lambda *, repo_id, filename: str(manifest_path)
+
+            def fake_snapshot_download(*, repo_id, allow_patterns):
+                captured["allow_patterns"] = allow_patterns
+                return str(root)
+
+            fake_hub.snapshot_download = fake_snapshot_download
+            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
+                snapshot = generate_wav._download_weights_repo_snapshot("org/repo")
+
+        self.assertEqual(snapshot, root)
+        self.assertIn("artifacts/weights-v3.npz", captured["allow_patterns"])
+        self.assertIn("configs/model-v3.json", captured["allow_patterns"])
+        self.assertNotIn("weights.npz", captured["allow_patterns"])
+
+    def test_resolve_preconverted_weights_dir_rejects_manifest_paths_outside_layout(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            self._write_hosted_layout(root, license_status="approved")
+            manifest_path = root / "irodori_mlx_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"]["weights"] = "../outside.npz"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            (root.parent / "outside.npz").write_bytes(b"not hosted")
+            args = generate_wav.parse_args(
+                ["--weights-dir", str(root), "--output", "out.wav", "--text", "hello"]
+            )
+
+            with self.assertRaisesRegex(ValueError, "within the hosted weights layout"):
+                generate_wav.resolve_preconverted_weights_args(args)
+
+    def test_resolve_preconverted_weights_dir_requires_exact_checksum_filenames(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="approved")
+            (root / "checksums.sha256").write_text(
+                "\n".join(
+                    [
+                        "0  irodori_mlx_manifest.json",
+                        "0  model_config.json",
+                        "0  tokenizer_config.json",
+                        "0  conversion_metadata.json",
+                        "0  weights.npz.bak",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(
+                ["--weights-dir", str(root), "--output", "out.wav", "--text", "hello"]
+            )
+
+            with self.assertRaisesRegex(
+                ValueError, "checksums file does not list required files: weights.npz"
             ):
                 generate_wav.resolve_preconverted_weights_args(args)
 
