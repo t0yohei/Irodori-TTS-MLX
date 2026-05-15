@@ -20,11 +20,6 @@ HOSTED_WEIGHTS_ALLOW_PATTERNS = (
     "README.md",
     "LICENSE.md",
     HOSTED_WEIGHTS_MANIFEST,
-    "model_config.json",
-    "tokenizer_config.json",
-    "conversion_metadata.json",
-    "weights.npz",
-    "checksums.sha256",
 )
 
 
@@ -68,6 +63,23 @@ def _layout_file_path(root: Path, entry: str, *, label: str) -> Path:
     return candidate
 
 
+def _hosted_weights_allow_patterns_from_manifest(manifest: Mapping[str, Any], *, label: str) -> list[str]:
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise ValueError(f"{label} manifest must include a files object")
+
+    normalized_files = dict(files)
+    normalized_files["manifest"] = HOSTED_WEIGHTS_MANIFEST
+    allow_patterns = [*HOSTED_WEIGHTS_ALLOW_PATTERNS]
+    for key in HOSTED_WEIGHTS_REQUIRED_FILES:
+        entry = normalized_files.get(key)
+        if not isinstance(entry, str) or not entry.strip():
+            raise ValueError(f"{label} manifest is missing file entries: {key}")
+        _layout_file_path(Path("."), entry, label=label)
+        allow_patterns.append(entry)
+    return list(dict.fromkeys(allow_patterns))
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as fp:
@@ -103,7 +115,10 @@ def default_huggingface_snapshot_download(repo_id: str) -> Path:
             "hosted-layout directory, or fall back to locally converted .npz weights."
         ) from exc
     try:
-        return Path(snapshot_download(repo_id=repo_id, allow_patterns=list(HOSTED_WEIGHTS_ALLOW_PATTERNS)))
+        manifest_snapshot = Path(snapshot_download(repo_id=repo_id, allow_patterns=list(HOSTED_WEIGHTS_ALLOW_PATTERNS)))
+        manifest = _read_json_object(manifest_snapshot / HOSTED_WEIGHTS_MANIFEST, label=f"hosted repo {repo_id!r}")
+        allow_patterns = _hosted_weights_allow_patterns_from_manifest(manifest, label=f"hosted repo {repo_id!r}")
+        return Path(snapshot_download(repo_id=repo_id, allow_patterns=allow_patterns))
     except Exception as exc:
         raise ValueError(
             f"Could not resolve hosted pre-converted MLX weights repo {repo_id!r}: {exc}. "

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
-from irodori_mlx.hosted_weights import resolve_weights_source, validate_hosted_weights_layout
+from irodori_mlx.hosted_weights import default_huggingface_snapshot_download, resolve_weights_source, validate_hosted_weights_layout
 
 
 class HostedWeightsSmokeTests(unittest.TestCase):
@@ -51,15 +53,16 @@ class HostedWeightsSmokeTests(unittest.TestCase):
         }
         payloads = {
             "irodori_mlx_manifest.json": json.dumps(manifest),
-            "model_config.json": '{"use_duration_predictor": true}',
-            "tokenizer_config.json": '{"schema_version": 1}',
-            "conversion_metadata.json": '{"schema_version": 1}',
-            "weights.npz": b"tiny fake npz fixture; not a real model weight",
+            files["model_config"]: '{"use_duration_predictor": true}',
+            files["tokenizer_config"]: '{"schema_version": 1}',
+            files["conversion_metadata"]: '{"schema_version": 1}',
+            files["weights"]: b"tiny fake npz fixture; not a real model weight",
         }
         for name, payload in payloads.items():
             if name == omit_file:
                 continue
             path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
             if isinstance(payload, bytes):
                 path.write_bytes(payload)
             else:
@@ -74,7 +77,9 @@ class HostedWeightsSmokeTests(unittest.TestCase):
             if name == corrupt_checksum_entry:
                 digest = "0" * 64
             checksum_lines.append(f"{digest}  {name}")
-        (root / "checksums.sha256").write_text("\n".join(checksum_lines), encoding="utf-8")
+        checksum_path = root / files["checksums"]
+        checksum_path.parent.mkdir(parents=True, exist_ok=True)
+        checksum_path.write_text("\n".join(checksum_lines), encoding="utf-8")
 
     def test_local_hosted_layout_discovers_weights_and_required_metadata_without_network(self):
         with tempfile.TemporaryDirectory() as td:
@@ -103,6 +108,44 @@ class HostedWeightsSmokeTests(unittest.TestCase):
         self.assertEqual(calls, ["org/irodori-v3-mlx"])
         self.assertEqual(resolved.source_kind, "hosted-layout")
         self.assertIn("weights.npz", str(resolved.weights_path))
+
+    def test_huggingface_download_expands_allow_patterns_from_manifest_paths(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(
+                root,
+                license_status="approved",
+                file_overrides={
+                    "weights": "artifacts/weights.npz",
+                    "model_config": "artifacts/config/model_config.json",
+                    "tokenizer_config": "artifacts/config/tokenizer_config.json",
+                    "conversion_metadata": "artifacts/conversion_metadata.json",
+                    "checksums": "artifacts/checksums.sha256",
+                },
+            )
+            calls: list[list[str]] = []
+
+            def fake_snapshot_download(*, repo_id: str, allow_patterns: list[str]) -> str:
+                self.assertEqual(repo_id, "org/irodori-v3-mlx")
+                calls.append(allow_patterns)
+                return str(root)
+
+            previous = sys.modules.get("huggingface_hub")
+            sys.modules["huggingface_hub"] = SimpleNamespace(snapshot_download=fake_snapshot_download)
+            try:
+                resolved = default_huggingface_snapshot_download("org/irodori-v3-mlx")
+            finally:
+                if previous is None:
+                    sys.modules.pop("huggingface_hub", None)
+                else:
+                    sys.modules["huggingface_hub"] = previous
+
+        self.assertEqual(resolved, root)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], ["README.md", "LICENSE.md", "irodori_mlx_manifest.json"])
+        self.assertIn("artifacts/weights.npz", calls[1])
+        self.assertIn("artifacts/config/model_config.json", calls[1])
+        self.assertIn("artifacts/checksums.sha256", calls[1])
 
     def test_repo_id_resolution_rejects_unapproved_artifacts_with_local_fallback_hint(self):
         with tempfile.TemporaryDirectory() as td:
