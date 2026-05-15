@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import inspect
 import os
 import sys
 import unittest
@@ -108,7 +109,8 @@ class TorchParityTests(unittest.TestCase):
     def test_tiny_rf_dit_forward_matches_upstream_pytorch(self):
         upstream_config, upstream_model = load_upstream_modules()
         cfg = tiny_mlx_config()
-        torch_cfg = upstream_config.ModelConfig(**asdict(cfg))
+        upstream_fields = inspect.signature(upstream_config.ModelConfig).parameters
+        torch_cfg = upstream_config.ModelConfig(**{key: value for key, value in asdict(cfg).items() if key in upstream_fields})
         torch_model = upstream_model.TextToLatentRFDiT(torch_cfg).eval()
         mlx_model = TextToLatentRFDiT(cfg)
         copy_deterministic_weights(torch_model, mlx_model, cfg)

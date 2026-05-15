@@ -20,12 +20,14 @@ MLXDACVAERuntime = None
 MLXRuntimeConfig = None
 iter_messages = None
 load_model_config_json = None
+resolve_weights_layout_source = None
 
 
 def _ensure_runtime_imports() -> None:
     """Import runtime dependencies lazily so --help works before optional setup is complete."""
-    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, iter_messages, load_model_config_json
+    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, iter_messages, load_model_config_json, resolve_weights_layout_source
     from irodori_mlx import runtime as runtime_module
+    from irodori_mlx.hosted_weights import resolve_weights_layout_source as resolve_layout
 
     if DACVAEBridgeConfig is None:
         DACVAEBridgeConfig = runtime_module.DACVAEBridgeConfig
@@ -39,10 +41,15 @@ def _ensure_runtime_imports() -> None:
         iter_messages = runtime_module.iter_messages
     if load_model_config_json is None:
         load_model_config_json = runtime_module.load_model_config_json
+    if resolve_weights_layout_source is None:
+        resolve_weights_layout_source = resolve_layout
 
 
 CONFIG_KEYS = {
     "weights",
+    "weights_dir",
+    "weights_repo",
+    "weights_revision",
     "output",
     "output_wav",
     "text",
@@ -102,6 +109,9 @@ REQUEST_KEYS = {
 
 REQUIRED_STRING_KEYS = {"weights", "output", "text"}
 OPTIONAL_STRING_KEYS = {
+    "weights_dir",
+    "weights_repo",
+    "weights_revision",
     "reference_wav",
     "caption",
     "model_config_json",
@@ -285,7 +295,11 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     )
     parser.add_argument("--config-json", help="Optional inline JSON object or path with common generation/runtime defaults.")
     parser.add_argument("--requests-json", default=config.get("requests_json"), help="Optional inline JSON array or path with repeated generation requests. Reuses one initialized runtime.")
-    parser.add_argument("--weights", required="weights" not in config, default=config.get("weights"), help="Converted MLX .npz RF-DiT weights.")
+    weights_group = parser.add_mutually_exclusive_group(required=not any(key in config for key in ("weights", "weights_dir", "weights_repo")))
+    weights_group.add_argument("--weights", default=config.get("weights"), help="Converted MLX .npz RF-DiT weights. Keeps the v0.1 local-conversion fallback path.")
+    weights_group.add_argument("--weights-dir", default=config.get("weights_dir"), help="Local converted weights layout directory containing irodori_mlx_manifest.json.")
+    weights_group.add_argument("--weights-repo", default=config.get("weights_repo"), help="Hugging Face repo id containing the hosted converted weights layout.")
+    parser.add_argument("--weights-revision", default=config.get("weights_revision"), help="Optional Hugging Face revision for --weights-repo.")
     parser.add_argument("--output", "--output-wav", dest="output", default=config.get("output"), help="Output WAV path for one-shot mode, or a default for batch requests.")
     parser.add_argument("--text", default=config.get("text"), help="Text prompt for one-shot mode, or a default for batch requests.")
     parser.add_argument(
@@ -401,6 +415,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         pre.error(str(exc))
     parser = build_parser(config)
     args = parser.parse_args(argv)
+    explicit_weight_sources = {
+        name
+        for option, name in (("--weights", "weights"), ("--weights-dir", "weights_dir"), ("--weights-repo", "weights_repo"))
+        if _has_cli_override(argv, option)
+    }
+    if explicit_weight_sources:
+        for name in {"weights", "weights_dir", "weights_repo"} - explicit_weight_sources:
+            setattr(args, name, None)
+        if not _has_cli_override(argv, "--weights-revision"):
+            args.weights_revision = None
+        if {"weights_dir", "weights_repo"} & explicit_weight_sources:
+            if not _has_cli_override(argv, "--model-config-json"):
+                args.model_config_json = None
+            if not _has_cli_override(argv, "--text-tokenizer-repo"):
+                args.text_tokenizer_repo = None
+            if not _has_cli_override(argv, "--caption-tokenizer-repo"):
+                args.caption_tokenizer_repo = None
     args.num_steps = _resolve_num_steps(
         preset=args.preset,
         current_num_steps=int(args.num_steps),
@@ -409,8 +440,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
-    if args.weights is None or not str(args.weights).strip():
-        parser.error("--weights must not be empty")
+    weight_sources = [args.weights, args.weights_dir, args.weights_repo]
+    if not any(value is not None and str(value).strip() for value in weight_sources):
+        parser.error("choose one of --weights, --weights-dir, or --weights-repo")
+    if sum(1 for value in weight_sources if value is not None and str(value).strip()) > 1:
+        parser.error("choose only one of --weights, --weights-dir, or --weights-repo")
+    if args.weights_revision and not args.weights_repo:
+        parser.error("--weights-revision requires --weights-repo")
+    if (args.weights_dir or args.weights_repo) and args.model_config_json:
+        parser.error("--model-config-json is loaded from --weights-dir/--weights-repo layouts; use --weights for explicit .npz fallback")
     if not args.requests_json:
         if args.output is None or not str(args.output).strip():
             parser.error("--output must not be empty unless --requests-json supplies per-request outputs")
@@ -548,16 +586,35 @@ def write_metadata_json(path: str | Path, payload: dict[str, Any]) -> None:
 def main() -> int:
     args = parse_args()
     _ensure_runtime_imports()
-    model_config = load_model_config_json(args.model_config_json)
+    layout = resolve_weights_layout_source(
+        weights_dir=args.weights_dir,
+        weights_repo=args.weights_repo,
+        revision=args.weights_revision,
+    )
+    layout_runtime: dict[str, Any] | None = None
+    if layout is not None:
+        args.weights = str(layout.weights_path)
+        model_config = layout.model_config
+        layout_runtime = dict(layout.manifest.get("runtime", {}))
+    else:
+        model_config = load_model_config_json(args.model_config_json)
     request_overrides = load_generation_requests_json(args.requests_json) if args.requests_json else [{}]
-    if model_config.use_speaker_condition:
-        for item in request_overrides:
-            request_reference = item.get("reference_wav", args.reference_wav)
-            request_no_reference = bool(item.get("no_reference", args.no_reference))
-            if not request_no_reference and not request_reference:
+    for index, item in enumerate(request_overrides, start=1):
+        request_reference = item.get("reference_wav", args.reference_wav)
+        request_no_reference = bool(item.get("no_reference", args.no_reference))
+        if layout_runtime is not None:
+            if layout_runtime.get("requires_reference_audio") and not request_reference:
                 raise SystemExit(
-                    "error: speaker-conditioned checkpoints require reference_wav unless no_reference is true"
+                    f"error: generation request #{index}: selected weights layout requires reference_wav"
                 )
+            if not layout_runtime.get("supports_no_reference", False) and request_no_reference:
+                raise SystemExit(
+                    f"error: generation request #{index}: selected weights layout does not support no_reference"
+                )
+        if model_config.use_speaker_condition and not request_no_reference and not request_reference:
+            raise SystemExit(
+                "error: speaker-conditioned checkpoints require reference_wav unless no_reference is true"
+            )
 
     runtime_config = build_runtime_config(args, model_config)
     runtime = MLXDACVAERuntime(config=runtime_config)

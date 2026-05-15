@@ -46,6 +46,9 @@ class GenerateWavScriptTests(unittest.TestCase):
     def _args(self, output_wav: str) -> Namespace:
         return Namespace(
             weights="weights.npz",
+            weights_dir=None,
+            weights_repo=None,
+            weights_revision=None,
             output=output_wav,
             text="hello",
             preset=None,
@@ -126,6 +129,151 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.text, "hello")
         self.assertEqual(args.seconds, 2.5)
         self.assertEqual(args.num_steps, 8)
+
+    def test_parse_args_accepts_weights_dir_instead_of_npz(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights-dir",
+                "converted-layout",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+            ]
+        )
+
+        self.assertIsNone(args.weights)
+        self.assertEqual(args.weights_dir, "converted-layout")
+        self.assertIsNone(args.weights_repo)
+
+    def test_parse_args_cli_weight_source_overrides_config_weight_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "from-config.npz", "model_config_json": "legacy-model.json", "text_tokenizer_repo": "legacy/text", "caption_tokenizer_repo": "legacy/caption", "output": "from-config.wav", "text": "hello"}',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path), "--weights-dir", "converted-layout"])
+
+        self.assertIsNone(args.weights)
+        self.assertEqual(args.weights_dir, "converted-layout")
+        self.assertIsNone(args.model_config_json)
+        self.assertIsNone(args.text_tokenizer_repo)
+        self.assertIsNone(args.caption_tokenizer_repo)
+
+    def test_parse_args_preserves_explicit_tokenizer_overrides_with_layout(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights-dir",
+                "converted-layout",
+                "--text-tokenizer-repo",
+                "custom/text",
+                "--caption-tokenizer-repo",
+                "custom/caption",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+            ]
+        )
+
+        self.assertEqual(args.weights_dir, "converted-layout")
+        self.assertEqual(args.text_tokenizer_repo, "custom/text")
+        self.assertEqual(args.caption_tokenizer_repo, "custom/caption")
+
+    def test_parse_args_rejects_layout_with_explicit_model_config_override(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights-dir",
+                    "converted-layout",
+                    "--model-config-json",
+                    "model.json",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                ]
+            )
+
+    def test_parse_args_cli_repo_override_clears_config_revision(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights_repo": "owner/old", "weights_revision": "oldrev", "output": "from-config.wav", "text": "hello"}',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path), "--weights-repo", "owner/new"])
+
+        self.assertEqual(args.weights_repo, "owner/new")
+        self.assertIsNone(args.weights_revision)
+
+    def test_parse_args_rejects_weights_revision_without_repo(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--weights-revision",
+                    "abc123",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                ]
+            )
+
+    def test_main_uses_resolved_layout_weights_and_model_config(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            out_wav = str(Path(td) / "out.wav")
+            args = self._args(out_wav)
+            args.weights = None
+            args.weights_dir = str(Path(td) / "layout")
+            resolved = type(
+                "ResolvedLayout",
+                (),
+                {
+                    "weights_path": Path(td) / "layout" / "weights.npz",
+                    "model_config": ModelConfig(use_caption_condition=True, text_tokenizer_repo="layout/text"),
+                    "manifest": {"runtime": {"requires_reference_audio": False, "supports_no_reference": True}},
+                },
+            )()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "resolve_weights_layout_source", return_value=resolved
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(runtime_holder["runtime"].config.weights_path, str(resolved.weights_path))
+        self.assertEqual(runtime_holder["runtime"].config.model_config.text_tokenizer_repo, "layout/text")
+
+    def test_main_rejects_layout_no_reference_when_manifest_requires_reference(self):
+        with tempfile.TemporaryDirectory() as td:
+            args = self._args(str(Path(td) / "out.wav"))
+            args.weights = None
+            args.weights_dir = str(Path(td) / "layout")
+            args.no_reference = True
+            resolved = type(
+                "ResolvedLayout",
+                (),
+                {
+                    "weights_path": Path(td) / "layout" / "weights.npz",
+                    "model_config": ModelConfig(use_caption_condition=False),
+                    "manifest": {"runtime": {"requires_reference_audio": True, "supports_no_reference": False}},
+                },
+            )()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "resolve_weights_layout_source", return_value=resolved
+            ), self.assertRaisesRegex(SystemExit, "requires reference_wav"):
+                generate_wav.main()
 
     def test_parse_args_applies_preset_num_steps(self):
         args = generate_wav.parse_args(
