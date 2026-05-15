@@ -1,6 +1,6 @@
 # Hosted MLX weights repository layout
 
-Issue: [#79 Define the hosted MLX weights repository layout](https://github.com/t0yohei/irodori-tts-mlx/issues/79)  
+Issue: [#79 Define the hosted MLX weights repository layout](https://github.com/t0yohei/irodori-tts-mlx/issues/79)
 Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/irodori-tts-mlx/issues/78)
 
 This page is the v0.2 contract for a repository that hosts **pre-converted MLX RF-DiT weights** for `irodori-tts-mlx`.
