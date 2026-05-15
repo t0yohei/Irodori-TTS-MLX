@@ -43,9 +43,44 @@ class _FakeRuntime:
 
 
 class GenerateWavScriptTests(unittest.TestCase):
+    def _write_hosted_layout(self, root: Path, *, license_status: str = "approved") -> None:
+        files = {
+            "weights": "weights.npz",
+            "model_config": "model_config.json",
+            "tokenizer_config": "tokenizer_config.json",
+            "conversion_metadata": "conversion_metadata.json",
+            "checksums": "checksums.sha256",
+        }
+        manifest = {
+            "schema_version": 1,
+            "format": "irodori-tts-mlx-weights",
+            "format_version": "0.2",
+            "family": "v3",
+            "upstream_checkpoint": "Aratako/Irodori-TTS-500M-v3",
+            "files": files,
+            "runtime": {
+                "minimum_irodori_tts_mlx_version": "0.2.0",
+                "requires_upstream_dacvae_bridge": True,
+                "requires_reference_audio": False,
+                "supports_no_reference": True,
+                "supports_caption": False,
+                "supports_predicted_duration": True,
+            },
+            "license_review": {"status": license_status, "review_reference": "https://github.com/t0yohei/irodori-tts-mlx/issues/80"},
+        }
+        (root / "irodori_mlx_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (root / "model_config.json").write_text('{"use_duration_predictor": true}', encoding="utf-8")
+        (root / "tokenizer_config.json").write_text('{"schema_version": 1}', encoding="utf-8")
+        (root / "conversion_metadata.json").write_text('{"schema_version": 1}', encoding="utf-8")
+        (root / "weights.npz").write_bytes(b"fake npz")
+        listed = ["irodori_mlx_manifest.json", *(value for key, value in files.items() if key != "checksums")]
+        (root / "checksums.sha256").write_text("\n".join(f"0  {name}" for name in listed), encoding="utf-8")
+
     def _args(self, output_wav: str) -> Namespace:
         return Namespace(
             weights="weights.npz",
+            weights_dir=None,
+            weights_repo=None,
             output=output_wav,
             text="hello",
             preset=None,
@@ -337,6 +372,85 @@ class GenerateWavScriptTests(unittest.TestCase):
             )
             with self.assertRaises(SystemExit):
                 generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+
+    def test_parse_args_accepts_weights_repo_alias_and_help_mentions_fallback(self):
+        help_text = generate_wav.build_parser().format_help()
+        self.assertIn("--weights-repo", help_text)
+        self.assertIn("--model", help_text)
+        self.assertIn("locally converted .npz fallback", help_text)
+
+        args = generate_wav.parse_args(["--model", "org/repo", "--output", "out.wav", "--text", "hello"])
+
+        self.assertIsNone(args.weights)
+        self.assertEqual(args.weights_repo, "org/repo")
+
+    def test_resolve_preconverted_weights_dir_supplies_weights_and_model_config(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="pending")
+            args = generate_wav.parse_args(["--weights-dir", str(root), "--output", "out.wav", "--text", "hello"])
+
+            generate_wav.resolve_preconverted_weights_args(args)
+
+        self.assertTrue(args.weights.endswith("weights.npz"))
+        self.assertTrue(args.model_config_json.endswith("model_config.json"))
+
+    def test_resolve_preconverted_weights_repo_uses_snapshot_download_and_requires_approved_license(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="approved")
+            args = generate_wav.parse_args(["--weights-repo", "org/repo", "--output", "out.wav", "--text", "hello"])
+            with patch.object(generate_wav, "_download_weights_repo_snapshot", return_value=root):
+                generate_wav.resolve_preconverted_weights_args(args)
+
+        self.assertTrue(args.weights.endswith("weights.npz"))
+        self.assertTrue(args.model_config_json.endswith("model_config.json"))
+
+    def test_resolve_preconverted_weights_repo_rejects_unapproved_license_with_fallback_hint(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="pending")
+            args = generate_wav.parse_args(["--weights-repo", "org/repo", "--output", "out.wav", "--text", "hello"])
+            with patch.object(generate_wav, "_download_weights_repo_snapshot", return_value=root), self.assertRaisesRegex(
+                ValueError, "locally converted .npz fallback"
+            ):
+                generate_wav.resolve_preconverted_weights_args(args)
+
+    def test_main_smoke_uses_mocked_repo_id_resolution(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            self._write_hosted_layout(root, license_status="approved")
+            out_wav = str(Path(td) / "out.wav")
+            args = generate_wav.parse_args([
+                "--weights-repo",
+                "org/repo",
+                "--output",
+                out_wav,
+                "--text",
+                "hello",
+                "--no-reference",
+                "--json",
+            ])
+            stdout = StringIO()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "_download_weights_repo_snapshot", return_value=root
+            ), patch.object(generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)), patch.object(
+                generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory
+            ), redirect_stdout(stdout):
+                rc = generate_wav.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["result"]["output_wav"], out_wav)
+        self.assertTrue(runtime_holder["runtime"].config.weights_path.endswith("weights.npz"))
 
     def test_main_json_output_and_metadata_file(self):
         runtime_holder = {}
