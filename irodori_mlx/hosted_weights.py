@@ -21,6 +21,7 @@ HOSTED_WEIGHTS_ALLOW_PATTERNS = (
     "LICENSE.md",
     HOSTED_WEIGHTS_MANIFEST,
 )
+HOSTED_WEIGHTS_GLOB_METACHARACTERS = frozenset("*?[]")
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,8 @@ def _read_json_object(path: Path, *, label: str) -> dict[str, Any]:
 
 
 def _layout_file_path(root: Path, entry: str, *, label: str) -> Path:
+    if any(char in entry for char in HOSTED_WEIGHTS_GLOB_METACHARACTERS):
+        raise ValueError(f"{label} manifest file path must not contain glob metacharacters: {entry}")
     relative = Path(entry)
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError(f"{label} manifest file path must stay inside the hosted weights layout: {entry}")
