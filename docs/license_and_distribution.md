@@ -37,6 +37,8 @@ This repository does **not** redistribute:
 
 Converted `.npz` files and generated audio can be derived artifacts from upstream models, DACVAE weights, prompts, and reference audio. Keep them local unless you have confirmed that every relevant upstream license and rights holder permits redistribution.
 
+For v0.2 hosted pre-converted MLX weights, see the focused audit in [docs/preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md). That audit currently allows only explicitly reviewed Irodori-TTS checkpoint families to proceed, with attribution/provenance requirements and without bundling codec weights, generated samples, reference audio, or Hugging Face cache contents.
+
 ## Contributor guidance
 
 - Do not commit model weights, converted weights, cache directories, generated WAV files, or reference audio to this repository.

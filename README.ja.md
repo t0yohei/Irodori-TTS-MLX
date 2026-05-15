@@ -62,7 +62,7 @@ v0.1 で対応対象としている checkpoint family:
 - 学習・微調整用途は対象外です
 - Web UI / Gradio は対象外です
 - すべての歴史的 / third-party checkpoint 互換を保証するものではありません
-- このリポジトリ自身のコードとドキュメントは MIT License です。ただし upstream code、checkpoint、DACVAE weights、converted `.npz`、生成音声は再配布しません。詳細は [docs/license_and_distribution.md](docs/license_and_distribution.md) を参照してください
+- このリポジトリ自身のコードとドキュメントは MIT License です。ただし upstream code、checkpoint、DACVAE weights、converted `.npz`、生成音声は原則再配布しません。v0.2 の hosted pre-converted weights に限る監査結果と provenance 要件は [docs/preconverted_weights_redistribution_audit.md](docs/preconverted_weights_redistribution_audit.md)、通常の再配布方針は [docs/license_and_distribution.md](docs/license_and_distribution.md) を参照してください
 
 ## セットアップ
 
