@@ -75,7 +75,7 @@ For Apple Silicon benchmark workflow, current baseline conclusions, and the benc
 
 For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation CLI, see [docs/dacvae_bridge.md](docs/dacvae_bridge.md). For the v0.1 upstream dependency boundary and install choices, see [docs/upstream_dependency.md](docs/upstream_dependency.md).
 
-For the v0.1 checkpoint-family support contract, including supported / experimental / unsupported status and redistribution caveats, see [docs/checkpoint_support.md](docs/checkpoint_support.md).
+For the v0.1 checkpoint-family support contract, including supported / experimental / unsupported status and redistribution caveats, see [docs/checkpoint_support.md](docs/checkpoint_support.md). For the v0.2 hosted pre-converted weights eligibility audit and required provenance language, see [docs/preconverted_weights_redistribution_audit.md](docs/preconverted_weights_redistribution_audit.md).
 
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
