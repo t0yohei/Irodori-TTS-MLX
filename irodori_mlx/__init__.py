@@ -1,86 +1,70 @@
-"""Core MLX utilities for the irodori-tts-mlx prototype."""
+"""Core MLX utilities for the irodori-tts-mlx prototype.
 
-from .config import ModelConfig
-from .duration import build_duration_features
-from .encoders import (
-    ConditionEncoders,
-    EncodedConditions,
-    ReferenceLatentEncoder,
-    SelfAttention,
-    TextBlock,
-    TextEncoder,
-    masked_mean_token,
-)
-from .model import DiffusionBlock, JointAttention, TextToLatentRFDiT
-from .sampling import euler_timestep_schedule, sample_euler_rf_cfg
-from .runtime import (
-    DACVAEBridgeConfig,
-    GenerationRequest,
-    GenerationResult,
-    MLXDACVAERuntime,
-    MLXRuntimeConfig,
-    PretrainedTextTokenizer,
-    PyTorchDACVAEBridge,
-    iter_messages,
-    load_mlx_model,
-    load_model_config_json,
-    mlx_to_torch_latents,
-    save_wav,
-    torch_to_mlx_latents,
-)
-from .layers import (
-    LowRankAdaLN,
-    RMSNorm,
-    SwiGLU,
-    apply_rotary_emb,
-    get_timestep_embedding,
-    patch_latents,
-    patch_sequence_with_mask,
-    precompute_freqs_cis,
-    unpatch_latents,
-)
-from .weights import WeightLoadReport, assign_named_weights, encoder_required_keys, load_npz_weights, rf_dit_required_keys
+The package keeps top-level exports lazy so pure helpers such as
+``irodori_mlx.hosted_weights`` can be imported in metadata-only smoke tests
+without initializing MLX/Metal.
+"""
 
-__all__ = [
-    "ConditionEncoders",
-    "DACVAEBridgeConfig",
-    "DiffusionBlock",
-    "EncodedConditions",
-    "GenerationRequest",
-    "GenerationResult",
-    "JointAttention",
-    "LowRankAdaLN",
-    "MLXDACVAERuntime",
-    "MLXRuntimeConfig",
-    "ModelConfig",
-    "PretrainedTextTokenizer",
-    "PyTorchDACVAEBridge",
-    "RMSNorm",
-    "ReferenceLatentEncoder",
-    "SelfAttention",
-    "SwiGLU",
-    "TextBlock",
-    "TextEncoder",
-    "TextToLatentRFDiT",
-    "WeightLoadReport",
-    "apply_rotary_emb",
-    "assign_named_weights",
-    "build_duration_features",
-    "encoder_required_keys",
-    "euler_timestep_schedule",
-    "get_timestep_embedding",
-    "iter_messages",
-    "load_mlx_model",
-    "load_model_config_json",
-    "load_npz_weights",
-    "masked_mean_token",
-    "mlx_to_torch_latents",
-    "patch_latents",
-    "patch_sequence_with_mask",
-    "precompute_freqs_cis",
-    "rf_dit_required_keys",
-    "sample_euler_rf_cfg",
-    "save_wav",
-    "torch_to_mlx_latents",
-    "unpatch_latents",
-]
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+_EXPORT_MODULES = {
+    "ConditionEncoders": "encoders",
+    "DACVAEBridgeConfig": "runtime",
+    "DiffusionBlock": "model",
+    "EncodedConditions": "encoders",
+    "GenerationRequest": "runtime",
+    "GenerationResult": "runtime",
+    "JointAttention": "model",
+    "LowRankAdaLN": "layers",
+    "MLXDACVAERuntime": "runtime",
+    "MLXRuntimeConfig": "runtime",
+    "ModelConfig": "config",
+    "PretrainedTextTokenizer": "runtime",
+    "PyTorchDACVAEBridge": "runtime",
+    "RMSNorm": "layers",
+    "ReferenceLatentEncoder": "encoders",
+    "SelfAttention": "encoders",
+    "SwiGLU": "layers",
+    "TextBlock": "encoders",
+    "TextEncoder": "encoders",
+    "TextToLatentRFDiT": "model",
+    "WeightLoadReport": "weights",
+    "apply_rotary_emb": "layers",
+    "assign_named_weights": "weights",
+    "build_duration_features": "duration",
+    "encoder_required_keys": "weights",
+    "euler_timestep_schedule": "sampling",
+    "get_timestep_embedding": "layers",
+    "iter_messages": "runtime",
+    "load_mlx_model": "runtime",
+    "load_model_config_json": "runtime",
+    "load_npz_weights": "weights",
+    "masked_mean_token": "encoders",
+    "mlx_to_torch_latents": "runtime",
+    "patch_latents": "layers",
+    "patch_sequence_with_mask": "layers",
+    "precompute_freqs_cis": "layers",
+    "rf_dit_required_keys": "weights",
+    "sample_euler_rf_cfg": "sampling",
+    "save_wav": "runtime",
+    "torch_to_mlx_latents": "runtime",
+    "unpatch_latents": "layers",
+}
+
+__all__ = list(_EXPORT_MODULES)
+
+
+def __getattr__(name: str) -> Any:
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(f".{module_name}", __name__), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted([*globals(), *__all__])

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -93,6 +95,32 @@ class HostedWeightsSmokeTests(unittest.TestCase):
         self.assertTrue(str(resolved.model_config_path).endswith("model_config.json"))
         self.assertEqual(resolved.manifest["upstream_checkpoint"], "Aratako/Irodori-TTS-500M-v3")
 
+    def test_hosted_weights_module_import_does_not_initialize_mlx(self):
+        root = Path(__file__).resolve().parents[1]
+        code = """
+import importlib.abc
+import sys
+
+class BlockMlx(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "mlx" or fullname.startswith("mlx."):
+            raise RuntimeError("hosted weights import should not initialize MLX")
+        return None
+
+sys.meta_path.insert(0, BlockMlx())
+from irodori_mlx.hosted_weights import validate_hosted_weights_layout
+print(validate_hosted_weights_layout.__name__)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            check=True,
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(result.stdout.strip(), "validate_hosted_weights_layout")
+
     def test_repo_id_resolution_uses_download_abstraction_and_requires_approved_license(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -181,6 +209,41 @@ class HostedWeightsSmokeTests(unittest.TestCase):
                     sys.modules["huggingface_hub"] = previous
 
         self.assertEqual(calls, [("abc123", ["README.md", "LICENSE.md", "irodori_mlx_manifest.json"])])
+
+    def test_huggingface_manifest_path_validation_ignores_cwd_symlinks(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "snapshot"
+            root.mkdir()
+            self._write_hosted_layout(root, file_overrides={"weights": "artifacts/weights.npz"})
+            cwd = Path(td) / "cwd"
+            cwd.mkdir()
+            (cwd / "artifacts").symlink_to(Path(td) / "outside")
+            calls: list[tuple[str, list[str]]] = []
+
+            class FakeHfApi:
+                def model_info(self, *, repo_id: str):
+                    return SimpleNamespace(sha="abc123")
+
+            def fake_snapshot_download(*, repo_id: str, revision: str, allow_patterns: list[str]) -> str:
+                calls.append((revision, allow_patterns))
+                return str(root)
+
+            previous_module = sys.modules.get("huggingface_hub")
+            previous_cwd = Path.cwd()
+            sys.modules["huggingface_hub"] = SimpleNamespace(HfApi=FakeHfApi, snapshot_download=fake_snapshot_download)
+            try:
+                os.chdir(cwd)
+                resolved = default_huggingface_snapshot_download("org/irodori-v3-mlx")
+            finally:
+                os.chdir(previous_cwd)
+                if previous_module is None:
+                    sys.modules.pop("huggingface_hub", None)
+                else:
+                    sys.modules["huggingface_hub"] = previous_module
+
+        self.assertEqual(resolved, root)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("artifacts/weights.npz", calls[1][1])
 
     def test_repo_id_resolution_rejects_unapproved_artifacts_with_local_fallback_hint(self):
         with tempfile.TemporaryDirectory() as td:

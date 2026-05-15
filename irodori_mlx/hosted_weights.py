@@ -51,19 +51,17 @@ def _read_json_object(path: Path, *, label: str) -> dict[str, Any]:
     return payload
 
 
-def _layout_file_path(root: Path, entry: str, *, label: str) -> Path:
+def _manifest_relative_path(entry: str, *, label: str) -> Path:
     if any(char in entry for char in HOSTED_WEIGHTS_GLOB_METACHARACTERS):
         raise ValueError(f"{label} manifest file path must not contain glob metacharacters: {entry}")
     relative = Path(entry)
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError(f"{label} manifest file path must stay inside the hosted weights layout: {entry}")
-    candidate = (root / relative).resolve(strict=False)
-    resolved_root = root.resolve(strict=False)
-    try:
-        candidate.relative_to(resolved_root)
-    except ValueError as exc:
-        raise ValueError(f"{label} manifest file path must stay inside the hosted weights layout: {entry}") from exc
-    return candidate
+    return relative
+
+
+def _layout_file_path(root: Path, entry: str, *, label: str) -> Path:
+    return root / _manifest_relative_path(entry, label=label)
 
 
 def _hosted_weights_allow_patterns_from_manifest(manifest: Mapping[str, Any], *, label: str) -> list[str]:
