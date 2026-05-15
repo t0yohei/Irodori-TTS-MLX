@@ -409,6 +409,57 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertTrue(args.weights.endswith("weights.npz"))
         self.assertTrue(args.model_config_json.endswith("model_config.json"))
 
+    def test_resolve_preconverted_weights_source_overrides_config_model_config_by_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            self._write_hosted_layout(root, license_status="approved")
+            config_path = Path(td) / "generate.json"
+            stale_config = Path(td) / "stale_model_config.json"
+            stale_config.write_text("{}", encoding="utf-8")
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "weights": "stale.npz",
+                        "model_config_json": str(stale_config),
+                        "output": "out.wav",
+                        "text": "hello",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(config_path), "--weights-dir", str(root)])
+
+            generate_wav.resolve_preconverted_weights_args(args)
+
+        self.assertTrue(args.weights.endswith("weights.npz"))
+        self.assertTrue(args.model_config_json.endswith("model_config.json"))
+        self.assertNotEqual(args.model_config_json, str(stale_config))
+
+    def test_resolve_preconverted_weights_source_preserves_cli_model_config_override(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="approved")
+            explicit_config = Path(td) / "explicit_model_config.json"
+            explicit_config.write_text("{}", encoding="utf-8")
+            args = generate_wav.parse_args(
+                [
+                    "--weights-dir",
+                    str(root),
+                    "--model-config-json",
+                    str(explicit_config),
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                ]
+            )
+
+            generate_wav.resolve_preconverted_weights_args(args)
+
+        self.assertTrue(args.weights.endswith("weights.npz"))
+        self.assertEqual(args.model_config_json, str(explicit_config))
+
     def test_resolve_preconverted_weights_repo_rejects_unapproved_license_with_fallback_hint(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -429,7 +480,8 @@ class GenerateWavScriptTests(unittest.TestCase):
                     "tokenizer_config": "configs/tokenizer.json",
                     "conversion_metadata": "metadata/conversion.json",
                     "checksums": "metadata/checksums.sha256",
-                }
+                },
+                "license_review": {"status": "approved"},
             }
             manifest_path = root / "irodori_mlx_manifest.json"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -464,6 +516,60 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertIn("artifacts/weights-v3.npz", captured["allow_patterns"])
         self.assertIn("configs/model-v3.json", captured["allow_patterns"])
         self.assertNotIn("weights.npz", captured["allow_patterns"])
+
+    def test_download_weights_repo_snapshot_rejects_unapproved_manifest_before_snapshot(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            manifest = {
+                "files": {
+                    "weights": "artifacts/weights-v3.npz",
+                    "model_config": "configs/model-v3.json",
+                    "tokenizer_config": "configs/tokenizer.json",
+                    "conversion_metadata": "metadata/conversion.json",
+                    "checksums": "metadata/checksums.sha256",
+                },
+                "license_review": {"status": "pending"},
+            }
+            manifest_path = root / "irodori_mlx_manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            captured = {"snapshot_called": False}
+
+            class FakeHfApi:
+                def model_info(self, *, repo_id):
+                    return type("ModelInfo", (), {"sha": "abc123"})()
+
+            fake_hub = types.ModuleType("huggingface_hub")
+            fake_hub.HfApi = FakeHfApi
+            fake_hub.hf_hub_download = lambda *, repo_id, filename, revision: str(manifest_path)
+
+            def fake_snapshot_download(**kwargs):
+                captured["snapshot_called"] = True
+                return str(root)
+
+            fake_hub.snapshot_download = fake_snapshot_download
+            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
+                with self.assertRaisesRegex(ValueError, "license_review.status is 'pending'"):
+                    generate_wav._download_weights_repo_snapshot("org/repo")
+
+        self.assertFalse(captured["snapshot_called"])
+
+    def test_resolve_preconverted_weights_dir_allows_snapshot_symlink_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "snapshot"
+            root.mkdir()
+            blob_dir = Path(td) / "blobs"
+            blob_dir.mkdir()
+            blob_weights = blob_dir / "weights-blob.npz"
+            blob_weights.write_bytes(b"fake")
+            self._write_hosted_layout(root, license_status="approved")
+            (root / "weights.npz").unlink()
+            (root / "weights.npz").symlink_to(blob_weights)
+            args = generate_wav.parse_args(["--weights-dir", str(root), "--output", "out.wav", "--text", "hello"])
+
+            generate_wav.resolve_preconverted_weights_args(args)
+
+            self.assertEqual(Path(args.weights).name, "weights.npz")
+            self.assertTrue(Path(args.weights).is_symlink())
 
     def test_resolve_preconverted_weights_dir_rejects_manifest_paths_outside_layout(self):
         with tempfile.TemporaryDirectory() as td:

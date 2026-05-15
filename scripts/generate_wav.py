@@ -432,6 +432,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         pre.error(str(exc))
     parser = build_parser(config)
     args = parser.parse_args(argv)
+    args.model_config_json_cli_override = _has_cli_override(argv, "--model-config-json")
     args.num_steps = _resolve_num_steps(
         preset=args.preset,
         current_num_steps=int(args.num_steps),
@@ -512,12 +513,12 @@ def _resolve_hosted_layout_file(
         manifest_path, source_label=source_label, manifest_key=manifest_key
     )
     layout_root = layout_dir.resolve()
-    resolved_path = (layout_root / Path(*relative_path.parts)).resolve()
-    if not resolved_path.is_relative_to(layout_root):
+    layout_path = layout_root / Path(*relative_path.parts)
+    if not layout_path.absolute().is_relative_to(layout_root):
         raise ValueError(
             f"{source_label} manifest file entry {manifest_key!r} escapes the hosted weights layout: {manifest_path!r}"
         )
-    return resolved_path
+    return layout_path
 
 
 def _parse_checksum_filenames(checksum_text: str) -> set[str]:
@@ -598,6 +599,15 @@ def _download_weights_repo_snapshot(repo_id: str) -> Path:
             raise ValueError(f"Could not determine a pinned revision for hosted pre-converted MLX weights repo {repo_id!r}")
         manifest_path = Path(hf_hub_download(repo_id=repo_id, filename="irodori_mlx_manifest.json", revision=revision))
         manifest = _read_json_file(manifest_path, label="hosted weights manifest")
+        license_review = manifest.get("license_review")
+        if not isinstance(license_review, dict):
+            raise ValueError(f"{repo_id} manifest must include license_review metadata")
+        status = license_review.get("status")
+        if status != "approved":
+            raise ValueError(
+                f"{repo_id} hosted weights license_review.status is {status!r}, expected 'approved'. "
+                "Do not download unpublished or unapproved hosted weights; use --weights with a locally converted .npz fallback instead."
+            )
         files = manifest.get("files")
         if not isinstance(files, dict):
             raise ValueError(f"{repo_id} manifest must include a files object")
@@ -638,7 +648,7 @@ def resolve_preconverted_weights_args(args: argparse.Namespace) -> argparse.Name
             layout_dir, files["weights"], source_label=str(layout_dir), manifest_key="weights"
         )
     )
-    if not args.model_config_json:
+    if not getattr(args, "model_config_json_cli_override", False):
         args.model_config_json = str(
             _resolve_hosted_layout_file(
                 layout_dir, files["model_config"], source_label=str(layout_dir), manifest_key="model_config"
