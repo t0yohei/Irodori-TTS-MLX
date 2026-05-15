@@ -43,10 +43,12 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          from irodori_mlx.hosted_weights import resolve_weights_source
+          from irodori_mlx.hosted_weights import resolve_weights_layout_source
 
-          resolved = resolve_weights_source(weights_repo=os.environ["WEIGHTS_REPO"])
+          resolved = resolve_weights_layout_source(weights_repo=os.environ["WEIGHTS_REPO"])
+          if resolved is None:
+              raise SystemExit("weights_repo did not resolve to a hosted layout")
           print(f"weights_path={resolved.weights_path}")
-          print(f"model_config_path={resolved.model_config_path}")
+          print(f"model_config={resolved.model_config.model_type}")
           print(f"source_kind={resolved.source_kind}")
           PY

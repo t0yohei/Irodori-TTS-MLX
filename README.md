@@ -77,15 +77,36 @@ For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation C
 
 For the v0.1 checkpoint-family support contract, including supported / experimental / unsupported status and redistribution caveats, see [docs/checkpoint_support.md](docs/checkpoint_support.md). For the v0.2 hosted pre-converted weights eligibility audit and required provenance language, see [docs/preconverted_weights_redistribution_audit.md](docs/preconverted_weights_redistribution_audit.md).
 
+For the v0.2 hosted/pre-converted MLX weights layout contract, including local-directory versus Hugging Face repository resolution, required metadata files, provenance, and license-review boundaries, see [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md). For the user-facing hosted-weights quick path, local hosted-layout directory flow, and fallback local conversion recipe, see [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md).
+
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
 For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
 
 For the v0.1 text preprocessing contract, including upstream-compatible prompt normalization, tokenizer padding/truncation semantics, caption-tokenizer boundaries, and representative contract tests, see [docs/text_preprocessing.md](docs/text_preprocessing.md).
 
+## v0.2 hosted converted weights path
+
+The hosted-loader CLI work in #82 defines the intended v0.2 shortest path: load an approved hosted converted weights repository with `--weights-repo`, or the same layout from disk with `--weights-dir`. Those flags are not part of the current `main` CLI until the #82 implementation lands; on the current CLI, use the local conversion fallback below.
+
+When the hosted-loader support is available, use only repos whose manifest has `license_review.status: "approved"` and whose README/model card links provenance for the exact upstream checkpoint revision. The planned VoiceDesign shape is:
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
+irodori-tts-generate \
+  --weights-repo t0yohei/irodori-tts-mlx-voicedesign-v2-500m \
+  --text "こんにちは。今日は良い天気です。" \
+  --caption "落ち着いた女性の声" \
+  --no-reference \
+  --output /tmp/irodori-hosted.wav \
+  --preset balanced
+```
+
+This path still uses the upstream PyTorch DACVAE bridge for codec encode/decode and does not bundle upstream code, codec weights, reference audio, generated samples, or Hugging Face cache snapshots. If a hosted repo is unavailable, unapproved, or outside the audited candidate families, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, v3 no-reference example, provenance checklist, and fallback decision rules.
+
 ## Quickstart: checkpoint to WAV
 
-This is the shortest v0.1 path from a fresh checkout to a generated WAV. It assumes an Apple Silicon macOS host and a checkpoint you are allowed to download and use locally. This repository does **not** redistribute upstream code, model weights, DACVAE assets, or reference audio; check the upstream repository and model cards before reusing or sharing outputs.
+This is the supported local fallback path from a fresh checkout to a generated WAV. It assumes an Apple Silicon macOS host and a checkpoint you are allowed to download and use locally. This repository does **not** redistribute upstream code, model weights, DACVAE assets, or reference audio; check the upstream repository and model cards before reusing or sharing outputs.
 
 The recommended first smoke path is **v3 no-reference generation** because it does not require a committed reference WAV and it exercises the predicted-duration runtime. Use the reference-WAV variant below when you want speaker-conditioned output from a local sample.
 
@@ -237,7 +258,7 @@ v0.1 support is limited to checkpoint families whose tensor layouts and runtime 
 | v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported | Supported; omit `--seconds` for predicted duration | **Supported** |
 | Other historical, fine-tuned, LoRA, architecture-modified, or renamed Irodori-TTS checkpoints | Any non-matching layout/config | Best-effort metadata inspection only | Unsupported | Unsupported | **Unsupported** |
 
-Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats, and [docs/license_and_distribution.md](docs/license_and_distribution.md) for the repository license and non-redistribution policy.
+Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats, [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md) for the v0.2 hosted MLX weights repository contract, [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for hosted usage and fallback local conversion, and [docs/license_and_distribution.md](docs/license_and_distribution.md) for the repository license and non-redistribution policy.
 
 ## Checkpoint inspection
 
