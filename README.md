@@ -77,6 +77,8 @@ For the first end-to-end MLX RF-DiT + PyTorch DACVAE bridge and WAV-generation C
 
 For the v0.1 checkpoint-family support contract, including supported / experimental / unsupported status and redistribution caveats, see [docs/checkpoint_support.md](docs/checkpoint_support.md).
 
+For the v0.2 hosted/pre-converted MLX weights layout contract, including local-directory versus Hugging Face repository resolution, required metadata files, provenance, and license-review boundaries, see [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md).
+
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
 For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
@@ -237,7 +239,7 @@ v0.1 support is limited to checkpoint families whose tensor layouts and runtime 
 | v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported | Supported; omit `--seconds` for predicted duration | **Supported** |
 | Other historical, fine-tuned, LoRA, architecture-modified, or renamed Irodori-TTS checkpoints | Any non-matching layout/config | Best-effort metadata inspection only | Unsupported | Unsupported | **Unsupported** |
 
-Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats, and [docs/license_and_distribution.md](docs/license_and_distribution.md) for the repository license and non-redistribution policy.
+Unsupported means outside the v0.1 conversion/runtime contract, not merely untested. This repository also does **not** redistribute checkpoints, Semantic-DACVAE weights, Hugging Face cache contents, converted `.npz` archives, or generated audio artifacts. Users must obtain upstream checkpoints themselves and follow the relevant upstream repository/model-card terms. See [docs/checkpoint_support.md](docs/checkpoint_support.md) for the full support matrix, family boundaries, validation evidence, and redistribution caveats, [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md) for the future v0.2 hosted MLX weights repository contract, and [docs/license_and_distribution.md](docs/license_and_distribution.md) for the repository license and non-redistribution policy.
 
 ## Checkpoint inspection
 

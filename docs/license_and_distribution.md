@@ -37,6 +37,8 @@ This repository does **not** redistribute:
 
 Converted `.npz` files and generated audio can be derived artifacts from upstream models, DACVAE weights, prompts, and reference audio. Keep them local unless you have confirmed that every relevant upstream license and rights holder permits redistribution.
 
+The v0.2 hosted/pre-converted MLX weights repository layout is documented in [hosted_weights_layout.md](hosted_weights_layout.md), but that layout is a packaging contract only. It does not approve publishing converted weights; any public hosted repository still needs an explicit license review and provenance record before upload.
+
 ## Contributor guidance
 
 - Do not commit model weights, converted weights, cache directories, generated WAV files, or reference audio to this repository.
