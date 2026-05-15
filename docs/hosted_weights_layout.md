@@ -43,7 +43,7 @@ repo-or-local-dir/
 ├── tokenizer_config.json       # required tokenizer/conditioning metadata for this family
 ├── conversion_metadata.json    # required conversion provenance and tool versions
 ├── weights.npz                 # required converted MLX RF-DiT weights
-└── checksums.sha256            # required hashes for loader-required files, excluding itself
+└── checksums.sha256            # required hashes for manifest and loader artifacts, excluding itself
 ```
 
 Optional files may be added under clearly named directories such as `docs/`, `examples/`, or `validation/`, but required loader inputs must stay at the top level for simple `hf_hub_download` / `snapshot_download` resolution.
@@ -154,8 +154,8 @@ The manifest deliberately separates loader behavior from the README prose so aut
 
 ### `checksums.sha256`
 
-A plain SHA-256 checksum file covering every loader-required artifact named by the manifest except `checksums.sha256` itself: `weights.npz`, `model_config.json`, `tokenizer_config.json`, and `conversion_metadata.json`.
-Consumers should verify checksums after download when practical. At minimum, repository validation should ensure the checksum file names every loader-required artifact and does not attempt to hash the checksum file itself.
+A plain SHA-256 checksum file covering the manifest plus every loader-required artifact named by the manifest except `checksums.sha256` itself: `irodori_mlx_manifest.json`, `weights.npz`, `model_config.json`, `tokenizer_config.json`, and `conversion_metadata.json`.
+Consumers should verify checksums after download when practical. At minimum, repository validation should ensure the checksum file names the manifest and every loader-required artifact, while not attempting to hash the checksum file itself.
 
 ### `README.md` and `LICENSE.md`
 
@@ -233,7 +233,7 @@ Before a hosted repository is published or consumed by default, validation shoul
 - `irodori_mlx_manifest.json` names every loader-required artifact plus the checksum file;
 - `model_config.json` is accepted by `ModelConfig` for the family;
 - tokenizer metadata matches the documented text/caption preprocessing contracts;
-- checksums cover all loader-required artifacts named by the manifest, excluding `checksums.sha256` itself;
+- checksums cover `irodori_mlx_manifest.json` and all loader-required artifacts named by the manifest, excluding `checksums.sha256` itself;
 - `license_review.status` is `approved` for any public hosted repo;
 - local directory and hosted snapshot resolution feed the same runtime loading function;
 - local conversion from the upstream checkpoint remains documented as a fallback.

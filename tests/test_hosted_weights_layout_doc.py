@@ -26,8 +26,9 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
                 self.assertIn(filename, self.doc)
 
         self.assertIn("required loader inputs must stay at the top level", self.doc)
-        self.assertIn("loader-required files", self.doc)
+        self.assertIn("manifest and loader artifacts", self.doc)
         self.assertIn("excluding itself", self.doc)
+        self.assertIn("checksums cover `irodori_mlx_manifest.json`", self.doc)
         self.assertIn("hf_hub_download", self.doc)
         self.assertIn("snapshot_download", self.doc)
 
