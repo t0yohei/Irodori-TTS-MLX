@@ -108,17 +108,25 @@ def default_huggingface_snapshot_download(repo_id: str) -> Path:
     """Download a hosted weights snapshot without requiring the dependency at import time."""
 
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import HfApi, snapshot_download
     except ImportError as exc:  # pragma: no cover - depends on optional user setup.
         raise ValueError(
             "Hosted pre-converted MLX weights by repo id require huggingface_hub. Install it, use a local "
             "hosted-layout directory, or fall back to locally converted .npz weights."
         ) from exc
     try:
-        manifest_snapshot = Path(snapshot_download(repo_id=repo_id, allow_patterns=list(HOSTED_WEIGHTS_ALLOW_PATTERNS)))
+        repo_info = HfApi().model_info(repo_id=repo_id)
+        revision = repo_info.sha
+        manifest_snapshot = Path(
+            snapshot_download(
+                repo_id=repo_id,
+                revision=revision,
+                allow_patterns=list(HOSTED_WEIGHTS_ALLOW_PATTERNS),
+            )
+        )
         manifest = _read_json_object(manifest_snapshot / HOSTED_WEIGHTS_MANIFEST, label=f"hosted repo {repo_id!r}")
         allow_patterns = _hosted_weights_allow_patterns_from_manifest(manifest, label=f"hosted repo {repo_id!r}")
-        return Path(snapshot_download(repo_id=repo_id, allow_patterns=allow_patterns))
+        return Path(snapshot_download(repo_id=repo_id, revision=revision, allow_patterns=allow_patterns))
     except Exception as exc:
         raise ValueError(
             f"Could not resolve hosted pre-converted MLX weights repo {repo_id!r}: {exc}. "

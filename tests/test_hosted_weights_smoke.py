@@ -123,15 +123,21 @@ class HostedWeightsSmokeTests(unittest.TestCase):
                     "checksums": "artifacts/checksums.sha256",
                 },
             )
-            calls: list[list[str]] = []
+            calls: list[tuple[str, list[str]]] = []
+            model_info_calls: list[str] = []
 
-            def fake_snapshot_download(*, repo_id: str, allow_patterns: list[str]) -> str:
+            class FakeHfApi:
+                def model_info(self, *, repo_id: str):
+                    model_info_calls.append(repo_id)
+                    return SimpleNamespace(sha="abc123")
+
+            def fake_snapshot_download(*, repo_id: str, revision: str, allow_patterns: list[str]) -> str:
                 self.assertEqual(repo_id, "org/irodori-v3-mlx")
-                calls.append(allow_patterns)
+                calls.append((revision, allow_patterns))
                 return str(root)
 
             previous = sys.modules.get("huggingface_hub")
-            sys.modules["huggingface_hub"] = SimpleNamespace(snapshot_download=fake_snapshot_download)
+            sys.modules["huggingface_hub"] = SimpleNamespace(HfApi=FakeHfApi, snapshot_download=fake_snapshot_download)
             try:
                 resolved = default_huggingface_snapshot_download("org/irodori-v3-mlx")
             finally:
@@ -141,11 +147,13 @@ class HostedWeightsSmokeTests(unittest.TestCase):
                     sys.modules["huggingface_hub"] = previous
 
         self.assertEqual(resolved, root)
+        self.assertEqual(model_info_calls, ["org/irodori-v3-mlx"])
         self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[0], ["README.md", "LICENSE.md", "irodori_mlx_manifest.json"])
-        self.assertIn("artifacts/weights.npz", calls[1])
-        self.assertIn("artifacts/config/model_config.json", calls[1])
-        self.assertIn("artifacts/checksums.sha256", calls[1])
+        self.assertEqual(calls[0], ("abc123", ["README.md", "LICENSE.md", "irodori_mlx_manifest.json"]))
+        self.assertEqual(calls[1][0], "abc123")
+        self.assertIn("artifacts/weights.npz", calls[1][1])
+        self.assertIn("artifacts/config/model_config.json", calls[1][1])
+        self.assertIn("artifacts/checksums.sha256", calls[1][1])
 
     def test_repo_id_resolution_rejects_unapproved_artifacts_with_local_fallback_hint(self):
         with tempfile.TemporaryDirectory() as td:
