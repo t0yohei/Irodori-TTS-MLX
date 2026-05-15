@@ -435,18 +435,32 @@ class GenerateWavScriptTests(unittest.TestCase):
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             captured = {}
 
-            fake_hub = types.ModuleType("huggingface_hub")
-            fake_hub.hf_hub_download = lambda *, repo_id, filename: str(manifest_path)
+            class FakeHfApi:
+                def model_info(self, *, repo_id):
+                    captured["model_info_repo_id"] = repo_id
+                    return type("ModelInfo", (), {"sha": "abc123"})()
 
-            def fake_snapshot_download(*, repo_id, allow_patterns):
+            fake_hub = types.ModuleType("huggingface_hub")
+            fake_hub.HfApi = FakeHfApi
+
+            def fake_hf_hub_download(*, repo_id, filename, revision):
+                captured["manifest_revision"] = revision
+                return str(manifest_path)
+
+            def fake_snapshot_download(*, repo_id, revision, allow_patterns):
+                captured["snapshot_revision"] = revision
                 captured["allow_patterns"] = allow_patterns
                 return str(root)
 
+            fake_hub.hf_hub_download = fake_hf_hub_download
             fake_hub.snapshot_download = fake_snapshot_download
             with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
                 snapshot = generate_wav._download_weights_repo_snapshot("org/repo")
 
         self.assertEqual(snapshot, root)
+        self.assertEqual(captured["model_info_repo_id"], "org/repo")
+        self.assertEqual(captured["manifest_revision"], "abc123")
+        self.assertEqual(captured["snapshot_revision"], "abc123")
         self.assertIn("artifacts/weights-v3.npz", captured["allow_patterns"])
         self.assertIn("configs/model-v3.json", captured["allow_patterns"])
         self.assertNotIn("weights.npz", captured["allow_patterns"])

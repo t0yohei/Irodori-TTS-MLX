@@ -586,14 +586,17 @@ def _load_hosted_weights_manifest(layout_dir: Path, *, source_label: str, requir
 
 def _download_weights_repo_snapshot(repo_id: str) -> Path:
     try:
-        from huggingface_hub import hf_hub_download, snapshot_download
+        from huggingface_hub import HfApi, hf_hub_download, snapshot_download
     except ImportError as exc:  # pragma: no cover - depends on optional user setup.
         raise ValueError(
             "--weights-repo/--model requires huggingface_hub. Install it or use --weights-dir for a local "
             "pre-converted layout, or --weights with a locally converted .npz fallback."
         ) from exc
     try:
-        manifest_path = Path(hf_hub_download(repo_id=repo_id, filename="irodori_mlx_manifest.json"))
+        revision = HfApi().model_info(repo_id=repo_id).sha
+        if not isinstance(revision, str) or not revision.strip():
+            raise ValueError(f"Could not determine a pinned revision for hosted pre-converted MLX weights repo {repo_id!r}")
+        manifest_path = Path(hf_hub_download(repo_id=repo_id, filename="irodori_mlx_manifest.json", revision=revision))
         manifest = _read_json_file(manifest_path, label="hosted weights manifest")
         files = manifest.get("files")
         if not isinstance(files, dict):
@@ -608,6 +611,7 @@ def _download_weights_repo_snapshot(repo_id: str) -> Path:
         return Path(
             snapshot_download(
                 repo_id=repo_id,
+                revision=revision,
                 allow_patterns=["README.md", "LICENSE.md", *sorted(set(declared_paths))],
             )
         )
