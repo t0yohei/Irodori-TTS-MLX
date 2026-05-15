@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -72,17 +73,27 @@ class GenerateWavScriptTests(unittest.TestCase):
         }
         (root / "irodori_mlx_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         (root / "model_config.json").write_text('{"use_duration_predictor": true}', encoding="utf-8")
-        (root / "tokenizer_config.json").write_text('{"schema_version": 1}', encoding="utf-8")
-        (root / "conversion_metadata.json").write_text('{"schema_version": 1}', encoding="utf-8")
+        (root / "tokenizer_config.json").write_text(
+            '{"schema_version": 1, "text_tokenizer": {"repo": "dummy"}}', encoding="utf-8"
+        )
+        (root / "conversion_metadata.json").write_text(
+            '{"schema_version": 1, "detected_family": "v3", "converter": {"name": "test"}, "upstream": {"repo": "dummy"}}',
+            encoding="utf-8",
+        )
         (root / "weights.npz").write_bytes(b"fake npz")
         listed = ["irodori_mlx_manifest.json", *(value for key, value in files.items() if key != "checksums")]
-        (root / "checksums.sha256").write_text("\n".join(f"0  {name}" for name in listed), encoding="utf-8")
+        lines = []
+        for name in listed:
+            digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
+            lines.append(f"{digest}  {name}")
+        (root / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _args(self, output_wav: str) -> Namespace:
         return Namespace(
             weights="weights.npz",
             weights_dir=None,
             weights_repo=None,
+            weights_revision=None,
             output=output_wav,
             text="hello",
             preset=None,
@@ -163,6 +174,151 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.text, "hello")
         self.assertEqual(args.seconds, 2.5)
         self.assertEqual(args.num_steps, 8)
+
+    def test_parse_args_accepts_weights_dir_instead_of_npz(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights-dir",
+                "converted-layout",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+            ]
+        )
+
+        self.assertIsNone(args.weights)
+        self.assertEqual(args.weights_dir, "converted-layout")
+        self.assertIsNone(args.weights_repo)
+
+    def test_parse_args_cli_weight_source_overrides_config_weight_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "from-config.npz", "model_config_json": "legacy-model.json", "text_tokenizer_repo": "legacy/text", "caption_tokenizer_repo": "legacy/caption", "output": "from-config.wav", "text": "hello"}',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path), "--weights-dir", "converted-layout"])
+
+        self.assertIsNone(args.weights)
+        self.assertEqual(args.weights_dir, "converted-layout")
+        self.assertIsNone(args.model_config_json)
+        self.assertIsNone(args.text_tokenizer_repo)
+        self.assertIsNone(args.caption_tokenizer_repo)
+
+    def test_parse_args_preserves_explicit_tokenizer_overrides_with_layout(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights-dir",
+                "converted-layout",
+                "--text-tokenizer-repo",
+                "custom/text",
+                "--caption-tokenizer-repo",
+                "custom/caption",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+            ]
+        )
+
+        self.assertEqual(args.weights_dir, "converted-layout")
+        self.assertEqual(args.text_tokenizer_repo, "custom/text")
+        self.assertEqual(args.caption_tokenizer_repo, "custom/caption")
+
+    def test_parse_args_rejects_layout_with_explicit_model_config_override(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights-dir",
+                    "converted-layout",
+                    "--model-config-json",
+                    "model.json",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                ]
+            )
+
+    def test_parse_args_cli_repo_override_clears_config_revision(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights_repo": "owner/old", "weights_revision": "oldrev", "output": "from-config.wav", "text": "hello"}',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path), "--weights-repo", "owner/new"])
+
+        self.assertEqual(args.weights_repo, "owner/new")
+        self.assertIsNone(args.weights_revision)
+
+    def test_parse_args_rejects_weights_revision_without_repo(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--weights-revision",
+                    "abc123",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                ]
+            )
+
+    def test_main_uses_resolved_layout_weights_and_model_config(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            out_wav = str(Path(td) / "out.wav")
+            args = self._args(out_wav)
+            args.weights = None
+            args.weights_dir = str(Path(td) / "layout")
+            resolved = type(
+                "ResolvedLayout",
+                (),
+                {
+                    "weights_path": Path(td) / "layout" / "weights.npz",
+                    "model_config": ModelConfig(use_caption_condition=True, text_tokenizer_repo="layout/text"),
+                    "manifest": {"runtime": {"requires_reference_audio": False, "supports_no_reference": True}},
+                },
+            )()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "resolve_weights_layout_source", return_value=resolved
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(runtime_holder["runtime"].config.weights_path, str(resolved.weights_path))
+        self.assertEqual(runtime_holder["runtime"].config.model_config.text_tokenizer_repo, "layout/text")
+
+    def test_main_rejects_layout_no_reference_when_manifest_requires_reference(self):
+        with tempfile.TemporaryDirectory() as td:
+            args = self._args(str(Path(td) / "out.wav"))
+            args.weights = None
+            args.weights_dir = str(Path(td) / "layout")
+            args.no_reference = True
+            resolved = type(
+                "ResolvedLayout",
+                (),
+                {
+                    "weights_path": Path(td) / "layout" / "weights.npz",
+                    "model_config": ModelConfig(use_caption_condition=False),
+                    "manifest": {"runtime": {"requires_reference_audio": True, "supports_no_reference": False}},
+                },
+            )()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "resolve_weights_layout_source", return_value=resolved
+            ), self.assertRaisesRegex(SystemExit, "requires reference_wav"):
+                generate_wav.main()
 
     def test_parse_args_applies_preset_num_steps(self):
         args = generate_wav.parse_args(
@@ -436,30 +592,6 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertTrue(args.model_config_json.endswith("model_config.json"))
         self.assertNotEqual(args.model_config_json, str(stale_config))
 
-    def test_resolve_preconverted_weights_source_preserves_cli_model_config_override(self):
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            self._write_hosted_layout(root, license_status="approved")
-            explicit_config = Path(td) / "explicit_model_config.json"
-            explicit_config.write_text("{}", encoding="utf-8")
-            args = generate_wav.parse_args(
-                [
-                    "--weights-dir",
-                    str(root),
-                    "--model-config-json",
-                    str(explicit_config),
-                    "--output",
-                    "out.wav",
-                    "--text",
-                    "hello",
-                ]
-            )
-
-            generate_wav.resolve_preconverted_weights_args(args)
-
-        self.assertTrue(args.weights.endswith("weights.npz"))
-        self.assertEqual(args.model_config_json, str(explicit_config))
-
     def test_resolve_preconverted_weights_repo_rejects_unapproved_license_with_fallback_hint(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -513,45 +645,9 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(captured["model_info_repo_id"], "org/repo")
         self.assertEqual(captured["manifest_revision"], "abc123")
         self.assertEqual(captured["snapshot_revision"], "abc123")
-        self.assertIn("artifacts/weights-v3.npz", captured["allow_patterns"])
-        self.assertIn("configs/model-v3.json", captured["allow_patterns"])
-        self.assertNotIn("weights.npz", captured["allow_patterns"])
-
-    def test_download_weights_repo_snapshot_rejects_unapproved_manifest_before_snapshot(self):
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            manifest = {
-                "files": {
-                    "weights": "artifacts/weights-v3.npz",
-                    "model_config": "configs/model-v3.json",
-                    "tokenizer_config": "configs/tokenizer.json",
-                    "conversion_metadata": "metadata/conversion.json",
-                    "checksums": "metadata/checksums.sha256",
-                },
-                "license_review": {"status": "pending"},
-            }
-            manifest_path = root / "irodori_mlx_manifest.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            captured = {"snapshot_called": False}
-
-            class FakeHfApi:
-                def model_info(self, *, repo_id):
-                    return type("ModelInfo", (), {"sha": "abc123"})()
-
-            fake_hub = types.ModuleType("huggingface_hub")
-            fake_hub.HfApi = FakeHfApi
-            fake_hub.hf_hub_download = lambda *, repo_id, filename, revision: str(manifest_path)
-
-            def fake_snapshot_download(**kwargs):
-                captured["snapshot_called"] = True
-                return str(root)
-
-            fake_hub.snapshot_download = fake_snapshot_download
-            with patch.dict(sys.modules, {"huggingface_hub": fake_hub}):
-                with self.assertRaisesRegex(ValueError, "license_review.status is 'pending'"):
-                    generate_wav._download_weights_repo_snapshot("org/repo")
-
-        self.assertFalse(captured["snapshot_called"])
+        self.assertIn("weights.npz", captured["allow_patterns"])
+        self.assertIn("model_config.json", captured["allow_patterns"])
+        self.assertIn("irodori_mlx_manifest.json", captured["allow_patterns"])
 
     def test_resolve_preconverted_weights_dir_allows_snapshot_symlink_files(self):
         with tempfile.TemporaryDirectory() as td:
@@ -564,6 +660,11 @@ class GenerateWavScriptTests(unittest.TestCase):
             self._write_hosted_layout(root, license_status="approved")
             (root / "weights.npz").unlink()
             (root / "weights.npz").symlink_to(blob_weights)
+            checksums = (root / "checksums.sha256").read_text(encoding="utf-8").splitlines()
+            rewritten = []
+            for line in checksums:
+                rewritten.append(f"{hashlib.sha256(blob_weights.read_bytes()).hexdigest()}  weights.npz" if line.endswith("  weights.npz") else line)
+            (root / "checksums.sha256").write_text("\n".join(rewritten) + "\n", encoding="utf-8")
             args = generate_wav.parse_args(["--weights-dir", str(root), "--output", "out.wav", "--text", "hello"])
 
             generate_wav.resolve_preconverted_weights_args(args)
@@ -585,7 +686,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 ["--weights-dir", str(root), "--output", "out.wav", "--text", "hello"]
             )
 
-            with self.assertRaisesRegex(ValueError, "within the hosted weights layout"):
+            with self.assertRaisesRegex(ValueError, "top-level .weights.npz"):
                 generate_wav.resolve_preconverted_weights_args(args)
 
     def test_resolve_preconverted_weights_dir_requires_exact_checksum_filenames(self):
@@ -595,11 +696,11 @@ class GenerateWavScriptTests(unittest.TestCase):
             (root / "checksums.sha256").write_text(
                 "\n".join(
                     [
-                        "0  irodori_mlx_manifest.json",
-                        "0  model_config.json",
-                        "0  tokenizer_config.json",
-                        "0  conversion_metadata.json",
-                        "0  weights.npz.bak",
+                        f"{'0' * 64}  irodori_mlx_manifest.json",
+                        f"{'0' * 64}  model_config.json",
+                        f"{'0' * 64}  tokenizer_config.json",
+                        f"{'0' * 64}  conversion_metadata.json",
+                        f"{'0' * 64}  weights.npz.bak",
                     ]
                 ),
                 encoding="utf-8",
@@ -609,7 +710,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(
-                ValueError, "checksums file does not list required files: weights.npz"
+                ValueError, "checksums.sha256 does not name required files: weights.npz"
             ):
                 generate_wav.resolve_preconverted_weights_args(args)
 
