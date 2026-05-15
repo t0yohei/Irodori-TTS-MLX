@@ -26,6 +26,8 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
                 self.assertIn(filename, self.doc)
 
         self.assertIn("required loader inputs must stay at the top level", self.doc)
+        self.assertIn("loader-required files", self.doc)
+        self.assertIn("excluding itself", self.doc)
         self.assertIn("hf_hub_download", self.doc)
         self.assertIn("snapshot_download", self.doc)
 
@@ -39,6 +41,7 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
             '"requires_upstream_dacvae_bridge": true',
             '"supports_predicted_duration": true',
             '"license_review"',
+            "names every loader-required artifact plus the checksum file",
         ]
         for term in expected_manifest_terms:
             with self.subTest(term=term):
