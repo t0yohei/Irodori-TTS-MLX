@@ -210,6 +210,33 @@ print(validate_hosted_weights_layout.__name__)
 
         self.assertEqual(calls, [("abc123", ["README.md", "LICENSE.md", "irodori_mlx_manifest.json"])])
 
+    def test_huggingface_rejects_unapproved_manifest_before_second_download(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="pending")
+            calls: list[tuple[str, list[str]]] = []
+
+            class FakeHfApi:
+                def model_info(self, *, repo_id: str):
+                    return SimpleNamespace(sha="abc123")
+
+            def fake_snapshot_download(*, repo_id: str, revision: str, allow_patterns: list[str]) -> str:
+                calls.append((revision, allow_patterns))
+                return str(root)
+
+            previous = sys.modules.get("huggingface_hub")
+            sys.modules["huggingface_hub"] = SimpleNamespace(HfApi=FakeHfApi, snapshot_download=fake_snapshot_download)
+            try:
+                with self.assertRaisesRegex(ValueError, "license_review.status='approved'"):
+                    default_huggingface_snapshot_download("org/irodori-v3-mlx")
+            finally:
+                if previous is None:
+                    sys.modules.pop("huggingface_hub", None)
+                else:
+                    sys.modules["huggingface_hub"] = previous
+
+        self.assertEqual(calls, [("abc123", ["README.md", "LICENSE.md", "irodori_mlx_manifest.json"])])
+
     def test_huggingface_manifest_path_validation_ignores_cwd_symlinks(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "snapshot"

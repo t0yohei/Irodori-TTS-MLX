@@ -645,8 +645,8 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(captured["model_info_repo_id"], "org/repo")
         self.assertEqual(captured["manifest_revision"], "abc123")
         self.assertEqual(captured["snapshot_revision"], "abc123")
-        self.assertIn("weights.npz", captured["allow_patterns"])
-        self.assertIn("model_config.json", captured["allow_patterns"])
+        self.assertIn("artifacts/weights-v3.npz", captured["allow_patterns"])
+        self.assertIn("configs/model-v3.json", captured["allow_patterns"])
         self.assertIn("irodori_mlx_manifest.json", captured["allow_patterns"])
 
     def test_resolve_preconverted_weights_dir_allows_snapshot_symlink_files(self):
@@ -686,7 +686,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 ["--weights-dir", str(root), "--output", "out.wav", "--text", "hello"]
             )
 
-            with self.assertRaisesRegex(ValueError, "top-level .weights.npz"):
+            with self.assertRaisesRegex(ValueError, "must stay inside the hosted weights layout"):
                 generate_wav.resolve_preconverted_weights_args(args)
 
     def test_resolve_preconverted_weights_dir_requires_exact_checksum_filenames(self):

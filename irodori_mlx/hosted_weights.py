@@ -19,13 +19,6 @@ REQUIRED_MANIFEST_FILES = {
     "conversion_metadata",
     "checksums",
 }
-EXPECTED_TOP_LEVEL_FILES = {
-    "weights": "weights.npz",
-    "model_config": "model_config.json",
-    "tokenizer_config": "tokenizer_config.json",
-    "conversion_metadata": "conversion_metadata.json",
-    "checksums": "checksums.sha256",
-}
 SUPPORTED_SCHEMA_VERSION = 1
 SUPPORTED_FORMAT = "irodori-tts-mlx-weights"
 SUPPORTED_FORMAT_VERSION = "0.2"
@@ -162,9 +155,8 @@ def _validate_manifest(manifest: dict[str, Any], *, source_kind: str) -> dict[st
     manifest_files = {key: files[key] for key in REQUIRED_MANIFEST_FILES}
     if any(not isinstance(value, str) or not value.strip() for value in manifest_files.values()):
         raise HostedWeightsError("manifest file entries must be non-empty strings")
-    for key, expected in EXPECTED_TOP_LEVEL_FILES.items():
-        if manifest_files[key] != expected:
-            raise HostedWeightsError(f"manifest files.{key} must be top-level {expected!r}")
+    for key, entry in manifest_files.items():
+        _manifest_relative_path(entry, label=f"manifest files.{key}")
     runtime = _require_mapping(manifest, "runtime", label="manifest")
     for key in ("requires_upstream_dacvae_bridge", "requires_reference_audio", "supports_no_reference", "supports_caption", "supports_predicted_duration"):
         if not isinstance(runtime.get(key), bool):
@@ -317,22 +309,8 @@ def snapshot_weights_repo(repo_id: str, *, revision: str | None = None) -> Path:
         license_review = _require_mapping(manifest, "license_review", label="manifest")
         if license_review.get("status") != "approved":
             raise HostedWeightsError("hosted weights repos require manifest license_review.status='approved'")
-        return Path(
-            snapshot_download(
-                repo_id=repo_id,
-                revision=pinned_revision,
-                allow_patterns=[
-                    "README.md",
-                    "LICENSE.md",
-                    MANIFEST_NAME,
-                    "model_config.json",
-                    "tokenizer_config.json",
-                    "conversion_metadata.json",
-                    "weights.npz",
-                    "checksums.sha256",
-                ],
-            )
-        )
+        allow_patterns = _hosted_weights_allow_patterns_from_manifest(manifest, label=f"hosted repo {repo_id!r}")
+        return Path(snapshot_download(repo_id=repo_id, revision=pinned_revision, allow_patterns=allow_patterns))
     except Exception as exc:
         rev = f" at revision {revision!r}" if revision else ""
         raise HostedWeightsError(f"could not resolve hosted weights repo {repo_id!r}{rev}: {exc}") from exc
@@ -458,6 +436,9 @@ def default_huggingface_snapshot_download(repo_id: str) -> Path:
             )
         )
         manifest = _read_json_object(manifest_snapshot / HOSTED_WEIGHTS_MANIFEST, label=f"hosted repo {repo_id!r}")
+        license_review = _require_mapping(manifest, "license_review", label=f"hosted repo {repo_id!r} manifest")
+        if license_review.get("status") != "approved":
+            raise HostedWeightsError("hosted weights repos require manifest license_review.status='approved'")
         allow_patterns = _hosted_weights_allow_patterns_from_manifest(manifest, label=f"hosted repo {repo_id!r}")
         return Path(snapshot_download(repo_id=repo_id, revision=revision, allow_patterns=allow_patterns))
     except Exception as exc:
