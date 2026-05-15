@@ -306,7 +306,9 @@ def snapshot_weights_repo(repo_id: str, *, revision: str | None = None) -> Path:
                 raise HostedWeightsError(f"could not determine a pinned revision for hosted weights repo {repo_id!r}")
         manifest_path = Path(hf_hub_download(repo_id=repo_id, filename=MANIFEST_NAME, revision=pinned_revision))
         manifest = _read_json_object(manifest_path, label=MANIFEST_NAME)
-        _validate_manifest(manifest, source_kind="repo")
+        license_review = _require_mapping(manifest, "license_review", label="manifest")
+        if license_review.get("status") != "approved":
+            raise HostedWeightsError("hosted weights repos require manifest license_review.status='approved'")
         return Path(
             snapshot_download(
                 repo_id=repo_id,
