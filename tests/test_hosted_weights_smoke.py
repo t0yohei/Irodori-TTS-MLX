@@ -1,0 +1,174 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from irodori_mlx.hosted_weights import resolve_weights_source, validate_hosted_weights_layout
+
+
+class HostedWeightsSmokeTests(unittest.TestCase):
+    def _write_hosted_layout(
+        self,
+        root: Path,
+        *,
+        license_status: str = "approved",
+        omit_file: str | None = None,
+        omit_checksum_entry: str | None = None,
+        corrupt_checksum_entry: str | None = None,
+        file_overrides: dict[str, str] | None = None,
+    ) -> None:
+        files = {
+            "weights": "weights.npz",
+            "model_config": "model_config.json",
+            "tokenizer_config": "tokenizer_config.json",
+            "conversion_metadata": "conversion_metadata.json",
+            "checksums": "checksums.sha256",
+        }
+        if file_overrides:
+            files.update(file_overrides)
+        manifest = {
+            "schema_version": 1,
+            "format": "irodori-tts-mlx-weights",
+            "format_version": "0.2",
+            "family": "v3",
+            "upstream_checkpoint": "Aratako/Irodori-TTS-500M-v3",
+            "files": files,
+            "runtime": {
+                "minimum_irodori_tts_mlx_version": "0.2.0",
+                "requires_upstream_dacvae_bridge": True,
+                "requires_reference_audio": False,
+                "supports_no_reference": True,
+                "supports_caption": False,
+                "supports_predicted_duration": True,
+            },
+            "license_review": {
+                "status": license_status,
+                "review_reference": "https://github.com/t0yohei/irodori-tts-mlx/issues/80",
+            },
+        }
+        payloads = {
+            "irodori_mlx_manifest.json": json.dumps(manifest),
+            "model_config.json": '{"use_duration_predictor": true}',
+            "tokenizer_config.json": '{"schema_version": 1}',
+            "conversion_metadata.json": '{"schema_version": 1}',
+            "weights.npz": b"tiny fake npz fixture; not a real model weight",
+        }
+        for name, payload in payloads.items():
+            if name == omit_file:
+                continue
+            path = root / name
+            if isinstance(payload, bytes):
+                path.write_bytes(payload)
+            else:
+                path.write_text(payload, encoding="utf-8")
+        listed = ["irodori_mlx_manifest.json", *(value for key, value in files.items() if key != "checksums")]
+        if omit_checksum_entry:
+            listed.remove(omit_checksum_entry)
+        checksum_lines = []
+        for name in listed:
+            path = root / name
+            digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "0" * 64
+            if name == corrupt_checksum_entry:
+                digest = "0" * 64
+            checksum_lines.append(f"{digest}  {name}")
+        (root / "checksums.sha256").write_text("\n".join(checksum_lines), encoding="utf-8")
+
+    def test_local_hosted_layout_discovers_weights_and_required_metadata_without_network(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="pending")
+
+            resolved = validate_hosted_weights_layout(root, source_label="fixture")
+
+        self.assertEqual(resolved.source_kind, "hosted-layout")
+        self.assertTrue(str(resolved.weights_path).endswith("weights.npz"))
+        self.assertTrue(str(resolved.model_config_path).endswith("model_config.json"))
+        self.assertEqual(resolved.manifest["upstream_checkpoint"], "Aratako/Irodori-TTS-500M-v3")
+
+    def test_repo_id_resolution_uses_download_abstraction_and_requires_approved_license(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="approved")
+            calls: list[str] = []
+
+            def fake_snapshot_download(repo_id: str) -> Path:
+                calls.append(repo_id)
+                return root
+
+            resolved = resolve_weights_source(weights_repo="org/irodori-v3-mlx", snapshot_downloader=fake_snapshot_download)
+
+        self.assertEqual(calls, ["org/irodori-v3-mlx"])
+        self.assertEqual(resolved.source_kind, "hosted-layout")
+        self.assertIn("weights.npz", str(resolved.weights_path))
+
+    def test_repo_id_resolution_rejects_unapproved_artifacts_with_local_fallback_hint(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, license_status="pending")
+
+            with self.assertRaisesRegex(ValueError, "fallback to locally converted .npz weights"):
+                resolve_weights_source(weights_repo="org/unapproved", snapshot_downloader=lambda _repo: root)
+
+    def test_direct_local_npz_fallback_does_not_require_hosted_metadata(self):
+        resolved = resolve_weights_source(weights="/tmp/local-converted.npz")
+
+        self.assertEqual(resolved.source_kind, "local-npz")
+        self.assertEqual(resolved.source_label, "local converted .npz fallback")
+        self.assertIsNone(resolved.model_config_path)
+        self.assertIsNone(resolved.manifest)
+
+    def test_missing_layout_file_identifies_component_and_mentions_fallback(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, omit_file="tokenizer_config.json")
+
+            with self.assertRaisesRegex(ValueError, "tokenizer_config.json.*Fallback"):
+                validate_hosted_weights_layout(root, source_label="fixture")
+
+    def test_checksum_manifest_must_list_weights_and_metadata_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, omit_checksum_entry="weights.npz")
+
+            with self.assertRaisesRegex(ValueError, "checksums file does not list required files: weights.npz"):
+                validate_hosted_weights_layout(root, source_label="fixture")
+
+    def test_manifest_file_entries_must_stay_inside_hosted_layout(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, file_overrides={"weights": "../outside.npz"})
+
+            with self.assertRaisesRegex(ValueError, "must stay inside the hosted weights layout"):
+                validate_hosted_weights_layout(root, source_label="fixture")
+
+    def test_checksum_manifest_must_match_required_file_digests(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(root, corrupt_checksum_entry="weights.npz")
+
+            with self.assertRaisesRegex(ValueError, "mismatched sha256 digests: weights.npz"):
+                validate_hosted_weights_layout(root, source_label="fixture")
+
+    def test_manifest_checksum_always_covers_canonical_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_hosted_layout(
+                root,
+                file_overrides={"manifest": "alternate_manifest.json"},
+                corrupt_checksum_entry="irodori_mlx_manifest.json",
+            )
+            (root / "alternate_manifest.json").write_text('{"ignored": true}', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "mismatched sha256 digests: irodori_mlx_manifest.json"):
+                validate_hosted_weights_layout(root, source_label="fixture")
+
+    def test_only_one_source_may_be_selected(self):
+        with self.assertRaisesRegex(ValueError, "choose only one weights source"):
+            resolve_weights_source(weights="local.npz", weights_repo="org/repo")
+
+
+if __name__ == "__main__":
+    unittest.main()
