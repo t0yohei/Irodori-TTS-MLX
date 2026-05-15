@@ -213,8 +213,8 @@ irodori-tts-generate \
 
 | Family | Hosted eligibility for v0.2 | Required differences |
 | --- | --- | --- |
-| v3 (`Aratako/Irodori-TTS-500M-v3`) | Primary candidate after license approval | `supports_predicted_duration: true`; `use_duration_predictor: true`; no-reference smoke path should be documented. |
-| VoiceDesign v2 (`Aratako/Irodori-TTS-500M-v2-VoiceDesign`) | Candidate only after redistribution and tokenizer/metadata review | `supports_caption: true`; caption-tokenizer metadata required; README must document `--caption` usage. |
+| VoiceDesign v2 (`Aratako/Irodori-TTS-500M-v2-VoiceDesign`) | Recommended first candidate after redistribution and tokenizer/metadata review | `supports_caption: true`; caption-tokenizer metadata required; README must document `--caption` usage. |
+| v3 (`Aratako/Irodori-TTS-500M-v3`) | Conditional candidate after #81/#82 confirm hosted loading behavior | `supports_predicted_duration: true`; `use_duration_predictor: true`; no-reference smoke path should be documented. |
 | base v2 (`Aratako/Irodori-TTS-500M-v2`) | Lower priority because v0.1 generation remains experimental | Usually `requires_reference_audio: true`; no predicted duration; publish only after support status and license review are clear. |
 | Future families | Not eligible by default | Add converter/runtime validation and a new manifest family contract before hosting. |
 

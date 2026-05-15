@@ -71,6 +71,8 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
             "supports_caption: true",
             "supports_predicted_duration: true",
             "requires_reference_audio: true",
+            "Recommended first candidate",
+            "Conditional candidate after #81/#82",
         ]
         for term in family_requirements:
             with self.subTest(term=term):
