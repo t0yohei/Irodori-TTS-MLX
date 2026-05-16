@@ -93,5 +93,7 @@ IRODORI_MLX_DACVAE_DECODE_AUDIO_NPY=/path/to/upstream-decode-audio.npy \
 python -m pytest tests/test_dacvae_mlx_parity_fixtures.py
 ```
 
-Encode parity is intentionally left to #114/#115. Do not add encode fixtures to
-decode-only evidence unless that issue scope changes.
+Encode parity is documented separately in
+[dacvae_encode_parity.md](dacvae_encode_parity.md). Keep fixed-audio encode
+evidence separate from this decode-only report so the two fixture contracts can
+fail independently.
