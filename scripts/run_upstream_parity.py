@@ -330,6 +330,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("--mlx-weights is required when --run-mlx is set")
     output_dir = Path(args.output_dir).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
+    if args.run_upstream:
+        output_dir = output_dir.resolve()
     upstream_wav = output_dir / f"{scenario.name}.upstream.wav"
     mlx_wav = output_dir / f"{scenario.name}.mlx.wav"
     mlx_metadata = output_dir / f"{scenario.name}.mlx.metadata.json"
@@ -346,7 +348,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         if args.run_upstream:
             if not args.upstream_root:
                 raise ValueError("--upstream-root is required when --run-upstream is set")
-            upstream.update(_run(upstream_command, cwd=Path(args.upstream_root).expanduser(), timeout_seconds=args.timeout_seconds))
+            upstream.update(_run(upstream_command, cwd=Path(args.upstream_root).expanduser().resolve(), timeout_seconds=args.timeout_seconds))
             upstream["audio"] = wav_properties(upstream_wav)
         if args.run_mlx:
             mlx.update(_run(mlx_command, cwd=ROOT, timeout_seconds=args.timeout_seconds))

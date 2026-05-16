@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
+import wave
 from pathlib import Path
+from unittest import mock
 
 import scripts.run_upstream_parity as run_upstream_parity
 
@@ -72,6 +75,47 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertIn("infer.py", report["upstream"]["command"]["argv"])
         self.assertIn("generate_wav.py", " ".join(report["mlx"]["command"]["argv"]))
         self.assertIn("--model-config-json", report["mlx"]["command"]["argv"])
+
+    def test_run_upstream_resolves_relative_output_dir_before_changing_cwd(self):
+        with tempfile.TemporaryDirectory() as td:
+            old_cwd = os.getcwd()
+            self.addCleanup(os.chdir, old_cwd)
+            os.chdir(td)
+            upstream_root = Path(td) / "upstream"
+            upstream_root.mkdir()
+
+            def fake_run(command: list[str], *, cwd: Path, timeout_seconds: int) -> dict[str, object]:
+                self.assertEqual(cwd, upstream_root.resolve())
+                output_wav = Path(command[command.index("--output-wav") + 1])
+                self.assertTrue(output_wav.is_absolute())
+                self.assertTrue(output_wav.parent.is_relative_to(Path(td).resolve()))
+                self.assertFalse(output_wav.parent.is_relative_to(upstream_root.resolve()))
+                output_wav.parent.mkdir(parents=True, exist_ok=True)
+                with wave.open(str(output_wav), "wb") as fh:
+                    fh.setnchannels(1)
+                    fh.setsampwidth(2)
+                    fh.setframerate(24000)
+                    fh.writeframes(b"\x00\x00" * 240)
+                return {"status": "passed", "returncode": 0, "elapsed_seconds": 0.0, "stdout_excerpt": "", "stderr_excerpt": ""}
+
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "v3-no-reference",
+                    "--output-dir",
+                    "relative-parity",
+                    "--run-upstream",
+                    "--upstream-root",
+                    str(upstream_root),
+                ]
+            )
+            with mock.patch.object(run_upstream_parity, "_run", side_effect=fake_run):
+                report = run_upstream_parity.build_report(args)
+
+        upstream_wav = Path(report["upstream"]["command"]["argv"][report["upstream"]["command"]["argv"].index("--output-wav") + 1])
+        self.assertTrue(upstream_wav.is_absolute())
+        self.assertEqual(report["upstream"]["audio"]["path"], str(upstream_wav))
+        self.assertEqual(report["upstream"]["audio"]["sample_rate"], 24000)
 
     def test_scenario_json_overrides_core_fields(self):
         with tempfile.TemporaryDirectory() as td:
