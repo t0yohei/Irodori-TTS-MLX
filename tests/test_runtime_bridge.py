@@ -473,7 +473,14 @@ class RuntimeBridgeTests(unittest.TestCase):
 
     @require_mlx
     def test_runtime_can_select_mlx_decode_only_without_importing_torch_for_no_reference(self):
-        cfg = tiny_config()
+        cfg = replace(
+            tiny_config(),
+            use_duration_predictor=True,
+            duration_hidden_dim=8,
+            duration_layers=1,
+            duration_dropout=0.0,
+            duration_attention_heads=2,
+        )
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "codec.npz"
             np.savez(
@@ -516,8 +523,9 @@ class RuntimeBridgeTests(unittest.TestCase):
 
             boundaries = runtime.describe_boundaries()
             self.assertTrue(Path(result.output_wav).exists())
+            self.assertEqual(result.checkpoint_family, "v3")
             self.assertEqual(result.codec_backend, "mlx")
-            self.assertEqual(result.codec_encode_backend, "pytorch-persistent")
+            self.assertEqual(result.codec_encode_backend, "not-required")
             self.assertEqual(result.codec_decode_backend, "mlx")
             self.assertEqual(boundaries["codec"]["implementation"], "MLXDACVAEDecodeOnlyBridge")
             self.assertEqual(boundaries["codec"]["encode_backend"], "pytorch-persistent")
@@ -525,6 +533,66 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertTrue(boundaries["codec"]["imports_pytorch"])
             self.assertTrue(boundaries["codec"]["encode_imports_pytorch"])
             self.assertFalse(boundaries["codec"]["decode_imports_pytorch"])
+
+    @require_mlx
+    def test_runtime_can_select_mlx_decode_only_without_importing_torch_for_voicedesign(self):
+        cfg = replace(
+            tiny_config(),
+            use_caption_condition=True,
+            caption_vocab_size=32,
+            caption_tokenizer_repo="example/caption-tokenizer",
+            caption_dim=8,
+            caption_layers=1,
+            caption_heads=2,
+            caption_mlp_ratio=1.5,
+        )
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "codec.npz"
+            np.savez(
+                codec_path,
+                sample_rate=np.array(8000),
+                hop_length=np.array(2),
+                latent_dim=np.array(4),
+                decode_basis=np.zeros((4, 2), dtype=np.float32),
+                decode_bias=np.zeros((2,), dtype=np.float32),
+            )
+            real_import = builtins.__import__
+
+            def guarded_import(name, *args, **kwargs):
+                if name == "torch" or name.startswith("irodori_tts"):
+                    raise AssertionError(f"unexpected import: {name}")
+                return real_import(name, *args, **kwargs)
+
+            with patch.object(builtins, "__import__", side_effect=guarded_import):
+                runtime = MLXDACVAERuntime(
+                    config=MLXRuntimeConfig(
+                        model_config=cfg,
+                        weights_path="unused.npz",
+                        text_max_length=4,
+                        caption_max_length=4,
+                        codec=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                    ),
+                    model=FakeModel(cfg),
+                    tokenizer=FakeTokenizer(),
+                    caption_tokenizer=FakeTokenizer(),
+                )
+                result = runtime.generate(
+                    GenerationRequest(
+                        text="こんにちは",
+                        caption="落ち着いた女性の声",
+                        output_wav=str(Path(td) / "out.wav"),
+                        no_reference=True,
+                        seconds=0.001,
+                        num_steps=1,
+                        cfg_scale_text=0.0,
+                        cfg_scale_caption=0.0,
+                    )
+                )
+
+            self.assertTrue(Path(result.output_wav).exists())
+            self.assertEqual(result.checkpoint_family, "voicedesign")
+            self.assertEqual(result.codec_encode_backend, "not-required")
+            self.assertEqual(result.codec_decode_backend, "mlx")
 
     @require_mlx
     def test_mlx_decode_only_keeps_reference_encode_on_pytorch_bridge(self):

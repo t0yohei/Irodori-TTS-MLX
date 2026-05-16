@@ -97,7 +97,21 @@ irodori-tts-generate \
   --metadata-json /tmp/irodori-v3-metadata.json
 ```
 
-この経路でも、明示的に local MLX codec artifact mode を選ばない限り upstream PyTorch DACVAE bridge を使います。承認済み hosted repo がない場合は、下の local conversion fallback を使います。詳細は [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) を参照してください。
+この経路でも、明示的に local MLX codec artifact mode を選ばない限り upstream PyTorch DACVAE bridge を使います。v3 / VoiceDesign の no-reference 生成では、decode 可能な変換済み DACVAE artifact を渡すと codec decode を MLX に寄せ、reference encode も不要にできます:
+
+```bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3-mlx-decode.wav \
+  --preset balanced \
+  --codec-runtime-mode mlx-decode \
+  --codec-path /path/to/dacvae-codec.npz \
+  --metadata-json /tmp/irodori-v3-mlx-decode-metadata.json
+```
+
+この no-reference 経路の metadata は `codec_decode_backend: "mlx"` と `codec_encode_backend: "not-required"` を報告します。`mlx-decode` で reference-audio 生成を行う場合は、encode-capable な MLX codec artifact が入るまで、従来どおり PyTorch encode fallback が必要です。承認済み hosted repo がない場合は、下の local conversion fallback を使います。詳細は [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) を参照してください。
 
 ## 入口: Local Conversion Fallback
 

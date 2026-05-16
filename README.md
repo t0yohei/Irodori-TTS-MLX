@@ -97,7 +97,21 @@ irodori-tts-generate \
   --metadata-json /tmp/irodori-v3-metadata.json
 ```
 
-This path still uses the upstream PyTorch DACVAE bridge unless you explicitly choose a local MLX codec artifact mode. If no approved hosted repository is available, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, provenance checklist, `--weights-dir` examples, and fallback decision rules.
+This path still uses the upstream PyTorch DACVAE bridge unless you explicitly choose a local MLX codec artifact mode. For no-reference v3 and VoiceDesign runs, add a converted decode-capable DACVAE artifact to keep the generation path off PyTorch for codec decode and avoid reference encode entirely:
+
+```bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3-mlx-decode.wav \
+  --preset balanced \
+  --codec-runtime-mode mlx-decode \
+  --codec-path /path/to/dacvae-codec.npz \
+  --metadata-json /tmp/irodori-v3-mlx-decode-metadata.json
+```
+
+The metadata for that no-reference path reports `codec_decode_backend: "mlx"` and `codec_encode_backend: "not-required"`. Reference-audio generation with `mlx-decode` still needs the documented PyTorch encode fallback until an encode-capable MLX codec artifact is available. If no approved hosted repository is available, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, provenance checklist, `--weights-dir` examples, and fallback decision rules.
 
 ## Quickstart: Local Conversion Fallback
 
