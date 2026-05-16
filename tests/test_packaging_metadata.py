@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+
+try:
+    HAS_BUILD_MODULE = importlib.util.find_spec("build.__main__") is not None
+except ModuleNotFoundError:
+    HAS_BUILD_MODULE = False
 
 
 class PackagingMetadataTests(unittest.TestCase):
@@ -72,6 +79,7 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn("Python 3.14", packaging_doc)
 
     @unittest.skipIf(sys.version_info < (3, 11), "project console scripts require Python >= 3.11")
+    @unittest.skipUnless(HAS_BUILD_MODULE, "clean wheel smoke requires the optional build package")
     def test_console_entry_point_help_smoke_after_clean_wheel_install(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as td:
