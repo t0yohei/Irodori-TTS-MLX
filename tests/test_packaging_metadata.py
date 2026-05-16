@@ -14,6 +14,8 @@ class PackagingMetadataTests(unittest.TestCase):
 
         self.assertIn('requires = ["setuptools>=77", "wheel"]', pyproject)
         self.assertIn('name = "irodori-tts-mlx"', pyproject)
+        self.assertIn('version = "0.2.0a1"', pyproject)
+        self.assertNotIn('version = "0.0.0"', pyproject)
         self.assertIn('requires-python = ">=3.11,<3.15"', pyproject)
         self.assertIn('license = "MIT"', pyproject)
         self.assertNotIn('"License :: Other/Proprietary License"', pyproject)
@@ -40,6 +42,17 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn('irodori-tts-convert-dacvae-codec = "scripts.convert_dacvae_codec:cli_main"', pyproject)
         self.assertIn('irodori-tts-convert-dacvae-decoder = "scripts.convert_dacvae_decoder:main"', pyproject)
         self.assertIn('irodori-tts-inspect = "scripts.inspect_checkpoint:cli_main"', pyproject)
+        self.assertIn('irodori-tts-adapt-mlx-audio = "scripts.adapt_mlx_audio:cli_main"', pyproject)
+
+    def test_source_distribution_manifest_keeps_release_docs_and_tests(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = (root / "MANIFEST.in").read_text(encoding="utf-8")
+
+        self.assertIn("include LICENSE", manifest)
+        self.assertIn("include README.md", manifest)
+        self.assertIn("include README.ja.md", manifest)
+        self.assertIn("recursive-include docs *.md *.json", manifest)
+        self.assertIn("recursive-include tests *.py", manifest)
 
     def test_packaging_doc_references_editable_install_targets(self):
         root = Path(__file__).resolve().parents[1]
@@ -50,21 +63,43 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn("irodori-tts-generate", packaging_doc)
         self.assertIn("irodori-tts-convert", packaging_doc)
         self.assertIn("irodori-tts-inspect", packaging_doc)
+        self.assertIn("irodori-tts-adapt-mlx-audio", packaging_doc)
+        self.assertIn("0.2.0a1", packaging_doc)
+        self.assertIn("python -m build", packaging_doc)
         self.assertIn("Python 3.11", packaging_doc)
         self.assertIn("Python 3.12", packaging_doc)
         self.assertIn("Python 3.13", packaging_doc)
         self.assertIn("Python 3.14", packaging_doc)
 
     @unittest.skipIf(sys.version_info < (3, 11), "project console scripts require Python >= 3.11")
-    def test_console_entry_point_help_smoke_after_editable_install(self):
+    def test_console_entry_point_help_smoke_after_clean_wheel_install(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as td:
-            venv = Path(td) / "venv"
+            build_dir = Path(td) / "dist"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "build",
+                    "--wheel",
+                    "--sdist",
+                    "--outdir",
+                    str(build_dir),
+                ],
+                check=True,
+                cwd=root,
+            )
+            wheels = sorted(build_dir.glob("irodori_tts_mlx-0.2.0a1-py3-none-any.whl"))
+            sdists = sorted(build_dir.glob("irodori_tts_mlx-0.2.0a1.tar.gz"))
+            self.assertEqual(1, len(wheels))
+            self.assertEqual(1, len(sdists))
+
+            venv = Path(td) / "wheel-venv"
             subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True, cwd=root)
             python = venv / "bin" / "python"
             bin_dir = venv / "bin"
             subprocess.run(
-                [str(python), "-m", "pip", "install", "--quiet", "--no-deps", "-e", str(root)],
+                [str(python), "-m", "pip", "install", "--quiet", "--no-deps", str(wheels[0])],
                 check=True,
                 cwd=root,
             )
@@ -74,6 +109,7 @@ class PackagingMetadataTests(unittest.TestCase):
                 ("irodori-tts-convert-dacvae-codec", "Semantic-DACVAE weights.pth"),
                 ("irodori-tts-convert-dacvae-decoder", "Convert Aratako/Semantic-DACVAE-Japanese-32dim"),
                 ("irodori-tts-inspect", "Inspect a local safetensors checkpoint"),
+                ("irodori-tts-adapt-mlx-audio", "Convert an unquantized mlx-audio Irodori directory"),
             ):
                 script = bin_dir / command
                 result = subprocess.run(
