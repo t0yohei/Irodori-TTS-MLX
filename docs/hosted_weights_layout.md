@@ -28,6 +28,8 @@ Examples, subject to license approval before publication:
 - `t0yohei/Irodori-TTS-MLX-500M-v3`
 - `t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign`
 
+The current approved/public status for these candidates is tracked in [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md). Do not treat an example repository name as publishable or resolvable unless that status page marks the exact family as approved public with an immutable revision.
+
 The repository name identifies the converted checkpoint family, but loaders must treat `irodori_mlx_manifest.json` as the source of truth.
 Do not infer compatibility from the repo name alone.
 

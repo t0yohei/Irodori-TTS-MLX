@@ -3,7 +3,7 @@
 Issue: [#85 Document hosted converted weights usage and fallback local conversion](https://github.com/t0yohei/Irodori-TTS-MLX/issues/85)  
 Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/Irodori-TTS-MLX/issues/78)
 
-This page explains the user-facing v0.2 flow for **hosted pre-converted MLX RF-DiT weights** and the supported fallback when no approved hosted artifact is available.
+This page explains the user-facing v0.2 flow for **hosted pre-converted MLX RF-DiT weights** and the supported fallback when no approved hosted artifact is available. The current family-by-family publication state is tracked in [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md).
 
 Hosted weights are a convenience path, not a new model source or redistribution waiver. The runtime boundary remains:
 
@@ -53,12 +53,12 @@ Expected behavior:
 - loads `model_config.json`, `tokenizer_config.json`, and `weights.npz` through the same internal runtime path used by local hosted-layout directories;
 - still uses the upstream PyTorch DACVAE bridge for codec encode/decode.
 
-For a v3 hosted artifact, use a v3-approved repo id and omit `--caption`. If the v3 manifest says `supports_predicted_duration: true`, omit `--seconds` to exercise predicted-duration generation:
+No approved public v3 hosted artifact location is recorded for #157 yet. For v3, keep using the local conversion fallback until [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md) lists an approved public repo id and immutable revision. Once such a v3 hosted artifact exists, use the approved repo id and omit `--caption`; if the v3 manifest says `supports_predicted_duration: true`, omit `--seconds` to exercise predicted-duration generation:
 
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights-repo <approved-v3-repo-id> \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3-hosted.wav \

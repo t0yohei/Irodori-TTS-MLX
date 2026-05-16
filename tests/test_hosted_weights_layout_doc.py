@@ -51,6 +51,7 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
     def test_local_directory_and_hosted_repo_share_contract(self):
         self.assertIn("--weights-dir /models/Irodori-TTS-MLX-500M-v3", self.doc)
         self.assertIn("--weights-repo t0yohei/Irodori-TTS-MLX-500M-v3", self.doc)
+        self.assertIn("hosted_rf_dit_artifacts.md", self.doc)
         self.assertIn("--weights /path/to/irodori-v3.npz", self.doc)
         self.assertIn("local fallback", self.doc)
 
