@@ -51,6 +51,8 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[runtime,bench]"
 ```
 
+checkout から開発するのではなく release artifact を使う package user は、clean environment に built wheel / sdist を install し、installed `irodori-tts-*` console script を使ってください。editable install、build validation、v0.2 release-artifact checklist は [docs/packaging.md](docs/packaging.md) にまとめています。
+
 upstream Irodori-TTS も同じ環境に入れるか、既存 checkout を import 可能にします。
 
 ```bash

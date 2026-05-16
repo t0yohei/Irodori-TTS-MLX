@@ -26,8 +26,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Validate packaging metadata and editable install resolution
+      - name: Validate packaging metadata, artifact build, and installed console scripts
         run: |
           python -m pip install --upgrade pip
+          python -m pip install build
           python -m unittest tests.test_packaging_metadata -v
+          python -m build --wheel --sdist --outdir dist
+          python -m venv .venv-wheel-smoke
+          .venv-wheel-smoke/bin/python -m pip install --upgrade pip
+          .venv-wheel-smoke/bin/python -m pip install --no-deps dist/irodori_tts_mlx-0.2.0a1-py3-none-any.whl
+          .venv-wheel-smoke/bin/irodori-tts-generate --help
+          .venv-wheel-smoke/bin/irodori-tts-convert --help
+          .venv-wheel-smoke/bin/irodori-tts-inspect --help
+          .venv-wheel-smoke/bin/irodori-tts-adapt-mlx-audio --help
           python -m pip install --dry-run -e ".[dev]"
