@@ -85,6 +85,8 @@ For the mlx-audio interoperability evaluation, including the public `mlx-communi
 
 For the v0.2 cross-repository delivery plan that maps Linear TOY-5 to the GitHub issue cluster, dependency order, validation gates, and downstream local-assistant/OpenClaw smoke path, see [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md).
 
+For the concrete downstream local-assistant/OpenClaw smoke path, including the selected consumer repository, local TTS entry point, required environment variables, expected metadata fields, WAV checks, and fallback behavior, see [docs/downstream_openclaw_smoke.md](docs/downstream_openclaw_smoke.md).
+
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
 For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).

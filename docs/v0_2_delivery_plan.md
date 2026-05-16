@@ -99,7 +99,7 @@ Validation:
 
 ### 4. Downstream local-assistant/OpenClaw integration
 
-Primary issue: tracked by TOY-5 until a downstream repository issue exists.
+Primary issue: [#146](https://github.com/t0yohei/Irodori-TTS-MLX/issues/146).
 
 Start this only after the runtime metadata from Workstream 1 is stable enough for a smoke assertion.
 
@@ -115,6 +115,8 @@ Validation:
 - Smoke command runs from a clean local environment or produces an actionable missing-dependency message.
 - OpenClaw/local-assistant docs identify the exact Irodori-TTS-MLX version or PR head used.
 - No generated audio, checkpoint cache, codec weights, or secrets are committed.
+
+Smoke procedure for the local-assistant/OpenClaw smoke path: [docs/downstream_openclaw_smoke.md](downstream_openclaw_smoke.md).
 
 ### 5. Release and runbook cleanup
 
