@@ -1,6 +1,6 @@
 # Apple Silicon local `num_steps` presets for v3 and VoiceDesign
 
-Related issue: [#64](https://github.com/t0yohei/irodori-tts-mlx/issues/64)
+Related issue: [#64](https://github.com/t0yohei/Irodori-TTS-MLX/issues/64)
 
 ## Question
 

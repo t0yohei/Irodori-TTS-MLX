@@ -1,7 +1,7 @@
 # Upstream `irodori_tts` dependency boundary
 
-Issue: [#72 Document the upstream irodori_tts dependency boundary](https://github.com/t0yohei/irodori-tts-mlx/issues/72)  
-Parent: [#68 v0.1 documentation and release readiness](https://github.com/t0yohei/irodori-tts-mlx/issues/68)
+Issue: [#72 Document the upstream irodori_tts dependency boundary](https://github.com/t0yohei/Irodori-TTS-MLX/issues/72)  
+Parent: [#68 v0.1 documentation and release readiness](https://github.com/t0yohei/Irodori-TTS-MLX/issues/68)
 
 ## Why this repo still needs upstream `irodori_tts`
 

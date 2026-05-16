@@ -1,4 +1,4 @@
-# irodori-tts-mlx
+# Irodori-TTS-MLX
 
 [日本語 README](README.ja.md)
 
@@ -94,7 +94,7 @@ When the hosted-loader support is available, use only repos whose manifest has `
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo t0yohei/irodori-tts-mlx-voicedesign-v2-500m \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
   --no-reference \
@@ -113,8 +113,8 @@ The recommended first smoke path is **v3 no-reference generation** because it do
 ### 1. Create the Python environment
 
 ```bash
-git clone https://github.com/t0yohei/irodori-tts-mlx.git
-cd irodori-tts-mlx
+git clone https://github.com/t0yohei/Irodori-TTS-MLX.git
+cd Irodori-TTS-MLX
 
 python3.11 -m venv .venv
 . .venv/bin/activate
@@ -382,10 +382,10 @@ The current project milestones are organized as follows:
 Current status by milestone:
 
 - **M0 Baseline**: completed.
-- **M1 Weight conversion**: completed, including VoiceDesign / caption-conditioned checkpoint conversion support from [#41 Add VoiceDesign / caption-conditioned checkpoint conversion support](https://github.com/t0yohei/irodori-tts-mlx/issues/41).
-- **M2 MLX model parity**: completed for the currently supported checkpoint families, with VoiceDesign follow-up work captured and closed in [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/irodori-tts-mlx/issues/33).
-- **M3 MLX inference prototype**: completed for the current CLI/runtime scope, including generation UX follow-up from [#32 Improve the generation CLI and runtime UX](https://github.com/t0yohei/irodori-tts-mlx/issues/32), real-checkpoint integration coverage from [#44 Add real-checkpoint VoiceDesign integration coverage](https://github.com/t0yohei/irodori-tts-mlx/issues/44), and hosted Apple Silicon full-generation coverage from [#46 Add hosted Apple Silicon CI coverage for full VoiceDesign generation](https://github.com/t0yohei/irodori-tts-mlx/issues/46).
-- **M4 Performance and packaging**: completed for the current prototype scope, including memory residency mitigation from [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/irodori-tts-mlx/issues/29), repeated benchmark automation from [#30 Extend benchmark automation for warm-cache, repeated runs, and scaling sweeps](https://github.com/t0yohei/irodori-tts-mlx/issues/30), and reproducible packaging from [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/irodori-tts-mlx/issues/31).
+- **M1 Weight conversion**: completed, including VoiceDesign / caption-conditioned checkpoint conversion support from [#41 Add VoiceDesign / caption-conditioned checkpoint conversion support](https://github.com/t0yohei/Irodori-TTS-MLX/issues/41).
+- **M2 MLX model parity**: completed for the currently supported checkpoint families, with VoiceDesign follow-up work captured and closed in [#33 Audit and expand VoiceDesign / caption-conditioned checkpoint support](https://github.com/t0yohei/Irodori-TTS-MLX/issues/33).
+- **M3 MLX inference prototype**: completed for the current CLI/runtime scope, including generation UX follow-up from [#32 Improve the generation CLI and runtime UX](https://github.com/t0yohei/Irodori-TTS-MLX/issues/32), real-checkpoint integration coverage from [#44 Add real-checkpoint VoiceDesign integration coverage](https://github.com/t0yohei/Irodori-TTS-MLX/issues/44), and hosted Apple Silicon full-generation coverage from [#46 Add hosted Apple Silicon CI coverage for full VoiceDesign generation](https://github.com/t0yohei/Irodori-TTS-MLX/issues/46).
+- **M4 Performance and packaging**: completed for the current prototype scope, including memory residency mitigation from [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/Irodori-TTS-MLX/issues/29), repeated benchmark automation from [#30 Extend benchmark automation for warm-cache, repeated runs, and scaling sweeps](https://github.com/t0yohei/Irodori-TTS-MLX/issues/30), and reproducible packaging from [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/Irodori-TTS-MLX/issues/31).
 
 ## License notes
 

@@ -1,6 +1,6 @@
 # Checkpoint metadata and weight mapping notes
 
-Issue: [#3 Inspect checkpoint metadata and state_dict layout](https://github.com/t0yohei/irodori-tts-mlx/issues/3)
+Issue: [#3 Inspect checkpoint metadata and state_dict layout](https://github.com/t0yohei/Irodori-TTS-MLX/issues/3)
 
 This document records the observed Irodori-TTS v2 checkpoint structure before implementing MLX weight conversion.
 
@@ -270,7 +270,7 @@ The raw key-set comparison reports 123 base-only tensor names and 146 VoiceDesig
 
 ## Deterministic PyTorch-to-MLX mapping
 
-Issue [#5](https://github.com/t0yohei/irodori-tts-mlx/issues/5) fixes the first converter contract for the base v2 checkpoint.
+Issue [#5](https://github.com/t0yohei/Irodori-TTS-MLX/issues/5) fixes the first converter contract for the base v2 checkpoint.
 
 ### Supported checkpoint family
 

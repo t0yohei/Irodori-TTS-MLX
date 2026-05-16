@@ -50,7 +50,7 @@ class HostedWeightsSmokeTests(unittest.TestCase):
             },
             "license_review": {
                 "status": license_status,
-                "review_reference": "https://github.com/t0yohei/irodori-tts-mlx/issues/80",
+                "review_reference": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/80",
             },
         }
         payloads = {

@@ -1,6 +1,6 @@
 # Upstream PyTorch Baseline on Apple Silicon
 
-Issue: [#2 Reproduce upstream PyTorch inference on Apple Silicon](https://github.com/t0yohei/irodori-tts-mlx/issues/2)
+Issue: [#2 Reproduce upstream PyTorch inference on Apple Silicon](https://github.com/t0yohei/Irodori-TTS-MLX/issues/2)
 
 Measured report: [2026-05-11 Apple Silicon PyTorch baseline](baseline-reports/2026-05-11-apple-silicon-pytorch-baseline.md)
 

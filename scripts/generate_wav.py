@@ -319,7 +319,7 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         default=config.get("weights_repo"),
         help=(
             "Hugging Face repo id with a pre-converted MLX weights layout, for example "
-            "t0yohei/irodori-tts-mlx-v3-500m. Alias: --model. If resolution fails, "
+            "t0yohei/Irodori-TTS-MLX-500M-v3. Alias: --model. If resolution fails, "
             "use --weights with a locally converted .npz fallback."
         ),
     )

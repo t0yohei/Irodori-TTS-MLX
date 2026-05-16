@@ -1,7 +1,7 @@
 # License and distribution policy
 
-Issue: [#77 Finalize license and distribution policy for v0.1](https://github.com/t0yohei/irodori-tts-mlx/issues/77)  
-Parent: [#68 v0.1 documentation and release readiness](https://github.com/t0yohei/irodori-tts-mlx/issues/68)
+Issue: [#77 Finalize license and distribution policy for v0.1](https://github.com/t0yohei/Irodori-TTS-MLX/issues/77)  
+Parent: [#68 v0.1 documentation and release readiness](https://github.com/t0yohei/Irodori-TTS-MLX/issues/68)
 
 ## Repository code license
 

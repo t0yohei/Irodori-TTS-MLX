@@ -1,6 +1,6 @@
 # Apple Silicon MLX bridge memory residency follow-up
 
-Issue: [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/irodori-tts-mlx/issues/29)
+Issue: [#29 Investigate and reduce reference-path memory residency in the MLX bridge](https://github.com/t0yohei/Irodori-TTS-MLX/issues/29)
 
 This follow-up focused on one question:
 

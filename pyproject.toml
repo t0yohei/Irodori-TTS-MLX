@@ -56,9 +56,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/t0yohei/irodori-tts-mlx"
-Repository = "https://github.com/t0yohei/irodori-tts-mlx"
-Issues = "https://github.com/t0yohei/irodori-tts-mlx/issues"
+Homepage = "https://github.com/t0yohei/Irodori-TTS-MLX"
+Repository = "https://github.com/t0yohei/Irodori-TTS-MLX"
+Issues = "https://github.com/t0yohei/Irodori-TTS-MLX/issues"
 
 [project.scripts]
 irodori-tts-generate = "scripts.generate_wav:cli_main"

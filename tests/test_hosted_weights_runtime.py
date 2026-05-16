@@ -82,7 +82,7 @@ def _write_layout(
     (root / prefix / "tokenizer_config.json").write_text(json.dumps(tokenizer_config), encoding="utf-8")
     conversion_metadata = {
         "schema_version": 1,
-        "converter": {"repository": "https://github.com/t0yohei/irodori-tts-mlx", "version": "git:test"},
+        "converter": {"repository": "https://github.com/t0yohei/Irodori-TTS-MLX", "version": "git:test"},
         "upstream": {"checkpoint_repo": "Aratako/Irodori-TTS-500M-v3", "checkpoint_revision": "test"},
         "detected_family": family,
         "license_review": {"status": license_status},
@@ -213,11 +213,11 @@ class HostedWeightsRuntimeTests(unittest.TestCase):
             _write_layout(root, license_status="approved")
 
             with patch("irodori_mlx.hosted_weights.snapshot_weights_repo", return_value=root) as snapshot:
-                resolved = resolve_weights_layout_source(weights_repo="t0yohei/irodori-tts-mlx-v3-500m", revision="abc123")
+                resolved = resolve_weights_layout_source(weights_repo="t0yohei/Irodori-TTS-MLX-500M-v3", revision="abc123")
 
-        snapshot.assert_called_once_with("t0yohei/irodori-tts-mlx-v3-500m", revision="abc123")
+        snapshot.assert_called_once_with("t0yohei/Irodori-TTS-MLX-500M-v3", revision="abc123")
         self.assertEqual(resolved.source_kind, "repo")
-        self.assertEqual(resolved.source, "t0yohei/irodori-tts-mlx-v3-500m@abc123")
+        self.assertEqual(resolved.source, "t0yohei/Irodori-TTS-MLX-500M-v3@abc123")
 
     def test_hosted_repo_resolution_rejects_pending_license_review(self):
         with tempfile.TemporaryDirectory() as td:

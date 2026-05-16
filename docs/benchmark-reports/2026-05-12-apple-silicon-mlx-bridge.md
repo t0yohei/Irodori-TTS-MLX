@@ -1,6 +1,6 @@
 # Apple Silicon MLX bridge benchmark report: 2026-05-12
 
-Related issue: [#13](https://github.com/t0yohei/irodori-tts-mlx/issues/13)
+Related issue: [#13](https://github.com/t0yohei/Irodori-TTS-MLX/issues/13)
 
 ## Summary
 

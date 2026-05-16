@@ -69,7 +69,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 "supports_caption": False,
                 "supports_predicted_duration": True,
             },
-            "license_review": {"status": license_status, "review_reference": "https://github.com/t0yohei/irodori-tts-mlx/issues/80"},
+            "license_review": {"status": license_status, "review_reference": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/80"},
         }
         (root / "irodori_mlx_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         (root / "model_config.json").write_text('{"use_duration_predictor": true}', encoding="utf-8")
