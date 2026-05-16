@@ -33,7 +33,7 @@ IRODORI_TTS_UPSTREAM_PATH=/path/to/Irodori-TTS python -m pytest tests/test_torch
 This PR was validated locally with a temporary Python 3.11 virtualenv containing PyTorch and MLX:
 
 ```text
-IRODORI_TTS_UPSTREAM_PATH=/Users/kouka/.openclaw/workspace/repos/_scratch/Irodori-TTS-upstream python -m pytest -q
+IRODORI_TTS_UPSTREAM_PATH=/path/to/Irodori-TTS python -m pytest -q
 23 passed
 ```
 

@@ -8,11 +8,11 @@ Can a local repeated-generation workflow reuse one initialized MLX + PyTorch DAC
 
 ## Setup
 
-- repo worktree: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-66-persistent-generation`
-- Python: `/Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python`
-- upstream checkout on `PYTHONPATH`: `/Users/kouka/.openclaw/workspace/repos/Irodori-TTS`
-- weights: `/Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/irodori-voicedesign.npz`
-- model config: `/Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/voicedesign-model-config.json`
+- repo worktree: `/path/to/Irodori-TTS-MLX`
+- Python: `/path/to/Irodori-TTS-MLX/.venv/bin/python`
+- upstream checkout on `PYTHONPATH`: `/path/to/Irodori-TTS`
+- weights: `/path/to/irodori-voicedesign-artifacts/irodori-voicedesign.npz`
+- model config: `/path/to/irodori-voicedesign-artifacts/voicedesign-model-config.json`
 - request mode: two VoiceDesign caption-conditioned requests in one `scripts/generate_wav.py --requests-json` process
 - preset: `fast` (12 RF sampling steps)
 - duration: 2 seconds per request
@@ -42,10 +42,10 @@ cat > benchmark-runs/issue-66-persistent-batch/requests.json <<'JSON'
 ]
 JSON
 
-PYTHONPATH=/Users/kouka/.openclaw/workspace/repos/Irodori-TTS:${PYTHONPATH:-} \
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py \
-  --weights /Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/irodori-voicedesign.npz \
-  --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/voicedesign-model-config.json \
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py \
+  --weights /path/to/irodori-voicedesign-artifacts/irodori-voicedesign.npz \
+  --model-config-json /path/to/irodori-voicedesign-artifacts/voicedesign-model-config.json \
   --no-reference \
   --codec-device cpu \
   --codec-runtime-mode persistent \

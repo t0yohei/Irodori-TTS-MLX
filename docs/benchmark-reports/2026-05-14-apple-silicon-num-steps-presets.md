@@ -14,14 +14,14 @@ The target cases were:
 
 ## Setup
 
-- repo worktree: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
-- benchmark Python: `/Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python`
-- upstream checkout: `/Users/kouka/.openclaw/workspace/repos/Irodori-TTS`
-- v3 weights: `/Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz`
-- v3 model config: `/Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json`
-- v3 reference WAV: `/Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-hosted.wav`
-- VoiceDesign weights: `/Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/irodori-voicedesign.npz`
-- VoiceDesign model config: `/Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/voicedesign-model-config.json`
+- repo worktree: `/path/to/Irodori-TTS-MLX`
+- benchmark Python: `/path/to/Irodori-TTS-MLX/.venv/bin/python`
+- upstream checkout: `/path/to/Irodori-TTS`
+- v3 weights: `/path/to/irodori-v3-artifacts/irodori-v3.npz`
+- v3 model config: `/path/to/irodori-v3-artifacts/v3-model-config.json`
+- v3 reference WAV: `/path/to/irodori-v3-artifacts/v3-hosted.wav`
+- VoiceDesign weights: `/path/to/irodori-voicedesign-artifacts/irodori-voicedesign.npz`
+- VoiceDesign model config: `/path/to/irodori-voicedesign-artifacts/voicedesign-model-config.json`
 - text prompt: `今日はいい天気ですね。`
 - VoiceDesign caption: `落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。`
 - seed: `20260512`
@@ -34,13 +34,13 @@ The target cases were:
 ### v3 text-only (predicted duration)
 
 ```bash
-/Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/benchmark.py \
+/path/to/Irodori-TTS-MLX/.venv/bin/python scripts/benchmark.py \
   --mode mlx \
-  --mlx-python /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python \
+  --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python \
   --case-label v3 \
-  --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz \
-  --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/Irodori-TTS \
+  --weights /path/to/irodori-v3-artifacts/irodori-v3.npz \
+  --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json \
+  --upstream-root /path/to/Irodori-TTS \
   --omit-seconds \
   --num-steps-sweep 8,12,16,24,40 \
   --warmup-runs 1 \
@@ -52,14 +52,14 @@ The target cases were:
 ### v3 reference-audio (predicted duration)
 
 ```bash
-/Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/benchmark.py \
+/path/to/Irodori-TTS-MLX/.venv/bin/python scripts/benchmark.py \
   --mode mlx \
-  --mlx-python /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python \
+  --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python \
   --case-label v3 \
-  --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz \
-  --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/Irodori-TTS \
-  --reference-wav /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-hosted.wav \
+  --weights /path/to/irodori-v3-artifacts/irodori-v3.npz \
+  --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json \
+  --upstream-root /path/to/Irodori-TTS \
+  --reference-wav /path/to/irodori-v3-artifacts/v3-hosted.wav \
   --omit-seconds \
   --num-steps-sweep 8,12,16,24,40 \
   --warmup-runs 1 \
@@ -71,13 +71,13 @@ The target cases were:
 ### VoiceDesign caption-conditioned
 
 ```bash
-/Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/benchmark.py \
+/path/to/Irodori-TTS-MLX/.venv/bin/python scripts/benchmark.py \
   --mode mlx \
-  --mlx-python /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python \
+  --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python \
   --case-label voicedesign-caption \
-  --weights /Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/irodori-voicedesign.npz \
-  --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/voicedesign-model-config.json \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/Irodori-TTS \
+  --weights /path/to/irodori-voicedesign-artifacts/irodori-voicedesign.npz \
+  --model-config-json /path/to/irodori-voicedesign-artifacts/voicedesign-model-config.json \
+  --upstream-root /path/to/Irodori-TTS \
   --caption '落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。' \
   --seconds 2 \
   --num-steps-sweep 8,12,16,24,40 \

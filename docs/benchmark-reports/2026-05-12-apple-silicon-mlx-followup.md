@@ -14,10 +14,10 @@ This report follows up on the first measured MLX bridge benchmark in [2026-05-12
 
 Common inputs:
 
-- repo worktree: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark`
+- repo worktree: `/path/to/Irodori-TTS-MLX`
 - MLX weights: `benchmark-runs/irodori-tts-500m-v2.npz`
-- upstream checkout: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/external/Irodori-TTS`
-- reference audio: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/baseline-runs/base-no-ref-seed-20260511.wav`
+- upstream checkout: `/path/to/Irodori-TTS-MLX/external/Irodori-TTS`
+- reference audio: `/path/to/Irodori-TTS-MLX/baseline-runs/base-no-ref-seed-20260511.wav`
 - benchmark Python: `.venv-bench311/bin/python`
 - prompt: `今日はいい天気ですね。`
 - seed: `20260512`

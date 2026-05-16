@@ -9,9 +9,7 @@ class V02DeliveryPlanDocTests(unittest.TestCase):
         self.root = Path(__file__).resolve().parents[1]
         self.doc = (self.root / "docs" / "v0_2_delivery_plan.md").read_text(encoding="utf-8")
 
-    def test_plan_links_linear_rollup_and_github_issue_cluster(self):
-        self.assertIn("TOY-5", self.doc)
-        self.assertIn("https://linear.app/toyontech/issue/TOY-5", self.doc)
+    def test_plan_links_github_issue_cluster(self):
         for issue in range(105, 122):
             with self.subTest(issue=issue):
                 self.assertIn(f"/issues/{issue}", self.doc)
@@ -21,7 +19,7 @@ class V02DeliveryPlanDocTests(unittest.TestCase):
             "Runtime UX and duration handling",
             "DACVAE MLX port and artifact policy",
             "Upstream-vs-MLX parity harness",
-            "Downstream local-assistant/OpenClaw integration",
+            "Downstream consumer handoff",
             "Release and runbook cleanup",
             "Completion criteria",
             "Dependency order",
@@ -39,7 +37,7 @@ class V02DeliveryPlanDocTests(unittest.TestCase):
         for text in (readme, readme_ja):
             with self.subTest(document=text[:40]):
                 self.assertIn("docs/v0_2_delivery_plan.md", text)
-                self.assertIn("TOY-5", text)
+                self.assertIn("downstream", text)
 
 
 if __name__ == "__main__":
