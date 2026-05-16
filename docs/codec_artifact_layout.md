@@ -43,6 +43,67 @@ parity. A real converted codec artifact must replace the fixture tensors with
 the full DACVAE encoder, quantizer projections, decoder, and watermark-bypass
 metadata described in [dacvae_architecture.md](dacvae_architecture.md).
 
+## Real Semantic-DACVAE decoder artifact
+
+Issue [#151](https://github.com/t0yohei/Irodori-TTS-MLX/issues/151) adds the
+first real-weight decoder conversion contract for the public
+`Aratako/Semantic-DACVAE-Japanese-32dim` family. The source artifact is the
+upstream PyTorch `weights.pth`; it must be obtained locally and must not be
+committed here.
+
+Use the dedicated converter when the real weights and exact dependency
+revisions are available:
+
+```bash
+python scripts/convert_dacvae_decoder.py \
+  /path/to/Semantic-DACVAE-Japanese-32dim/weights.pth \
+  /tmp/irodori-dacvae-codec/dacvae-codec.npz \
+  --source-revision <hf-commit> \
+  --dacvae-revision <dacvae-commit> \
+  --license-review-status pending \
+  --json
+```
+
+The converter writes the scalar runtime constants, `metadata_json`, and every
+decoder-side tensor under `dacvae_decoder/<state-dict-key>`. The required groups
+are:
+
+- `quantizer.out_proj.*`, including a 32-channel latent decode projection;
+- `decoder.*`, including the mono waveform projection;
+- provenance fields for source repo, source revision, source file, converter
+  commit, `dacvae` revision, watermark-bypass policy, and license-review status.
+
+This real decoder artifact is a deterministic manifest and tensor transport
+contract. The current public runtime can inspect it and report that real
+Semantic-DACVAE decoder tensors are present, but it cannot yet execute the full
+MLX convolutional decoder stack. Until that executor lands, keep
+`persistent`/`subprocess` PyTorch bridge modes as the waveform decode fallback.
+Do not use `scripts/check_dacvae_decode_parity.py` for artifacts of kind
+`real_semantic_dacvae_decoder`: those artifacts intentionally contain
+`dacvae_decoder/<state-dict-key>` tensors instead of the fixture
+`decode_basis`/`decode_bias` arrays, so `MLXDACVAEBridge` rejects them until the
+real MLX decoder executor exists.
+
+After conversion, validate the transport contract by checking that the converter
+report and runtime capability inspection identify the artifact as a blocked real
+decoder artifact:
+
+```bash
+python scripts/convert_dacvae_decoder.py \
+  /path/to/Semantic-DACVAE-Japanese-32dim/weights.pth \
+  /tmp/irodori-dacvae-codec/dacvae-codec.npz \
+  --source-revision <hf-commit> \
+  --dacvae-revision <dacvae-commit> \
+  --license-review-status pending \
+  --json
+```
+
+Expected evidence is `artifact_kind=real_semantic_dacvae_decoder`,
+`has_real_dacvae_decode=true`, `has_mlx_decode=false`, and a capability message
+that the MLX DACVAE convolutional decoder executor is not implemented yet.
+Decode parity comparison becomes the required validation path only after the
+real MLX executor can consume those decoder tensors.
+
 ## Hosted companion metadata
 
 If a hosted RF-DiT repo references a companion codec, add the pointer under the

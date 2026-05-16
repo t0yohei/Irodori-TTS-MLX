@@ -20,6 +20,8 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "encode_basis",
             "encode_bias",
             "metadata_json",
+            "scripts/convert_dacvae_decoder.py",
+            "dacvae_decoder/<state-dict-key>",
             "upstream codec repo id, source file, and exact revision",
             "license-review status",
         ):
@@ -51,6 +53,7 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "voicedesign",
             "v3",
             "reference encode still uses the PyTorch bridge",
+            "cannot yet execute the full",
             "--no-reference",
         ):
             with self.subTest(term=term):
