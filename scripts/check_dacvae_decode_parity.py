@@ -24,6 +24,9 @@ from irodori_mlx.runtime import (  # noqa: E402
 )
 
 
+PARTIAL_EXCEPTION_TYPES = (FileNotFoundError, ModuleNotFoundError, ImportError)
+
+
 @dataclass(frozen=True)
 class DecodeParityTolerances:
     max_abs: float = 5e-3
@@ -41,6 +44,52 @@ def _load_latents(path: str | Path):
     if int(latents.shape[0]) != 1:
         raise ValueError(f"Decode parity currently expects batch size 1, got {latents.shape[0]}: {path}")
     return mx.array(latents)
+
+
+def _path_metadata(path: str | Path | None) -> dict[str, Any]:
+    if path is None:
+        return {"path": None, "exists": False}
+    resolved = Path(path).expanduser()
+    return {"path": str(resolved), "exists": resolved.exists()}
+
+
+def _is_partial_exception(exc: Exception) -> bool:
+    if isinstance(exc, PARTIAL_EXCEPTION_TYPES):
+        return True
+    if isinstance(exc, RuntimeError):
+        message = str(exc).lower()
+        return "pytorch" in message or "upstream" in message or "dacvae runtime dependencies" in message
+    return False
+
+
+def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
+    status = "partial" if _is_partial_exception(exc) else "failed"
+    return {
+        "schema_version": 2,
+        "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/152",
+        "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160",
+        "run": {
+            "status": status,
+            "reason": str(exc),
+            "complete": False,
+        },
+        "latents": _path_metadata(args.latents_npy),
+        "codec": {
+            "repo": args.codec_repo,
+            "device": args.codec_device,
+            "mlx_codec": _path_metadata(args.codec_path),
+            "watermark": "disabled",
+        },
+        "outputs": {
+            "output_dir": str(Path(args.output_dir).expanduser()),
+        },
+        "comparison": {
+            "status": status,
+            "reason": str(exc),
+            "checks": {},
+            "metrics": {},
+        },
+    }
 
 
 def _audio_stats(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
@@ -113,6 +162,9 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     latents = _load_latents(args.latents_npy)
+    codec_path = Path(args.codec_path).expanduser()
+    if not codec_path.exists():
+        raise FileNotFoundError(f"Converted MLX DACVAE codec artifact was not found: {codec_path}")
     max_samples = None if args.max_samples is None else int(args.max_samples)
 
     upstream_config = DACVAEBridgeConfig(
@@ -126,7 +178,7 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
     )
     mlx_config = DACVAEBridgeConfig(
         codec_repo=args.codec_repo,
-        codec_path=str(Path(args.codec_path).expanduser()),
+        codec_path=str(codec_path),
         codec_device=args.codec_device,
         runtime_mode="mlx-decode",
         deterministic_encode=True,
@@ -160,8 +212,12 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
     comparison = compare_audio(upstream_audio, mlx_audio, sample_rate=int(upstream_sr), tolerances=tolerances)
     return {
         "schema_version": 1,
-        "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/113",
-        "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/123",
+        "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/152",
+        "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160",
+        "run": {
+            "status": "complete",
+            "complete": True,
+        },
         "latents": {
             "path": str(Path(args.latents_npy).expanduser()),
             "shape": [int(dim) for dim in latents.shape],
@@ -170,7 +226,7 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
         "codec": {
             "repo": args.codec_repo,
             "device": args.codec_device,
-            "mlx_codec_path": str(Path(args.codec_path).expanduser()),
+            "mlx_codec_path": str(codec_path),
             "sample_rate": int(upstream_bridge.sample_rate),
             "hop_length": int(upstream_bridge.hop_length),
             "latent_dim": int(upstream_bridge.latent_dim),
@@ -197,6 +253,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mean-abs-tolerance", type=float, default=DecodeParityTolerances.mean_abs)
     parser.add_argument("--rmse-tolerance", type=float, default=DecodeParityTolerances.rmse)
     parser.add_argument("--min-cosine", type=float, default=DecodeParityTolerances.min_cosine)
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="Write a partial report and exit 0 when required local artifacts or optional runtime dependencies are absent.",
+    )
     return parser.parse_args(argv)
 
 
@@ -205,8 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         report = decode_pair(args)
     except Exception as exc:
-        print(f"DACVAE decode parity failed before comparison: {exc}", file=sys.stderr)
-        return 2
+        report = build_incomplete_report(args, exc)
     report_path = (
         Path(args.report_json).expanduser()
         if args.report_json
@@ -215,7 +275,12 @@ def main(argv: list[str] | None = None) -> int:
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"status": report["comparison"]["status"], "report": str(report_path)}, sort_keys=True))
-    return 0 if report["comparison"]["status"] == "passed" else 1
+    status = report["comparison"]["status"]
+    if status == "passed":
+        return 0
+    if status == "partial":
+        return 0 if args.allow_partial else 2
+    return 1
 
 
 if __name__ == "__main__":  # pragma: no cover

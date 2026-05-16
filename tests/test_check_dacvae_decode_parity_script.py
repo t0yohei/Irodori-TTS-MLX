@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,6 +29,18 @@ class FakeDecodeBridge:
         np.save(output.with_suffix(output.suffix + ".npy"), samples.astype(np.float32))
         output.write_bytes(b"fake wav")
         return output
+
+
+def require_real_decode_parity_env(test_func):
+    required = (
+        "IRODORI_MLX_DACVAE_CODEC_NPZ",
+        "IRODORI_MLX_DACVAE_DECODE_LATENTS_NPY",
+    )
+    missing = [name for name in required if not os.environ.get(name)]
+    return unittest.skipIf(
+        missing,
+        "real DACVAE decode parity artifacts not set: " + ", ".join(missing),
+    )(test_func)
 
 
 class DACVAEDecodeParityScriptTests(unittest.TestCase):
@@ -130,6 +143,56 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
             report_path = Path(td) / "dacvae-decode-parity.json"
             self.assertEqual(rc, 1)
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8")), report)
+
+    def test_main_writes_partial_report_for_missing_codec_when_allowed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            latents_path = root / "latents.npy"
+            missing_codec_path = root / "missing-codec.npz"
+            np.save(latents_path, np.array([[[0.1, -0.2], [0.3, -0.4]]], dtype=np.float32))
+
+            rc = check_dacvae_decode_parity.main(
+                [
+                    "--latents-npy",
+                    str(latents_path),
+                    "--codec-path",
+                    str(missing_codec_path),
+                    "--output-dir",
+                    td,
+                    "--allow-partial",
+                ]
+            )
+
+            report_path = root / "dacvae-decode-parity.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(rc, 0)
+            self.assertEqual(report["comparison"]["status"], "partial")
+            self.assertEqual(report["run"]["status"], "partial")
+            self.assertFalse(report["run"]["complete"])
+            self.assertTrue(report["latents"]["exists"])
+            self.assertFalse(report["codec"]["mlx_codec"]["exists"])
+
+    @require_real_decode_parity_env
+    def test_real_decode_parity_command_runs_when_artifact_env_is_set(self):
+        with tempfile.TemporaryDirectory() as td:
+            rc = check_dacvae_decode_parity.main(
+                [
+                    "--latents-npy",
+                    os.environ["IRODORI_MLX_DACVAE_DECODE_LATENTS_NPY"],
+                    "--codec-path",
+                    os.environ["IRODORI_MLX_DACVAE_CODEC_NPZ"],
+                    "--output-dir",
+                    td,
+                ]
+            )
+
+            report_path = Path(td) / "dacvae-decode-parity.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertIn(rc, (0, 1))
+            self.assertEqual(report["run"]["status"], "complete")
+            self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/152")
+            self.assertIn("sample_rate", report["comparison"])
+            self.assertIn("max_abs", report["comparison"]["metrics"])
 
 
 if __name__ == "__main__":
