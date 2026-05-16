@@ -115,6 +115,9 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
         mlx_factory.assert_called_once()
         self.assertEqual(upstream.calls, [(str(audio_path), 0.25, -16.0, True)])
         self.assertEqual(mlx.calls, [(str(audio_path), 0.25, -16.0, True)])
+        self.assertEqual(report["status"], "complete")
+        self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/155")
+        self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160")
         self.assertEqual(report["comparison"]["status"], "passed")
         self.assertEqual(report["comparison"]["metrics"]["upstream"]["shape"], [1, 1, 2])
         self.assertEqual(report["outputs"]["upstream_latents_npy"].split("/")[-1], "upstream-encode-latents.npy")
@@ -123,6 +126,7 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
     def test_main_returns_nonzero_for_metric_failure_and_persists_json(self):
         with tempfile.TemporaryDirectory() as td:
             report = {
+                "status": "failed",
                 "comparison": {"status": "failed"},
             }
             with mock.patch.object(check_dacvae_encode_parity, "encode_pair", return_value=report):
@@ -140,6 +144,40 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
             report_path = Path(td) / "dacvae-encode-parity.json"
             self.assertEqual(rc, 1)
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8")), report)
+
+    def test_main_returns_partial_report_when_setup_or_encode_is_blocked(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            audio_path = root / "ref.wav"
+            codec_path = root / "missing-codec.npz"
+            write_wav(audio_path)
+
+            with mock.patch.object(
+                check_dacvae_encode_parity,
+                "encode_pair",
+                side_effect=RuntimeError("real Semantic-DACVAE encoder conversion is blocked"),
+            ):
+                rc = check_dacvae_encode_parity.main(
+                    [
+                        "--audio-wav",
+                        str(audio_path),
+                        "--codec-path",
+                        str(codec_path),
+                        "--output-dir",
+                        td,
+                    ]
+                )
+
+            report = json.loads((root / "dacvae-encode-parity.json").read_text(encoding="utf-8"))
+            self.assertEqual(rc, 2)
+            self.assertEqual(report["status"], "partial")
+            self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/155")
+            self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160")
+            self.assertEqual(report["blocker"]["stage"], "setup-or-encode")
+            self.assertIn("blocked", report["blocker"]["message"])
+            self.assertTrue(report["audio"]["stats_available"])
+            self.assertFalse(report["codec"]["mlx_codec_path_exists"])
+            self.assertIsNone(report["comparison"])
 
 
 if __name__ == "__main__":

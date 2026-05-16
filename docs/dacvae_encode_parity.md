@@ -1,7 +1,7 @@
 # DACVAE encode parity fixtures
 
-Issue #115 tracks encode parity evidence for the v0.2 MLX DACVAE work after
-the MLX encode path from #114. The fixture is intentionally a fixed reference
+Issue #155 tracks encode parity evidence for the v0.2 MLX DACVAE work under
+parent epic #160. The fixture is intentionally a fixed reference
 WAV plus a locally produced MLX codec `.npz`; this repository does not commit
 upstream codec weights, converted codec weights, generated latents, reference
 audio, Hugging Face cache contents, or other heavyweight derived assets.
@@ -86,6 +86,18 @@ latent output paths, length/mask contract, tolerances, and pass/fail metrics.
 Keep those generated files local unless their license/provenance has been
 reviewed for redistribution.
 
+The report uses a portable status contract:
+
+- `complete`: upstream and MLX encode both ran, the comparison completed, and all
+  configured checks passed.
+- `failed`: upstream and MLX encode both ran, but shape, finite, or tolerance
+  checks failed. Keep this report as measured parity evidence before changing
+  thresholds.
+- `partial`: setup or encode could not reach comparison. This is the expected
+  documented blocker state while real Semantic-DACVAE encoder conversion remains
+  unavailable; the JSON report records the blocker stage and codec/audio inputs
+  without writing fake parity artifacts.
+
 ## Preprocessing caveats
 
 The check passes the same `--max-seconds`, `--normalize-db`, and `--ensure-max`
@@ -110,7 +122,7 @@ python -m pytest tests/test_check_dacvae_encode_parity_script.py tests/test_dacv
 ```
 
 `tests/test_dacvae_mlx_parity_fixtures.py` remains available for real fixture
-validation through environment variables. For issue #115 encode evidence, the
+validation through environment variables. For issue #155 encode evidence, the
 required variables are the codec artifact, reference WAV fixture, and upstream
 encoded latent fixture:
 
