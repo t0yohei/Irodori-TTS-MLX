@@ -289,14 +289,19 @@ class PyTorchDACVAEBridge:
         try:
             self.codec = DACVAECodec.load(**load_kwargs)
         except TypeError as exc:
-            if "enable_watermark" not in str(exc) and "normalize_db" not in str(exc):
+            if "unexpected keyword argument 'enable_watermark'" in str(exc) and not config.enable_watermark:
+                retry_kwargs = dict(load_kwargs)
+                retry_kwargs.pop("enable_watermark")
+                self.codec = DACVAECodec.load(**retry_kwargs)
+            elif "enable_watermark" not in str(exc) and "normalize_db" not in str(exc):
                 raise
-            raise RuntimeError(
-                "The PyTorch DACVAE bridge requires an upstream Irodori-TTS checkout whose "
-                "irodori_tts.codec.DACVAECodec.load accepts the current codec keyword arguments "
-                "(enable_watermark and normalize_db). Update the upstream checkout installed in "
-                f"the active environment, then retry. {QUICKSTART_TROUBLESHOOTING}"
-            ) from exc
+            else:
+                raise RuntimeError(
+                    "The PyTorch DACVAE bridge requires an upstream Irodori-TTS checkout whose "
+                    "irodori_tts.codec.DACVAECodec.load accepts the requested codec keyword arguments "
+                    "(enable_watermark and normalize_db). Update the upstream checkout installed in "
+                    f"the active environment, then retry. {QUICKSTART_TROUBLESHOOTING}"
+                ) from exc
         self.sample_rate = int(self.codec.sample_rate)
         self.latent_dim = int(self.codec.latent_dim)
         self.hop_length = int(getattr(self.codec.model, "hop_length"))

@@ -46,10 +46,9 @@ from irodori_tts.codec import DACVAECodec
 
 Use a current upstream checkout whose `DACVAECodec.load` accepts the codec
 keyword arguments used by this runtime, including `enable_watermark` and
-`normalize_db`. This repository no longer retries older `DACVAECodec.load`
-signatures; even when watermarking is disabled, the bridge passes
-`enable_watermark=False` explicitly so request metadata and codec construction
-stay deterministic.
+`normalize_db`. When watermarking is disabled, the bridge can still retry older
+`DACVAECodec.load` signatures that do not expose `enable_watermark`; requesting
+watermarking requires an upstream checkout with that keyword.
 
 ## Responsibility split
 
@@ -75,8 +74,8 @@ That message is expected. Fix the environment by either running `python -m pip i
 
 If runtime construction fails with a message about `DACVAECodec.load` keyword
 arguments, update the upstream checkout installed in the active environment. The
-MLX bridge targets the current upstream codec API instead of maintaining
-fallback calls for historical signatures.
+MLX bridge only retries the older no-`enable_watermark` signature when
+watermarking is disabled.
 
 ## What this does not claim
 

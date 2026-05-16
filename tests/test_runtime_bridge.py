@@ -1040,13 +1040,43 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIs(calls[0]["enable_watermark"], True)
 
     @require_mlx
-    def test_pytorch_bridge_rejects_upstream_codec_without_current_load_kwargs(self):
+    def test_pytorch_bridge_retries_without_disabled_watermark_for_older_upstream_codec(self):
+        calls = []
+
+        class OldCodecLoader:
+            @classmethod
+            def load(cls, **kwargs):
+                calls.append(dict(kwargs))
+                if "enable_watermark" in kwargs:
+                    raise TypeError("DACVAECodec.load() got an unexpected keyword argument 'enable_watermark'")
+                return SimpleNamespace(
+                    sample_rate=16000,
+                    latent_dim=4,
+                    model=SimpleNamespace(hop_length=320),
+                )
+
+        fake_module = ModuleType("irodori_tts.codec")
+        fake_module.DACVAECodec = OldCodecLoader
+        with patch("irodori_mlx.runtime._require_torch", return_value=SimpleNamespace()), patch.dict(
+            sys.modules, {"irodori_tts.codec": fake_module}
+        ):
+            bridge = PyTorchDACVAEBridge(config=DACVAEBridgeConfig(normalize_db=None, enable_watermark=False))
+
+        self.assertEqual(bridge.sample_rate, 16000)
+        self.assertEqual(bridge.latent_dim, 4)
+        self.assertEqual(bridge.hop_length, 320)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("enable_watermark", calls[0])
+        self.assertNotIn("enable_watermark", calls[1])
+
+    @require_mlx
+    def test_pytorch_bridge_rejects_enabled_watermark_without_upstream_support(self):
         class OldCodecLoader:
             @classmethod
             def load(cls, **kwargs):
                 if "enable_watermark" in kwargs:
                     raise TypeError("DACVAECodec.load() got an unexpected keyword argument 'enable_watermark'")
-                raise AssertionError("compatibility retry must not remove current keyword arguments")
+                raise AssertionError("enabled watermark must not be silently dropped")
 
         fake_module = ModuleType("irodori_tts.codec")
         fake_module.DACVAECodec = OldCodecLoader
@@ -1054,7 +1084,7 @@ class RuntimeBridgeTests(unittest.TestCase):
             sys.modules, {"irodori_tts.codec": fake_module}
         ):
             with self.assertRaisesRegex(RuntimeError, "requires an upstream Irodori-TTS checkout"):
-                PyTorchDACVAEBridge(config=DACVAEBridgeConfig(normalize_db=None))
+                PyTorchDACVAEBridge(config=DACVAEBridgeConfig(normalize_db=None, enable_watermark=True))
 
     @require_mlx
     def test_subprocess_bridge_normalizes_relative_paths_before_spawning_worker(self):
