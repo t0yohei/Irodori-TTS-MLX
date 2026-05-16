@@ -1,6 +1,6 @@
 # mlx-audio DACVAE artifact comparison
 
-Issue: [#130](https://github.com/t0yohei/Irodori-TTS-MLX/issues/130)  
+Issue: [#130](https://github.com/t0yohei/Irodori-TTS-MLX/issues/130)
 Parent epic: [#123](https://github.com/t0yohei/Irodori-TTS-MLX/issues/123)
 
 This page records the DACVAE-specific result of comparing mlx-audio's bundled
@@ -135,4 +135,3 @@ without downloading multi-GiB upstream artifacts.
   and decode tensors.
 - Direct loader compatibility is not supported. Silent fallback from the
   mlx-audio DACVAE directory shape would hide licensing and parity decisions.
-
