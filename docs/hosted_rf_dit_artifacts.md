@@ -43,6 +43,7 @@ Smoke command:
     PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
     irodori-tts-generate \
       --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
+      --weights-revision bf877a3beb7d921dc6bfb2b6812d02be07f39f2a \
       --text "こんにちは。今日は良い天気です。" \
       --caption "落ち着いた女性の声" \
       --no-reference \

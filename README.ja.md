@@ -91,8 +91,8 @@ v3 local fallback smoke の例:
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights "$WORK/weights.npz" \
-  --model-config-json "$WORK/model_config.json" \
+  --weights /path/to/converted-v3/weights.npz \
+  --model-config-json /path/to/converted-v3/model_config.json \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3.wav \
@@ -104,8 +104,8 @@ irodori-tts-generate \
 
 ```bash
 irodori-tts-generate \
-  --weights "$WORK/weights.npz" \
-  --model-config-json "$WORK/model_config.json" \
+  --weights /path/to/converted-v3/weights.npz \
+  --model-config-json /path/to/converted-v3/model_config.json \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3-mlx-decode.wav \

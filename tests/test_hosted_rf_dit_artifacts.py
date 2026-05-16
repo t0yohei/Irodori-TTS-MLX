@@ -63,6 +63,7 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
             "irodori_mlx.hosted_artifacts.HOSTED_RF_DIT_ARTIFACTS",
             "t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign",
             "bf877a3beb7d921dc6bfb2b6812d02be07f39f2a",
+            "--weights-revision bf877a3beb7d921dc6bfb2b6812d02be07f39f2a",
             "license_review.status: \"approved\"",
             "v3 hosted artifact is intentionally marked blocked",
             "Do not replace the blocked status with a local filesystem path",
@@ -74,6 +75,15 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
         for term in required_terms:
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)
+
+    def test_readme_v3_smoke_uses_explicit_converted_paths(self):
+        readme = (self.root / "README.md").read_text(encoding="utf-8")
+        readme_ja = (self.root / "README.ja.md").read_text(encoding="utf-8")
+
+        for text in (readme, readme_ja):
+            with self.subTest(document=text[:40]):
+                self.assertIn("--weights /path/to/converted-v3/weights.npz", text)
+                self.assertIn("--model-config-json /path/to/converted-v3/model_config.json", text)
 
 
 if __name__ == "__main__":
