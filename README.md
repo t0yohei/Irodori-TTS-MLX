@@ -106,6 +106,8 @@ irodori-tts-generate \
 
 This path still uses the upstream PyTorch DACVAE bridge for codec encode/decode and does not bundle upstream code, codec weights, reference audio, generated samples, or Hugging Face cache snapshots. If a hosted repo is unavailable, unapproved, or outside the audited candidate families, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, v3 no-reference example, provenance checklist, and fallback decision rules.
 
+VoiceDesign v2 checkpoints do not have the v3 duration predictor. When `--seconds` is omitted, the runtime estimates a bounded fallback from normalized text length and reports the resolved duration in metadata; pass `--seconds` when a specific prompt needs a manual duration to avoid clipping or an over-extended tail.
+
 ## Quickstart: checkpoint to WAV
 
 This is the supported local fallback path from a fresh checkout to a generated WAV. It assumes an Apple Silicon macOS host and a checkpoint you are allowed to download and use locally. This repository does **not** redistribute upstream code, model weights, DACVAE assets, or reference audio; check the upstream repository and model cards before reusing or sharing outputs.

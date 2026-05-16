@@ -567,6 +567,52 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIn("predicted duration active", "\n".join(result.messages))
 
     @require_mlx
+    def test_runtime_estimates_fallback_duration_when_predictor_is_unavailable(self):
+        cfg = replace(tiny_config(), use_caption_condition=True)
+        bridge = FakeBridge()
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+            model=FakeModel(cfg),
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+            caption_tokenizer=FakeTokenizer(),
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            short = runtime.generate(
+                GenerationRequest(
+                    text="こんにちは。",
+                    output_wav=str(Path(td) / "short.wav"),
+                    no_reference=True,
+                    caption="落ち着いた自然な女性の声",
+                    seconds=None,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+            smoke = runtime.generate(
+                GenerationRequest(
+                    text="こんにちは。私はいろどりです。今日は音声生成のテストをしています。",
+                    output_wav=str(Path(td) / "smoke.wav"),
+                    no_reference=True,
+                    caption="落ち着いた自然な女性の声",
+                    seconds=None,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(short.duration_mode, "fallback")
+        self.assertIsNone(short.requested_seconds)
+        self.assertLess(short.resolved_seconds, 5.0)
+        self.assertGreater(smoke.resolved_seconds, 5.0)
+        self.assertLess(smoke.resolved_seconds, 8.0)
+        self.assertGreater(smoke.latent_steps, short.latent_steps)
+        self.assertIn("estimated fallback duration from text length", "\n".join(smoke.messages))
+
+    @require_mlx
     def test_manual_seconds_override_skips_duration_predictor(self):
         cfg = replace(
             tiny_config(),
