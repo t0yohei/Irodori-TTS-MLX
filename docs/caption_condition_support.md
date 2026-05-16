@@ -44,6 +44,29 @@ The runtime already does the key caption-conditioned setup work:
 
 These behaviors are now covered by unit tests so they do not regress silently.
 
+### Caption and CFG parity checks
+
+The lightweight regression path now covers the VoiceDesign caption/CFG contract without downloading checkpoints:
+
+- `tests.test_sampling.SamplingTests.test_fixed_seed_caption_content_changes_mlx_sample` proves that changing only caption tokens changes MLX sampled latents under the same text, seed, and sampler settings.
+- `tests.test_sampling.SamplingTests.test_caption_cfg_cache_on_and_off_are_equivalent_for_same_caption` exercises `cfg_scale_caption` with context K/V cache on and off and expects identical deterministic output for the same caption.
+- `tests.test_pytorch_parity.PyTorchMlxParityTests.test_voicedesign_caption_condition_wrapper_matches_upstream_pytorch` compares MLX VoiceDesign caption conditioning intermediates (`caption_state` and `caption_mask`) against the upstream PyTorch `TextToLatentRFDiT.encode_conditions` implementation using deterministic fixture weights.
+
+Run the smoke path with no large downloads:
+
+```bash
+python3 -m unittest tests.test_sampling tests.test_runtime_bridge tests.test_generate_wav_script -v
+```
+
+Run the upstream/local parity contract when the upstream checkout is available:
+
+```bash
+IRODORI_TTS_UPSTREAM_PATH=/path/to/Irodori-TTS \
+  python3 -m unittest tests.test_pytorch_parity -v
+```
+
+The parity test skips when PyTorch, MLX, or the upstream checkout is missing. It is intended to catch tokenizer-mask, caption encoder, caption norm, and condition-wrapper mismatches before running expensive real-checkpoint audio comparisons.
+
 ### Weight loading assumptions
 
 The MLX weight loader already knows the caption-specific tensor names once a compatible `.npz` exists:
@@ -105,6 +128,20 @@ python3 scripts/generate_wav.py \
 ```
 
 Check the `checkpoint_family` field in the dry-run JSON/text report before running the full conversion. A valid inspected VoiceDesign checkpoint should report `checkpoint_family: voicedesign`.
+
+For caption quality checks, use short, concrete style instructions rather than generic labels. Good prompts name voice character, energy, distance, and delivery, for example:
+
+- `落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。`
+- `明るく元気な声で、少し速めにはっきり話してください。`
+- `低めの声で、ニュース読みのように落ち着いて読み上げてください。`
+
+Start with `--cfg-scale-caption 3.0` and `--cfg-guidance-mode independent`. Increase caption scale gradually only when the style is too weak; very high caption guidance can trade naturalness for stronger style steering. Use `--cfg-guidance-mode joint` only when all enabled scales are equal, or pass `--cfg-scale` to set text, caption, and speaker scales together. `--no-context-kv-cache` is useful as a debugging parity switch; it should not change deterministic caption conditioning for the same seed and inputs.
+
+Known limitations:
+
+- The checked-in parity fixtures validate intermediate conditioning behavior, not bitwise final waveform parity.
+- MLX and upstream PyTorch can use different RNG streams and backend kernels, so real-checkpoint audio comparisons should focus on caption sensitivity, sane quality, duration, and absence of regressions rather than exact waveform equality.
+- The MLX sampler intentionally supports `independent`, `joint`, and `reduced`; upstream also has `alternating`, which is not part of the current MLX contract.
 
 For automated regression coverage, the repository now includes two workflows:
 

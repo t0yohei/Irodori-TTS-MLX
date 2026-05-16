@@ -383,6 +383,79 @@ class PyTorchMlxParityTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(to_np(mlx_encoded.speaker_mask), torch_to_np(torch_speaker_mask))
 
+    @require_parity_deps
+    def test_voicedesign_caption_condition_wrapper_matches_upstream_pytorch(self):
+        upstream = import_upstream_model()
+        cfg_kwargs = dict(
+            latent_dim=4,
+            latent_patch_size=1,
+            text_vocab_size=23,
+            text_dim=8,
+            text_layers=1,
+            text_heads=2,
+            text_mlp_ratio=1.5,
+            use_caption_condition=True,
+            caption_vocab_size=29,
+            caption_dim=8,
+            caption_layers=1,
+            caption_heads=2,
+            caption_mlp_ratio=1.5,
+            dropout=0.0,
+            norm_eps=1e-5,
+        )
+        torch_cfg = upstream.ModelConfig(**cfg_kwargs)
+        mlx_cfg = MlxModelConfig(**cfg_kwargs)
+
+        torch_rf_model = upstream.TextToLatentRFDiT(torch_cfg)
+        full_model_arrays = fill_torch_module(torch_rf_model, scale=0.01)
+        condition_arrays = {
+            name: value
+            for name, value in full_model_arrays.items()
+            if name.startswith(("text_encoder.", "text_norm.", "caption_encoder.", "caption_norm."))
+        }
+        mlx_conditions = MlxConditionEncoders(mlx_cfg)
+        assign_mlx_arrays(mlx_conditions, condition_arrays)
+
+        text_ids_np = np.array([[1, 2, 3, 4], [5, 6, 0, 1]], dtype=np.int64)
+        text_mask_np = np.array([[True, True, False, True], [True, False, True, True]])
+        caption_ids_np = np.array([[7, 8, 9], [10, 0, 12]], dtype=np.int64)
+        caption_mask_np = np.array([[True, True, True], [True, False, True]])
+        mlx_encoded = mlx_conditions(
+            text_input_ids=mx.array(text_ids_np),
+            text_mask=mx.array(text_mask_np),
+            ref_latent=None,
+            ref_mask=None,
+            caption_input_ids=mx.array(caption_ids_np),
+            caption_mask=mx.array(caption_mask_np),
+        )
+        torch_encoded = torch_rf_model.encode_conditions(
+            text_input_ids=torch.tensor(text_ids_np),
+            text_mask=torch.tensor(text_mask_np),
+            ref_latent=None,
+            ref_mask=None,
+            caption_input_ids=torch.tensor(caption_ids_np),
+            caption_mask=torch.tensor(caption_mask_np),
+        )
+        torch_text_state, torch_text_mask, _, _, torch_caption_state, torch_caption_mask = torch_encoded
+        assert_close_with_context(
+            self,
+            to_np(mlx_encoded.text_state),
+            torch_to_np(torch_text_state),
+            rtol=5e-5,
+            atol=5e-5,
+            label="VoiceDesign ConditionEncoders text_state",
+        )
+        np.testing.assert_array_equal(to_np(mlx_encoded.text_mask), torch_to_np(torch_text_mask))
+        assert_close_with_context(
+            self,
+            to_np(mlx_encoded.caption_state),
+            torch_to_np(torch_caption_state),
+            rtol=5e-5,
+            atol=5e-5,
+            label="VoiceDesign ConditionEncoders caption_state",
+        )
+        np.testing.assert_array_equal(to_np(mlx_encoded.caption_mask), torch_to_np(torch_caption_mask))
+
 
 if __name__ == "__main__":
     unittest.main()
