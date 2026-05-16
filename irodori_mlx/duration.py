@@ -129,12 +129,12 @@ def estimate_fallback_duration_seconds(
     for ch in normalized:
         if ch.isspace():
             continue
-        if _is_kana(ch) or _is_kanji(ch):
+        if ch in "ー～~":
+            speech_units += 0.35
+        elif _is_kana(ch) or _is_kanji(ch):
             speech_units += 1.0
         elif _is_alnum(ch):
             speech_units += 0.55
-        elif ch in "ー～~":
-            speech_units += 0.35
         elif ch in "、,，;；:：":
             speech_units += 0.45
         elif ch in "。.!！?？…":
