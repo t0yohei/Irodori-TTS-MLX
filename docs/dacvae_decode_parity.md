@@ -1,10 +1,10 @@
-# DACVAE decode parity fixtures
+# DACVAE decode parity validation
 
-Issue #113 tracks decode-only parity evidence for the v0.2 MLX DACVAE work.
-The fixture is intentionally a fixed latent `.npy` file plus a locally produced
-MLX codec `.npz`; this repository does not commit upstream codec weights,
-converted codec weights, decoded audio, Hugging Face cache contents, or other
-heavyweight derived assets.
+Issue #152 tracks the real decode parity gate for the v0.2 MLX DACVAE work
+under parent epic #160. The validation input is intentionally a fixed latent
+`.npy` file plus a locally produced MLX codec `.npz`; this repository does not
+commit upstream codec weights, converted codec weights, decoded audio, Hugging
+Face cache contents, or other heavyweight derived assets.
 
 ## What the check compares
 
@@ -32,7 +32,7 @@ future converted codec artifact must already meet them. If a real artifact
 drifts, keep the failed report and document the observed metrics in the PR or
 issue before adjusting thresholds.
 
-## Local fixture command
+## Local real-artifact command
 
 Create or reuse a small latent fixture outside the repository, for example:
 
@@ -69,8 +69,28 @@ The command writes:
 - `dacvae-decode-parity.json`
 
 The JSON report records issue links, fixture shape, codec metadata, output paths,
-tolerances, and pass/fail metrics. Keep those generated files local unless their
-license/provenance has been reviewed for redistribution.
+tolerances, and pass/fail metrics. A complete run has `run.status: complete`
+and `comparison.status: passed` or `failed`. Keep generated WAVs and local
+artifacts out of git unless their license/provenance has been reviewed for
+redistribution.
+
+For CI or developer machines that should record deterministic skip evidence when
+local artifacts are absent, add `--allow-partial`:
+
+```bash
+python scripts/check_dacvae_decode_parity.py \
+  --latents-npy /tmp/irodori-dacvae-decode-fixtures/decode-latents.npy \
+  --codec-path /path/to/dacvae-codec.npz \
+  --output-dir /tmp/irodori-dacvae-decode-fixtures/parity \
+  --allow-partial
+```
+
+When preflight detects that the latent fixture, MLX codec artifact, MLX runtime,
+or PyTorch/upstream dependency is missing, the command writes
+`dacvae-decode-parity.json` with `run.status: partial` and exits 0 only with
+`--allow-partial`. Without `--allow-partial`, partial runs exit 2. Runtime
+decode/write failures, shape mismatches, metadata mismatches, sample-rate
+mismatches, and metric drift still write a failed report and exit non-zero.
 
 ## Lightweight test coverage
 
@@ -81,10 +101,19 @@ local development can validate the contract without downloading upstream assets:
 python -m pytest tests/test_check_dacvae_decode_parity_script.py tests/test_dacvae_mlx_parity_fixtures.py
 ```
 
-`tests/test_dacvae_mlx_parity_fixtures.py` remains available for real fixture
-validation through environment variables. For issue #113 decode-only evidence,
-the required variables are the codec artifact, latent fixture, and upstream
-decoded audio fixture:
+The script-level real-artifact test is skipped unless the required local files
+are provided through environment variables:
+
+```bash
+IRODORI_MLX_DACVAE_CODEC_NPZ=/path/to/dacvae-codec.npz \
+IRODORI_MLX_DACVAE_DECODE_LATENTS_NPY=/path/to/decode-latents.npy \
+python -m pytest tests/test_check_dacvae_decode_parity_script.py -k real_decode
+```
+
+`tests/test_dacvae_mlx_parity_fixtures.py` remains available for lower-level
+MLX bridge fixture validation through environment variables. For decode-only
+fixture evidence, the required variables are the codec artifact, latent fixture,
+and upstream decoded audio fixture:
 
 ```bash
 IRODORI_MLX_DACVAE_CODEC_NPZ=/path/to/dacvae-codec.npz \
