@@ -27,9 +27,10 @@ QUICKSTART_TROUBLESHOOTING = "See README.md 'If the quickstart fails' and docs/c
 
 @dataclass(frozen=True)
 class DACVAEBridgeConfig:
-    """Configuration for the v0 PyTorch DACVAE bridge."""
+    """Configuration for the DACVAE encode/decode boundary."""
 
     codec_repo: str = "Aratako/Semantic-DACVAE-Japanese-32dim"
+    codec_path: str | None = None
     codec_device: str = "cpu"
     runtime_mode: str = "persistent"
     deterministic_encode: bool = True
@@ -443,6 +444,145 @@ class SubprocessDACVAEBridge:
             latents_path.unlink(missing_ok=True)
 
 
+def _load_npz_scalar_string(archive, name: str) -> str | None:
+    if name not in archive.files:
+        return None
+    value = archive[name]
+    if getattr(value, "shape", ()) == ():
+        return str(value.item())
+    if getattr(value, "shape", ()) == (1,):
+        return str(value[0])
+    raise ValueError(f"codec metadata field {name!r} must be a scalar string")
+
+
+def _load_npz_scalar_int(archive, name: str) -> int:
+    value = archive[name]
+    if getattr(value, "shape", ()) == ():
+        return int(value.item())
+    if getattr(value, "shape", ()) == (1,):
+        return int(value[0])
+    raise ValueError(f"codec metadata field {name!r} must be a scalar integer")
+
+
+class MLXDACVAEBridge:
+    """MLX-native DACVAE artifact contract for encode/decode experiments.
+
+    The artifact is intentionally explicit: it must provide small projection
+    tensors and metadata instead of importing the upstream PyTorch codec.
+    Real Semantic-DACVAE parity depends on converted codec artifacts produced
+    outside this lightweight test fixture contract.
+    """
+
+    artifact_version = 1
+
+    def __init__(self, *, config: DACVAEBridgeConfig) -> None:
+        if not config.codec_path:
+            raise ValueError("codec_runtime_mode='mlx' requires --codec-path pointing to a converted codec .npz")
+        self.config = config
+        self.codec_path = Path(config.codec_path).expanduser()
+        try:
+            import numpy as np
+
+            with np.load(self.codec_path, allow_pickle=False) as archive:
+                metadata_json = _load_npz_scalar_string(archive, "metadata_json")
+                metadata = json.loads(metadata_json) if metadata_json else {}
+                self.sample_rate = int(metadata.get("sample_rate", _load_npz_scalar_int(archive, "sample_rate")))
+                self.hop_length = int(metadata.get("hop_length", _load_npz_scalar_int(archive, "hop_length")))
+                self.latent_dim = int(metadata.get("latent_dim", _load_npz_scalar_int(archive, "latent_dim")))
+                self.decode_basis = mx.array(archive["decode_basis"].astype("float32", copy=False))
+                self.decode_bias = mx.array(archive["decode_bias"].astype("float32", copy=False))
+                self.encode_basis = mx.array(archive["encode_basis"].astype("float32", copy=False))
+                self.encode_bias = mx.array(archive["encode_bias"].astype("float32", copy=False))
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Converted MLX DACVAE codec artifact was not found: {self.codec_path}") from exc
+        except KeyError as exc:
+            raise ValueError(
+                f"Converted MLX DACVAE codec artifact {self.codec_path} is missing required array {exc}."
+            ) from exc
+
+        if tuple(self.decode_basis.shape) != (self.latent_dim, self.hop_length):
+            raise ValueError(
+                f"decode_basis must have shape ({self.latent_dim}, {self.hop_length}), got {self.decode_basis.shape}"
+            )
+        if tuple(self.decode_bias.shape) != (self.hop_length,):
+            raise ValueError(f"decode_bias must have shape ({self.hop_length},), got {self.decode_bias.shape}")
+        if tuple(self.encode_basis.shape) != (self.hop_length, self.latent_dim):
+            raise ValueError(
+                f"encode_basis must have shape ({self.hop_length}, {self.latent_dim}), got {self.encode_basis.shape}"
+            )
+        if tuple(self.encode_bias.shape) != (self.latent_dim,):
+            raise ValueError(f"encode_bias must have shape ({self.latent_dim},), got {self.encode_bias.shape}")
+
+    def encode_reference(
+        self,
+        path: str | Path,
+        *,
+        max_seconds: float | None,
+        normalize_db: float | None,
+        ensure_max: bool,
+    ) -> mx.array:
+        del normalize_db, ensure_max
+        samples, sample_rate = _load_audio_numpy(path)
+        if int(sample_rate) != int(self.sample_rate):
+            raise ValueError(
+                f"MLX DACVAE codec artifact expects sample_rate={self.sample_rate}, got reference sample_rate={sample_rate}"
+            )
+        if max_seconds is not None and float(max_seconds) > 0:
+            samples = samples[: max(1, int(float(max_seconds) * float(sample_rate)))]
+        if samples.size == 0:
+            raise ValueError("reference audio is empty")
+        frames = _frame_audio(samples, self.hop_length)
+        latents = mx.array(frames, dtype=mx.float32) @ self.encode_basis + self.encode_bias
+        mx.eval(latents)
+        return latents[None, :, :]
+
+    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
+        if len(latents.shape) != 3:
+            raise ValueError(f"Expected MLX latents with shape (B,T,D), got {latents.shape}")
+        if int(latents.shape[0]) != 1:
+            raise ValueError(f"MLX DACVAE decode currently supports batch size 1, got {latents.shape[0]}")
+        if int(latents.shape[2]) != int(self.latent_dim):
+            raise ValueError(f"Expected latent_dim={self.latent_dim}, got {latents.shape[2]}")
+        frames = latents[0].astype(mx.float32) @ self.decode_basis + self.decode_bias
+        samples = _as_numpy(frames.reshape((-1,))).astype("float32", copy=False)
+        if max_samples is not None:
+            samples = samples[: int(max_samples)]
+        return save_wav_numpy(output_path, samples, self.sample_rate)
+
+
+def _load_audio_numpy(path: str | Path) -> tuple["object", int]:
+    import numpy as np
+
+    try:
+        import soundfile as sf
+
+        data, sample_rate = sf.read(str(path), dtype="float32")
+    except Exception:
+        with wave.open(str(path), "rb") as fh:
+            sample_rate = int(fh.getframerate())
+            channels = int(fh.getnchannels())
+            width = int(fh.getsampwidth())
+            frames = fh.readframes(fh.getnframes())
+        if width != 2:
+            raise RuntimeError("stdlib WAV fallback only supports PCM16 reference audio")
+        data = np.frombuffer(frames, dtype="<i2").astype("float32") / 32768.0
+        if channels > 1:
+            data = data.reshape((-1, channels)).mean(axis=1)
+    if getattr(data, "ndim", 1) > 1:
+        data = data.mean(axis=1)
+    return np.asarray(data, dtype="float32"), int(sample_rate)
+
+
+def _frame_audio(samples, hop_length: int):
+    import numpy as np
+
+    hop = int(hop_length)
+    pad = (-int(samples.shape[0])) % hop
+    if pad:
+        samples = np.pad(samples, (0, pad))
+    return samples.reshape((-1, hop)).astype("float32", copy=False)
+
+
 def _load_audio_torch(path: str | Path):
     torch = _require_torch()
     try:
@@ -496,6 +636,31 @@ def save_wav(path: str | Path, audio, sample_rate: int) -> Path:
     return out
 
 
+def save_wav_numpy(path: str | Path, samples, sample_rate: int) -> Path:
+    """Save mono float32 audio without importing PyTorch."""
+
+    import numpy as np
+
+    out = Path(path).expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import soundfile as sf
+
+        sf.write(str(out), np.asarray(samples, dtype="float32"), int(sample_rate))
+        return out
+    except Exception:
+        pass
+    clipped = np.clip(np.asarray(samples, dtype="float32"), -1.0, 1.0)
+    pcm = (clipped * 32767.0).astype("<i2")
+    with wave.open(str(out), "wb") as fh:
+        fh.setnchannels(1)
+        fh.setsampwidth(2)
+        fh.setframerate(int(sample_rate))
+        fh.writeframes(pcm.tobytes())
+    return out
+
+
+
 class MLXDACVAERuntime:
     """End-to-end prototype: MLX RF-DiT latent generation + PyTorch DACVAE decode."""
 
@@ -515,6 +680,8 @@ class MLXDACVAERuntime:
                 bridge = PyTorchDACVAEBridge(config=config.codec)
             elif config.codec.runtime_mode == "subprocess":
                 bridge = SubprocessDACVAEBridge(config=config.codec)
+            elif config.codec.runtime_mode == "mlx":
+                bridge = MLXDACVAEBridge(config=config.codec)
             else:
                 raise ValueError(f"Unsupported codec runtime_mode={config.codec.runtime_mode!r}")
         self.bridge = bridge
@@ -710,10 +877,19 @@ class MLXDACVAERuntime:
                 "codec_repo": self.config.codec.codec_repo,
                 "codec_device": self.config.codec.codec_device,
                 "codec_runtime_mode": self.config.codec.runtime_mode,
+                "codec_path": self.config.codec.codec_path,
                 "sample_rate": self.bridge.sample_rate,
                 "hop_length": self.bridge.hop_length,
             },
-            "conversion": "PyTorch tensor -> CPU NumPy -> MLX array, and reverse for DACVAE decode",
+            "codec": {
+                "implementation": self.bridge.__class__.__name__,
+                "imports_pytorch": isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge)),
+            },
+            "conversion": (
+                "PyTorch tensor -> CPU NumPy -> MLX array, and reverse for DACVAE decode"
+                if isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge))
+                else "MLX codec artifact encode/decode; WAV IO crosses through NumPy"
+            ),
             "config": asdict(self.config),
             "checkpoint_family": self.config.model_config.checkpoint_family,
             "checkpoint_family_label": self.config.model_config.checkpoint_family_label,

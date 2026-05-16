@@ -63,6 +63,7 @@ CONFIG_KEYS = {
     "text_max_length",
     "caption_max_length",
     "codec_repo",
+    "codec_path",
     "codec_device",
     "codec_runtime_mode",
     "disable_codec_normalize",
@@ -118,6 +119,7 @@ OPTIONAL_STRING_KEYS = {
     "text_tokenizer_repo",
     "caption_tokenizer_repo",
     "codec_repo",
+    "codec_path",
     "codec_device",
     "metadata_json",
     "requests_json",
@@ -143,7 +145,7 @@ FLOAT_KEYS = {
 NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
     "preset": {"fast", "balanced", "quality"},
-    "codec_runtime_mode": {"persistent", "subprocess"},
+    "codec_runtime_mode": {"persistent", "subprocess", "mlx"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
 }
 
@@ -351,12 +353,17 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument("--text-max-length", type=int, default=_default(config, "text_max_length", 256), help="Maximum text tokens to encode (default: 256).")
     parser.add_argument("--caption-max-length", type=int, default=config.get("caption_max_length"), help="Optional caption token limit. Defaults to text-max-length inside the runtime.")
     parser.add_argument("--codec-repo", default=_default(config, "codec_repo", "Aratako/Semantic-DACVAE-Japanese-32dim"), help="DACVAE codec repo id.")
+    parser.add_argument(
+        "--codec-path",
+        default=config.get("codec_path"),
+        help="Converted local MLX DACVAE codec .npz. Required when --codec-runtime-mode mlx.",
+    )
     parser.add_argument("--codec-device", default=_default(config, "codec_device", "cpu"), help="PyTorch codec device: cpu, mps, or cuda.")
     parser.add_argument(
         "--codec-runtime-mode",
         default=_default(config, "codec_runtime_mode", "persistent"),
-        choices=("persistent", "subprocess"),
-        help="How to host the PyTorch DACVAE boundary: keep it in-process or isolate encode/decode in helper subprocesses.",
+        choices=("persistent", "subprocess", "mlx"),
+        help="How to host DACVAE encode/decode: PyTorch in-process, PyTorch subprocesses, or a converted local MLX codec artifact.",
     )
     _add_configurable_bool(
         parser,
@@ -590,6 +597,7 @@ def build_runtime_config(args: argparse.Namespace, model_config: Any) -> MLXRunt
         caption_max_length=args.caption_max_length,
         codec=DACVAEBridgeConfig(
             codec_repo=args.codec_repo,
+            codec_path=args.codec_path,
             codec_device=args.codec_device,
             runtime_mode=args.codec_runtime_mode,
             enable_watermark=bool(args.enable_watermark),
