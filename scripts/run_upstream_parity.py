@@ -265,7 +265,7 @@ def _side_report(
         "status": status,
         "command": {"argv": command, "shell": shlex.join(command)},
         "availability": availability,
-        "audio": wav_properties(output_wav),
+        "audio": None,
         "metadata": {},
     }
 

@@ -222,6 +222,29 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertEqual(report["mlx"]["availability"]["reason"], "missing_mlx_weights")
         self.assertEqual(report["comparison"]["status"], "not_comparable")
 
+    def test_unavailable_side_ignores_stale_audio_artifact(self):
+        with tempfile.TemporaryDirectory() as td:
+            stale_wav = Path(td) / "v3-no-reference.mlx.wav"
+            with wave.open(str(stale_wav), "wb") as fh:
+                fh.setnchannels(1)
+                fh.setsampwidth(2)
+                fh.setframerate(24000)
+                fh.writeframes(b"\x00\x00" * 240)
+
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "v3-no-reference",
+                    "--output-dir",
+                    td,
+                    "--run-mlx",
+                ]
+            )
+            report = run_upstream_parity.build_report(args)
+
+        self.assertEqual(report["mlx"]["status"], "unavailable")
+        self.assertIsNone(report["mlx"]["audio"])
+
     def test_default_report_path_expands_output_dir(self):
         with tempfile.TemporaryDirectory() as td:
             old_home = os.environ.get("HOME")
