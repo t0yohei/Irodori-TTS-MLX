@@ -9,13 +9,14 @@ The harness is intentionally small for the first #109 slice:
 
 - it records rerunnable upstream and MLX commands
 - it captures scenario metadata for tokenizer, duration, sampling, and codec boundaries
-- it records lightweight WAV properties when generated audio exists
+- it records lightweight WAV properties and shareable audio metrics when generated audio exists
+- it records compact intermediate checkpoints for tokenizer, duration, and sampled-latent shape/statistics when metadata is available
 - it classifies reports as `expected_drift`, `regression`, or `not_comparable`
 - it marks each report as `complete`, `partial`, or `failed`
 - it records `unavailable` side states with a machine-readable reason when optional upstream checkouts or MLX weights are absent
 - it supports deterministic fixture mode for CI and schema coverage without checkpoints
 
-Full v3 baseline matrices, intermediate tensor comparisons, and richer audio metrics are deferred to the follow-up issues linked from #109.
+Full v3 baseline matrices and heavyweight perceptual audio metrics are deferred to the follow-up issues linked from #109.
 
 ## Contract / Fixture Command
 
@@ -128,9 +129,13 @@ Top-level fields:
 - `report_status`: `complete` when both sides produced fixture or passed evidence, `partial` when one or both sides were not requested or unavailable, and `failed` when a requested side ran and failed
 - `scenario`: prompt, checkpoint family, checkpoint id, reference/caption settings, seed, sampling, duration, tokenizer, and codec settings
 - `metadata_axes`: normalized diagnostic axes for tokenizer, duration, sampling, and codec differences
-- `upstream`: command, status, availability, command result when run, WAV properties when present
-- `mlx`: command, status, availability, command result when run, WAV properties and `generate_wav.py` metadata when present
-- `comparison`: `expected_drift`, `regression`, or `not_comparable`
+- `upstream`: command, status, availability, command result when run, WAV properties/metrics when present, and compact intermediate metadata when available
+- `mlx`: command, status, availability, command result when run, WAV properties/metrics, `generate_wav.py` metadata, and compact intermediate metadata when present
+- `comparison`: `expected_drift`, `regression`, or `not_comparable`, plus audio metric deltas and intermediate field comparisons when both sides expose comparable points
 - `deferred_scope`: intentionally omitted work for follow-up issues
 
 The first comparison check is conservative. It treats bit-level waveform mismatch as expected drift, flags sample-rate mismatch as a regression, and flags duration deltas larger than 250 ms as a regression.
+
+Audio metrics are diagnostic rather than proof of perceptual equivalence. Reports include normalized peak, RMS, mean absolute amplitude, silence ratio, leading silence, tail RMS/silence, and zero-crossing rate. These are cheap enough for CI fixtures and safe to share, but they cannot prove voice quality or semantic parity.
+
+Intermediate comparisons are intentionally compact. Fixture reports include token/mask counts, duration mode/resolved latent steps, and sampled latent shape/statistics for both sides. Real MLX runs derive duration and sampled-latent shape from `generate_wav.py` metadata; upstream real runs may leave intermediates empty until upstream-side dump points are wired in.

@@ -70,6 +70,12 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertIn("tokenizer", report["metadata_axes"])
         self.assertIn("sampling", report["metadata_axes"])
         self.assertIn("codec", report["metadata_axes"])
+        self.assertIn("metrics", report["upstream"]["audio"])
+        self.assertIn("rms", report["upstream"]["audio"]["metrics"])
+        self.assertIn("tail_rms", report["mlx"]["audio"]["metrics"])
+        self.assertEqual(report["upstream"]["intermediates"]["duration"]["latent_steps"], 75)
+        self.assertTrue(report["comparison"]["intermediate_comparisons"]["sampling.latent_shape"]["match"])
+        self.assertIn("rms_ratio", report["comparison"]["audio_metric_deltas"])
 
     def test_checked_in_schema_matches_fixture_report_contract(self):
         with tempfile.TemporaryDirectory() as td:
@@ -182,7 +188,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                     fh.setnchannels(1)
                     fh.setsampwidth(2)
                     fh.setframerate(24000)
-                    fh.writeframes(b"\x00\x00" * 240)
+                    fh.writeframes(b"\x00\x00\x00@\x00\xc0\x00\x00" * 60)
                 return {"status": "passed", "returncode": 0, "elapsed_seconds": 0.0, "stdout_excerpt": "", "stderr_excerpt": ""}
 
             args = run_upstream_parity.parse_args(
@@ -203,6 +209,9 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertTrue(upstream_wav.is_absolute())
         self.assertEqual(report["upstream"]["audio"]["path"], str(upstream_wav))
         self.assertEqual(report["upstream"]["audio"]["sample_rate"], 24000)
+        self.assertAlmostEqual(report["upstream"]["audio"]["metrics"]["peak_abs"], 0.5)
+        self.assertGreater(report["upstream"]["audio"]["metrics"]["rms"], 0.0)
+        self.assertGreater(report["upstream"]["audio"]["metrics"]["zero_crossing_rate"], 0.0)
         self.assertEqual(report["upstream"]["availability"]["state"], "passed")
         self.assertEqual(report["report_status"], "partial")
 
@@ -226,7 +235,22 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                     fh.setsampwidth(2)
                     fh.setframerate(24000)
                     fh.writeframes(b"\x00\x00" * 240)
-                metadata_json.write_text(json.dumps({"result": {"duration_mode": "predicted"}}), encoding="utf-8")
+                metadata_json.write_text(
+                    json.dumps(
+                        {
+                            "result": {
+                                "duration_mode": "predicted",
+                                "resolved_seconds": 1.0,
+                                "latent_steps": 24,
+                                "patched_steps": 24,
+                                "seed": 20260516,
+                            },
+                            "request": {"text_max_length": 256, "caption_max_length": None, "caption": None},
+                            "boundaries": {"config": {"model_config": {"latent_dim": 32}}},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 return {"status": "passed", "returncode": 0, "elapsed_seconds": 0.0, "stdout_excerpt": "", "stderr_excerpt": ""}
 
             args = run_upstream_parity.parse_args(
@@ -247,6 +271,8 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertTrue(mlx_wav.is_absolute())
         self.assertEqual(report["mlx"]["audio"]["path"], str(mlx_wav))
         self.assertEqual(report["mlx"]["audio"]["sample_rate"], 24000)
+        self.assertEqual(report["mlx"]["intermediates"]["duration"]["latent_steps"], 24)
+        self.assertEqual(report["mlx"]["intermediates"]["sampling"]["latent_shape"], [1, 24, 32])
         self.assertEqual(report["mlx"]["availability"]["state"], "passed")
         self.assertEqual(report["report_status"], "partial")
 
