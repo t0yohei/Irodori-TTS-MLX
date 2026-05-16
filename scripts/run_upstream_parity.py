@@ -416,7 +416,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     report = build_report(args)
-    report_path = Path(args.report_json).expanduser() if args.report_json else Path(args.output_dir) / f"{report['scenario']['name']}.parity.json"
+    report_path = Path(args.report_json).expanduser() if args.report_json else Path(args.output_dir).expanduser() / f"{report['scenario']['name']}.parity.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, default=str), encoding="utf-8")
     if args.json_output:

@@ -117,6 +117,20 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertEqual(report["upstream"]["audio"]["path"], str(upstream_wav))
         self.assertEqual(report["upstream"]["audio"]["sample_rate"], 24000)
 
+    def test_default_report_path_expands_output_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            old_home = os.environ.get("HOME")
+            self.addCleanup(lambda: os.environ.__setitem__("HOME", old_home) if old_home is not None else os.environ.pop("HOME", None))
+            os.environ["HOME"] = td
+            result = run_upstream_parity.main(["--fixture", "--scenario", "v3-no-reference", "--output-dir", "~/parity-runs"])
+
+            report_path = Path(td) / "parity-runs" / "v3-no-reference.parity.json"
+            literal_path = Path.cwd() / "~" / "parity-runs" / "v3-no-reference.parity.json"
+            self.assertTrue(report_path.exists())
+            self.assertFalse(literal_path.exists())
+
+        self.assertEqual(result, 0)
+
     def test_scenario_json_overrides_core_fields(self):
         with tempfile.TemporaryDirectory() as td:
             scenario_path = Path(td) / "scenario.json"
