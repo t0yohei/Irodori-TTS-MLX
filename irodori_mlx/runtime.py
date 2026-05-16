@@ -492,6 +492,9 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
             files = set(archive.files)
             has_decode = {"decode_basis", "decode_bias"}.issubset(files)
             has_encode = {"encode_basis", "encode_bias"}.issubset(files)
+            real_decode_tensors = sorted(name for name in files if name.startswith("dacvae_decoder/"))
+            artifact_kind = str(metadata.get("artifact_kind", "fixture_linear_projection"))
+            has_real_decode = artifact_kind == "real_semantic_dacvae_decoder" and bool(real_decode_tensors)
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"MLX DACVAE codec artifact was not found: {codec_path}") from exc
     except KeyError as exc:
@@ -506,6 +509,9 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
         "latent_dim": latent_dim,
         "has_mlx_decode": has_decode,
         "has_mlx_encode": has_encode,
+        "artifact_kind": artifact_kind,
+        "has_real_dacvae_decode": has_real_decode,
+        "real_dacvae_decode_tensor_count": len(real_decode_tensors),
         "metadata": metadata,
     }
 
@@ -569,7 +575,12 @@ def describe_codec_capabilities(
                 report["artifact"] = artifact
                 report["mlx_decode_available"] = bool(artifact["has_mlx_decode"])
                 report["mlx_encode_available"] = bool(artifact["has_mlx_encode"])
-                if not artifact["has_mlx_decode"]:
+                if artifact.get("has_real_dacvae_decode") and not artifact["has_mlx_decode"]:
+                    messages.append(
+                        "Codec artifact contains real Semantic-DACVAE decoder tensors, but this runtime "
+                        "does not yet implement the MLX DACVAE convolutional decoder executor."
+                    )
+                elif not artifact["has_mlx_decode"]:
                     messages.append("Codec artifact is missing decode_basis/decode_bias, so MLX decode is unavailable.")
                 if mode == "mlx" and not artifact["has_mlx_encode"]:
                     messages.append("Codec artifact is missing encode_basis/encode_bias; use mlx-decode for decode-only artifacts.")
@@ -611,6 +622,16 @@ class MLXDACVAEBridge:
                 self.sample_rate = int(metadata.get("sample_rate", _load_npz_scalar_int(archive, "sample_rate")))
                 self.hop_length = int(metadata.get("hop_length", _load_npz_scalar_int(archive, "hop_length")))
                 self.latent_dim = int(metadata.get("latent_dim", _load_npz_scalar_int(archive, "latent_dim")))
+                if metadata.get("artifact_kind") == "real_semantic_dacvae_decoder" and not {
+                    "decode_basis",
+                    "decode_bias",
+                }.issubset(archive.files):
+                    raise NotImplementedError(
+                        "This artifact contains converted real Semantic-DACVAE decoder tensors, but the "
+                        "MLX DACVAE convolutional decoder executor is not implemented yet. Validate the "
+                        "artifact contract with scripts/convert_dacvae_decoder.py and keep PyTorch bridge "
+                        "modes as fallback for waveform decoding."
+                    )
                 self.decode_basis = mx.array(archive["decode_basis"].astype("float32", copy=False))
                 self.decode_bias = mx.array(archive["decode_bias"].astype("float32", copy=False))
                 self.encode_basis = (
