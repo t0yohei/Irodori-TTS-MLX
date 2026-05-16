@@ -493,7 +493,24 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
             has_decode = {"decode_basis", "decode_bias"}.issubset(files)
             has_encode = {"encode_basis", "encode_bias"}.issubset(files)
             real_decode_tensors = sorted(name for name in files if name.startswith("dacvae_decoder/"))
-            artifact_kind = str(metadata.get("artifact_kind", "fixture_linear_projection"))
+            semantic_encoder_tensors = sorted(name for name in files if name.startswith("dacvae_encoder/encoder."))
+            semantic_in_proj_tensors = sorted(
+                name
+                for name in files
+                if name.startswith("dacvae_encoder/quantizer.in_proj.")
+                or name.startswith("dacvae_quantizer/quantizer.in_proj.")
+            )
+            raw_artifact_kind = str(metadata.get("artifact_kind") or "linear-fixture")
+            has_semantic_encoder_manifest = "semantic_encoder_manifest_json" in files
+            has_real_semantic_encode = bool(semantic_encoder_tensors) and bool(semantic_in_proj_tensors)
+            is_semantic_dacvae = (
+                raw_artifact_kind == "semantic-dacvae"
+                and has_semantic_encoder_manifest
+                and has_real_semantic_encode
+            )
+            artifact_kind = "semantic-dacvae" if is_semantic_dacvae else raw_artifact_kind
+            if raw_artifact_kind == "semantic-dacvae" and not is_semantic_dacvae:
+                artifact_kind = "linear-fixture" if has_decode or has_encode else "unverified-semantic-dacvae"
             has_real_decode = artifact_kind == "real_semantic_dacvae_decoder" and bool(real_decode_tensors)
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"MLX DACVAE codec artifact was not found: {codec_path}") from exc
@@ -510,6 +527,11 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
         "has_mlx_decode": has_decode,
         "has_mlx_encode": has_encode,
         "artifact_kind": artifact_kind,
+        "is_semantic_dacvae": is_semantic_dacvae,
+        "has_semantic_encoder_manifest": has_semantic_encoder_manifest,
+        "has_real_semantic_encode": has_real_semantic_encode,
+        "semantic_encoder_tensor_count": len(semantic_encoder_tensors),
+        "semantic_in_proj_tensor_count": len(semantic_in_proj_tensors),
         "has_real_dacvae_decode": has_real_decode,
         "real_dacvae_decode_tensor_count": len(real_decode_tensors),
         "metadata": metadata,

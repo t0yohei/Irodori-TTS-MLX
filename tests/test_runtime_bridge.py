@@ -201,6 +201,8 @@ class RuntimeBridgeTests(unittest.TestCase):
             decoded = inspect_mlx_codec_artifact(decode_only)
             self.assertTrue(decoded["has_mlx_decode"])
             self.assertFalse(decoded["has_mlx_encode"])
+            self.assertEqual(decoded["artifact_kind"], "linear-fixture")
+            self.assertFalse(decoded["is_semantic_dacvae"])
 
             decode_report = describe_codec_capabilities(
                 DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(decode_only)),
@@ -232,6 +234,78 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertTrue(full_report["mlx_decode_available"])
             self.assertTrue(full_report["mlx_encode_available"])
             self.assertFalse(full_report["requires_pytorch_encode"])
+
+    @require_mlx
+    def test_codec_artifact_inspection_rejects_mislabeled_semantic_fixture(self):
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "mislabeled-codec.npz"
+            np.savez(
+                codec_path,
+                metadata_json=np.array(
+                    json.dumps(
+                        {
+                            "sample_rate": 48000,
+                            "hop_length": 512,
+                            "latent_dim": 32,
+                            "artifact_kind": "semantic-dacvae",
+                        }
+                    )
+                ),
+                sample_rate=np.array(48000),
+                hop_length=np.array(512),
+                latent_dim=np.array(32),
+                decode_basis=np.zeros((32, 512), dtype=np.float32),
+                decode_bias=np.zeros((512,), dtype=np.float32),
+                encode_basis=np.zeros((512, 32), dtype=np.float32),
+                encode_bias=np.zeros((32,), dtype=np.float32),
+            )
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+
+        self.assertEqual(artifact["artifact_kind"], "linear-fixture")
+        self.assertFalse(artifact["is_semantic_dacvae"])
+        self.assertFalse(artifact["has_semantic_encoder_manifest"])
+        self.assertFalse(artifact["has_real_semantic_encode"])
+
+    @require_mlx
+    def test_codec_artifact_inspection_marks_semantic_dacvae_encoder_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "semantic-codec.npz"
+            np.savez(
+                codec_path,
+                metadata_json=np.array(
+                    json.dumps(
+                        {
+                            "sample_rate": 48000,
+                            "hop_length": 512,
+                            "latent_dim": 32,
+                            "artifact_kind": "semantic-dacvae",
+                        }
+                    )
+                ),
+                sample_rate=np.array(48000),
+                hop_length=np.array(512),
+                latent_dim=np.array(32),
+                decode_basis=np.zeros((32, 512), dtype=np.float32),
+                decode_bias=np.zeros((512,), dtype=np.float32),
+                encode_basis=np.zeros((512, 32), dtype=np.float32),
+                encode_bias=np.zeros((32,), dtype=np.float32),
+                semantic_encoder_manifest_json=np.array("{}"),
+                **{
+                    "dacvae_encoder/encoder.block.0.bias": np.zeros((64,), dtype=np.float32),
+                    "dacvae_encoder/quantizer.in_proj.bias": np.zeros((64,), dtype=np.float32),
+                },
+            )
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+
+        self.assertEqual(artifact["artifact_kind"], "semantic-dacvae")
+        self.assertTrue(artifact["is_semantic_dacvae"])
+        self.assertTrue(artifact["has_mlx_encode"])
+        self.assertTrue(artifact["has_semantic_encoder_manifest"])
+        self.assertTrue(artifact["has_real_semantic_encode"])
+        self.assertEqual(artifact["semantic_encoder_tensor_count"], 1)
+        self.assertEqual(artifact["semantic_in_proj_tensor_count"], 1)
 
     @require_mlx
     def test_codec_capability_report_explains_missing_artifact_fallback(self):

@@ -19,6 +19,8 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "decode_bias",
             "encode_basis",
             "encode_bias",
+            "semantic_encoder_manifest_json",
+            "artifact_kind",
             "metadata_json",
             "scripts/convert_dacvae_decoder.py",
             "dacvae_decoder/<state-dict-key>",
@@ -55,6 +57,8 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "reference encode still uses the PyTorch bridge",
             "cannot yet execute the full",
             "--no-reference",
+            "irodori-tts-convert-dacvae-codec",
+            "blocked conversion status",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)

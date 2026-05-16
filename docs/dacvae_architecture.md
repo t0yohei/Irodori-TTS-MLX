@@ -10,8 +10,9 @@ is used as a replacement for the current PyTorch bridge.
 Implementation consumers:
 [#112](https://github.com/t0yohei/Irodori-TTS-MLX/issues/112),
 [#113](https://github.com/t0yohei/Irodori-TTS-MLX/issues/113),
-[#114](https://github.com/t0yohei/Irodori-TTS-MLX/issues/114), and
-[#115](https://github.com/t0yohei/Irodori-TTS-MLX/issues/115).
+[#114](https://github.com/t0yohei/Irodori-TTS-MLX/issues/114),
+[#115](https://github.com/t0yohei/Irodori-TTS-MLX/issues/115), and
+[#154](https://github.com/t0yohei/Irodori-TTS-MLX/issues/154).
 
 ## Sources inspected
 
@@ -22,9 +23,11 @@ Implementation consumers:
 - Hugging Face model card for `Aratako/Semantic-DACVAE-Japanese-32dim`
 
 The public codec artifact is a PyTorch `.pth` file, not a safetensors file. The
-contract below is therefore a runtime and logical state-dict contract. The first
-real converter must still load the exact `dacvae` implementation and inspect the
-actual `state_dict` keys before writing MLX weights.
+contract below is therefore a runtime and logical state-dict contract.
+`scripts/convert_dacvae_codec.py` now performs the local `weights.pth`
+state-dict inspection step and writes a blocker report, but it deliberately does
+not emit a real `dacvae-codec.npz` until the MLX runtime has matching
+DACVAE conv/residual/VAEBottleneck modules.
 
 ## Runtime constants
 
@@ -158,8 +161,10 @@ hosted codec artifact should therefore be versioned separately and include:
 
 ## Unknowns and blockers for #112-#115
 
-- Exact serialized key names and nested tensor shapes must be inspected from
-  `weights.pth` with the exact `dacvae` version before implementing conversion.
+- Exact serialized key names and nested tensor shapes can be inspected from
+  `weights.pth` with `scripts/convert_dacvae_codec.py --inspect-only`, but the
+  converter remains blocked from writing an artifact until the runtime has real
+  MLX DACVAE modules instead of the current linear fixture tensors.
 - Encode parity must compare the deterministic mean latent path, not the
   stochastic VAE sample path.
 - Decode parity must include the Irodori watermark bypass; enabling the default
