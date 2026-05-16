@@ -22,27 +22,36 @@ def require_mlx(test_func):
     return unittest.skipUnless(HAS_MLX, f"MLX is not available: {globals().get('MLX_IMPORT_ERROR')}")(test_func)
 
 
-def require_fixture_env(test_func):
+def require_decode_fixture_env(test_func):
     required = (
         "IRODORI_MLX_DACVAE_CODEC_NPZ",
         "IRODORI_MLX_DACVAE_DECODE_LATENTS_NPY",
         "IRODORI_MLX_DACVAE_DECODE_AUDIO_NPY",
+    )
+    missing = [name for name in required if not os.environ.get(name)]
+    return unittest.skipIf(missing, "DACVAE decode parity fixture env vars not set: " + ", ".join(missing))(test_func)
+
+
+def require_encode_fixture_env(test_func):
+    required = (
+        "IRODORI_MLX_DACVAE_CODEC_NPZ",
         "IRODORI_MLX_DACVAE_ENCODE_AUDIO_WAV",
         "IRODORI_MLX_DACVAE_ENCODE_LATENTS_NPY",
     )
     missing = [name for name in required if not os.environ.get(name)]
-    return unittest.skipIf(missing, "DACVAE parity fixture env vars not set: " + ", ".join(missing))(test_func)
+    return unittest.skipIf(missing, "DACVAE encode parity fixture env vars not set: " + ", ".join(missing))(test_func)
 
 
 class MLXDACVAEParityFixtureTests(unittest.TestCase):
     @require_mlx
-    @require_fixture_env
-    def test_mlx_codec_matches_upstream_generated_decode_and_encode_fixtures(self):
+    @require_decode_fixture_env
+    def test_mlx_codec_matches_upstream_generated_decode_fixture(self):
         bridge = MLXDACVAEBridge(
             config=DACVAEBridgeConfig(
-                runtime_mode="mlx",
+                runtime_mode="mlx-decode",
                 codec_path=os.environ["IRODORI_MLX_DACVAE_CODEC_NPZ"],
-            )
+            ),
+            require_encode=False,
         )
 
         latents = mx.array(np.load(os.environ["IRODORI_MLX_DACVAE_DECODE_LATENTS_NPY"]).astype("float32"))
@@ -55,6 +64,16 @@ class MLXDACVAEParityFixtureTests(unittest.TestCase):
             decoded, sample_rate = sf.read(str(out), dtype="float32")
         self.assertEqual(sample_rate, bridge.sample_rate)
         np.testing.assert_allclose(decoded[: expected_audio.shape[-1]], expected_audio, atol=1e-3, rtol=1e-3)
+
+    @require_mlx
+    @require_encode_fixture_env
+    def test_mlx_codec_matches_upstream_generated_encode_fixture(self):
+        bridge = MLXDACVAEBridge(
+            config=DACVAEBridgeConfig(
+                runtime_mode="mlx",
+                codec_path=os.environ["IRODORI_MLX_DACVAE_CODEC_NPZ"],
+            )
+        )
 
         encoded = bridge.encode_reference(
             os.environ["IRODORI_MLX_DACVAE_ENCODE_AUDIO_WAV"],
