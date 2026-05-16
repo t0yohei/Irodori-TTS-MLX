@@ -22,7 +22,7 @@
     "encoder_stages": "NormConv1d stem, four EncoderBlock stages, Snake1d, final NormConv1d",
     "bottleneck": "VAEBottleneck with in_proj mean/scale and out_proj back to decoder channels",
     "decoder": "quantizer.out_proj followed by DACVAE Decoder and optional watermark branch",
-    "watermark_policy": "Irodori disables the watermark branch for this codec by setting decoder.alpha=0 and replacing decoder.watermark with wm_model.encoder_block.forward_no_conv"
+    "watermark_policy": "Irodori disables the watermark branch for this codec by setting decoder.alpha=0 and replacing decoder.watermark with decoder.wm_model.encoder_block.forward_no_conv"
   },
   "runtime_semantics": {
     "encode_input": "mono waveform B,1,samples; resample to codec sample_rate; optional -16.0 dB loudness normalization; reflect-pad to hop_length multiple",
@@ -35,7 +35,7 @@
   "required_logical_tensors": [
     {
       "group": "encoder",
-      "pattern": "encoder.block.{stem_or_stage}.*",
+      "pattern": "encoder.block.*",
       "required_for": ["encode"],
       "shape_notes": "1-D convolutional weights; stem maps 1 channel to encoder_dim, downsample stages follow encoder_rates [2,4,8,8], final channel count feeds quantizer.in_proj"
     },
