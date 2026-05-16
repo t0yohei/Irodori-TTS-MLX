@@ -30,7 +30,7 @@
     "decode_input": "B,T,32 runtime latent transposed to B,32,T for DACVAE",
     "decode_output": "mono waveform B,1,samples at 48000 Hz",
     "deterministic_encode": "uses quantizer.in_proj mean and ignores sampled scale",
-    "deterministic_decode": "uses a fixed zero watermark message when the upstream watermark processor is present"
+    "deterministic_decode": "bypasses the upstream watermark branch for Irodori by keeping decoder.alpha=0 and using decoder.watermark.forward_no_conv when present"
   },
   "required_logical_tensors": [
     {
