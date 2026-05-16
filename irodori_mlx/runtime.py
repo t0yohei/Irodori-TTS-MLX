@@ -81,6 +81,8 @@ class GenerationResult:
     patched_steps: int
     seed: int
     duration_mode: str
+    checkpoint_family: str
+    checkpoint_capabilities: tuple[str, ...]
     requested_seconds: float | None = None
     resolved_seconds: float | None = None
     timings_ms: dict[str, float] | None = None
@@ -647,8 +649,8 @@ class MLXDACVAERuntime:
             latent_steps = max(1, (target_samples + self.bridge.hop_length - 1) // self.bridge.hop_length)
             resolved_seconds = float(target_samples) / float(self.bridge.sample_rate)
             messages.append(
-                "duration predictor unavailable; falling back to fixed duration "
-                f"{resolved_seconds:.3f}s"
+                f"{self.config.model_config.checkpoint_family_label} has no duration predictor; "
+                f"falling back to fixed duration {resolved_seconds:.3f}s. Pass --seconds for an explicit duration."
             )
         patched_steps = (latent_steps + int(self.config.model_config.latent_patch_size) - 1) // int(
             self.config.model_config.latent_patch_size
@@ -688,6 +690,8 @@ class MLXDACVAERuntime:
             patched_steps=int(patched_steps),
             seed=int(request.seed),
             duration_mode=duration_mode,
+            checkpoint_family=self.config.model_config.checkpoint_family,
+            checkpoint_capabilities=self.config.model_config.checkpoint_capabilities,
             requested_seconds=manual_seconds,
             resolved_seconds=resolved_seconds,
             timings_ms=timings_ms,
@@ -710,6 +714,9 @@ class MLXDACVAERuntime:
             },
             "conversion": "PyTorch tensor -> CPU NumPy -> MLX array, and reverse for DACVAE decode",
             "config": asdict(self.config),
+            "checkpoint_family": self.config.model_config.checkpoint_family,
+            "checkpoint_family_label": self.config.model_config.checkpoint_family_label,
+            "checkpoint_capabilities": self.config.model_config.checkpoint_capabilities,
         }
 
 
@@ -720,6 +727,8 @@ def iter_messages(result: GenerationResult) -> Iterable[str]:
     yield f"latent_steps: {result.latent_steps}"
     yield f"patched_steps: {result.patched_steps}"
     yield f"seed: {result.seed}"
+    yield f"checkpoint_family: {result.checkpoint_family}"
+    yield "checkpoint_capabilities: " + ", ".join(result.checkpoint_capabilities)
     yield f"duration_mode: {result.duration_mode}"
     if result.requested_seconds is not None:
         yield f"requested_seconds: {result.requested_seconds}"

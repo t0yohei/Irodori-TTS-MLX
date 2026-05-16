@@ -193,6 +193,11 @@ def _validate_conversion_metadata(conversion_metadata: dict[str, Any], *, manife
 
 def _validate_runtime_flags(manifest: dict[str, Any], *, model_config: ModelConfig) -> None:
     runtime = _require_mapping(manifest, "runtime", label="manifest")
+    if manifest.get("family") != model_config.checkpoint_family:
+        raise HostedWeightsError(
+            "manifest family must match model_config checkpoint family: "
+            f"manifest={manifest.get('family')!r}, model_config={model_config.checkpoint_family!r}"
+        )
     if bool(runtime["supports_caption"]) != bool(model_config.use_caption_condition):
         raise HostedWeightsError("manifest runtime.supports_caption must match model_config.use_caption_condition")
     if bool(runtime["supports_predicted_duration"]) != bool(model_config.use_duration_predictor):

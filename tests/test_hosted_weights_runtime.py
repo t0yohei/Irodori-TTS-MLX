@@ -200,11 +200,38 @@ class HostedWeightsRuntimeTests(unittest.TestCase):
             (root / "tokenizer_config.json").write_text(json.dumps(tokenizer_config), encoding="utf-8")
             # keep checksum coverage valid for files that are not under test here
             checksum_lines = []
-            for filename in ["weights.npz", "model_config.json", "tokenizer_config.json", "conversion_metadata.json", "irodori_mlx_manifest.json"]:
+            for filename in [
+                "weights.npz",
+                "model_config.json",
+                "tokenizer_config.json",
+                "conversion_metadata.json",
+                "irodori_mlx_manifest.json",
+            ]:
                 checksum_lines.append(f"{_sha256(root / filename)}  {filename}")
             (root / "checksums.sha256").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
 
             with self.assertRaisesRegex(HostedWeightsError, "caption_tokenizer"):
+                validate_weights_layout(root)
+
+    def test_rejects_manifest_family_mismatch_with_model_config_family(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "layout"
+            _write_layout(root, family="v3", caption=False)
+            model_config = json.loads((root / "model_config.json").read_text(encoding="utf-8"))
+            model_config["use_duration_predictor"] = False
+            (root / "model_config.json").write_text(json.dumps(model_config), encoding="utf-8")
+            checksum_lines = []
+            for filename in [
+                "weights.npz",
+                "model_config.json",
+                "tokenizer_config.json",
+                "conversion_metadata.json",
+                "irodori_mlx_manifest.json",
+            ]:
+                checksum_lines.append(f"{_sha256(root / filename)}  {filename}")
+            (root / "checksums.sha256").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(HostedWeightsError, "manifest family must match model_config checkpoint family"):
                 validate_weights_layout(root)
 
     def test_hosted_repo_resolution_uses_snapshot_download_and_requires_approved_license(self):

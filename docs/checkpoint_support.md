@@ -19,11 +19,29 @@ The support labels are intentionally conservative:
 
 ## Family boundaries
 
+The generation CLI reports `checkpoint_family` and `checkpoint_capabilities` in `--json` / `--metadata-json` output and in the human-readable summary. Treat those fields as the first check when a run behaves differently than expected:
+
+- `base_v2`: speaker/reference family. Use `--reference-wav` for normal generation, or `--no-reference` for the unconditional speaker path. `--caption` is rejected. Omit `--seconds` only if the fixed fallback duration is acceptable.
+- `voicedesign`: VoiceDesign v2 caption family. Use `--caption` with `--no-reference`. `--reference-wav` is rejected because this family does not use speaker/reference conditioning in this runtime.
+- `v3`: speaker/reference family with duration predictor. Use `--reference-wav` or `--no-reference`. Omit `--seconds` to use predicted duration, or pass `--seconds` for a manual override. `--caption` is rejected.
+
 ### Base v2 speaker-conditioned
 
 Base v2 means the public `Aratako/Irodori-TTS-500M-v2` tensor layout: text encoder, speaker/reference encoder, RF-DiT blocks, and no v3 duration predictor. The converter validates the expected family-specific key set and float32 tensor assumptions before writing `.npz` output.
 
 For v0.1, base v2 is **experimental** rather than fully supported. The code path is implemented and has manual benchmark/generation evidence, but v0.1 should not imply the same hosted release-gate coverage that exists for VoiceDesign and v3.
+
+```bash
+python scripts/generate_wav.py \
+  --weights /path/to/base-v2.npz \
+  --model-config-json /path/to/base-v2-model-config.json \
+  --text "こんにちは。今日は良い天気です。" \
+  --reference-wav /path/to/reference.wav \
+  --seconds 5.0 \
+  --output /tmp/irodori-base-v2.wav \
+  --preset balanced \
+  --metadata-json /tmp/irodori-base-v2-metadata.json
+```
 
 ### VoiceDesign v2 caption-conditioned
 
@@ -31,9 +49,34 @@ VoiceDesign support is scoped to the inspected public `Aratako/Irodori-TTS-500M-
 
 This does **not** promise compatibility with every caption-conditioned or VoiceDesign-like checkpoint. If a checkpoint changes tensor names, dimensions, tokenizer metadata, caption architecture, or DACVAE assumptions, treat it as unsupported until a separate inspection/conversion contract is added.
 
+```bash
+python scripts/generate_wav.py \
+  --weights /path/to/voicedesign-v2.npz \
+  --model-config-json /path/to/voicedesign-v2-model-config.json \
+  --text "こんにちは。今日は良い天気です。" \
+  --caption "落ち着いた女性の声" \
+  --no-reference \
+  --seconds 5.0 \
+  --output /tmp/irodori-voicedesign-v2.wav \
+  --preset balanced \
+  --metadata-json /tmp/irodori-voicedesign-v2-metadata.json
+```
+
 ### v3 speaker-conditioned / duration-predictor
 
 v3 support is scoped to the public `Aratako/Irodori-TTS-500M-v3` family. It keeps speaker/reference conditioning and adds the token-sum duration predictor. For generation, omitting `--seconds` exercises predicted-duration semantics; passing `--seconds` is an explicit manual override.
+
+```bash
+python scripts/generate_wav.py \
+  --weights /path/to/v3.npz \
+  --model-config-json /path/to/v3-model-config.json \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3.wav \
+  --preset balanced \
+  --metadata-json /tmp/irodori-v3-metadata.json \
+  --json
+```
 
 ### Unsupported and best-effort families
 

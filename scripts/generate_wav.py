@@ -552,6 +552,8 @@ def _result_to_dict(result: Any) -> dict[str, Any]:
         "patched_steps": result.patched_steps,
         "seed": result.seed,
         "duration_mode": getattr(result, "duration_mode", None),
+        "checkpoint_family": getattr(result, "checkpoint_family", None),
+        "checkpoint_capabilities": list(getattr(result, "checkpoint_capabilities", ())),
         "requested_seconds": getattr(result, "requested_seconds", None),
         "resolved_seconds": getattr(result, "resolved_seconds", None),
         "timings_ms": result.timings_ms,
@@ -649,6 +651,50 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
     )
 
 
+def _request_value(args: argparse.Namespace, overrides: dict[str, Any], key: str) -> Any:
+    return overrides[key] if key in overrides else getattr(args, key)
+
+
+def validate_checkpoint_family_request(
+    *, model_config: Any, args: argparse.Namespace, overrides: dict[str, Any], index: int
+) -> None:
+    family = model_config.checkpoint_family
+    family_label = model_config.checkpoint_family_label
+    capabilities = ", ".join(model_config.checkpoint_capabilities)
+    reference_wav = _request_value(args, overrides, "reference_wav")
+    no_reference = bool(_request_value(args, overrides, "no_reference"))
+    caption = _request_value(args, overrides, "caption")
+    seconds = _request_value(args, overrides, "seconds")
+
+    if caption is not None and str(caption).strip() and not model_config.use_caption_condition:
+        raise SystemExit(
+            f"error: generation request #{index}: --caption is only supported by VoiceDesign v2 caption checkpoints; "
+            f"selected family is {family} ({family_label}; capabilities: {capabilities})"
+        )
+    if model_config.use_caption_condition:
+        if reference_wav:
+            raise SystemExit(
+                f"error: generation request #{index}: {family_label} is caption/no-reference only; "
+                "remove --reference-wav and provide --caption"
+            )
+        if caption is None or not str(caption).strip():
+            raise SystemExit(
+                f"error: generation request #{index}: {family_label} requires --caption because speaker reference audio is not supported"
+            )
+    elif model_config.use_speaker_condition and not no_reference and not reference_wav:
+        raise SystemExit(
+            f"error: generation request #{index}: {family_label} requires --reference-wav unless --no-reference is true "
+            f"(capabilities: {capabilities})"
+        )
+
+    if seconds is None and not model_config.use_duration_predictor:
+        print(
+            f"warning: generation request #{index}: {family_label} has no duration predictor; "
+            "omitting --seconds uses the runtime fallback duration. Pass --seconds for explicit control.",
+            file=sys.stderr,
+        )
+
+
 def write_metadata_json(path: str | Path, payload: dict[str, Any]) -> None:
     target = Path(path).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -674,6 +720,7 @@ def main() -> int:
     for index, item in enumerate(request_overrides, start=1):
         request_reference = item.get("reference_wav", args.reference_wav)
         request_no_reference = bool(item.get("no_reference", args.no_reference))
+        request_caption = item.get("caption", args.caption)
         if layout_runtime is not None:
             if layout_runtime.get("requires_reference_audio") and not request_reference:
                 raise SystemExit(
@@ -683,10 +730,16 @@ def main() -> int:
                 raise SystemExit(
                     f"error: generation request #{index}: selected weights layout does not support no_reference"
                 )
-        if model_config.use_speaker_condition and not request_no_reference and not request_reference:
-            raise SystemExit(
-                "error: speaker-conditioned checkpoints require reference_wav unless no_reference is true"
-            )
+            if (
+                "supports_caption" in layout_runtime
+                and not layout_runtime.get("supports_caption", False)
+                and request_caption is not None
+                and str(request_caption).strip()
+            ):
+                raise SystemExit(
+                    f"error: generation request #{index}: selected weights layout does not support caption conditioning"
+                )
+        validate_checkpoint_family_request(model_config=model_config, args=args, overrides=item, index=index)
 
     runtime_config = build_runtime_config(args, model_config)
     runtime = MLXDACVAERuntime(config=runtime_config)
