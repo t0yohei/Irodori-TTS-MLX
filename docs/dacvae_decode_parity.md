@@ -85,12 +85,12 @@ python scripts/check_dacvae_decode_parity.py \
   --allow-partial
 ```
 
-When the latent fixture, MLX codec artifact, PyTorch/upstream dependency, or
-other required local input is missing, the command writes
+When preflight detects that the latent fixture, MLX codec artifact, MLX runtime,
+or PyTorch/upstream dependency is missing, the command writes
 `dacvae-decode-parity.json` with `run.status: partial` and exits 0 only with
-`--allow-partial`. Without `--allow-partial`, partial runs exit 2. Shape,
-metadata, sample-rate, and metric drift failures still write a report and exit
-non-zero.
+`--allow-partial`. Without `--allow-partial`, partial runs exit 2. Runtime
+decode/write failures, shape mismatches, metadata mismatches, sample-rate
+mismatches, and metric drift still write a failed report and exit non-zero.
 
 ## Lightweight test coverage
 

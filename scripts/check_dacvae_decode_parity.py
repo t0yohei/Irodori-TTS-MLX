@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 from dataclasses import asdict, dataclass
@@ -24,15 +25,41 @@ from irodori_mlx.runtime import (  # noqa: E402
 )
 
 
-PARTIAL_EXCEPTION_TYPES = (FileNotFoundError, ModuleNotFoundError, ImportError)
-
-
 @dataclass(frozen=True)
 class DecodeParityTolerances:
     max_abs: float = 5e-3
     mean_abs: float = 1e-3
     rmse: float = 2e-3
     min_cosine: float = 0.999
+
+
+class PartialPreconditionError(RuntimeError):
+    """Raised only for preflight misses that are allowed to produce partial reports."""
+
+
+def _require_existing_path(path: str | Path, label: str) -> None:
+    resolved = Path(path).expanduser()
+    if not resolved.exists():
+        raise PartialPreconditionError(f"{label} was not found: {resolved}")
+
+
+def _require_module(module_name: str, detail: str) -> None:
+    try:
+        found = importlib.util.find_spec(module_name)
+    except (ImportError, ModuleNotFoundError, ValueError) as exc:
+        raise PartialPreconditionError(detail) from exc
+    if found is None:
+        raise PartialPreconditionError(detail)
+
+
+def _preflight_decode_pair(args: argparse.Namespace) -> None:
+    _require_existing_path(args.latents_npy, "Fixed DACVAE decode latents fixture")
+    _require_existing_path(args.codec_path, "Converted MLX DACVAE codec artifact")
+    _require_module("mlx", "MLX runtime dependency is required for DACVAE decode parity.")
+    _require_module(
+        "irodori_tts.codec",
+        "Upstream irodori_tts.codec dependency is required for DACVAE decode parity.",
+    )
 
 
 def _load_latents(path: str | Path):
@@ -54,12 +81,7 @@ def _path_metadata(path: str | Path | None) -> dict[str, Any]:
 
 
 def _is_partial_exception(exc: Exception) -> bool:
-    if isinstance(exc, PARTIAL_EXCEPTION_TYPES):
-        return True
-    if isinstance(exc, RuntimeError):
-        message = str(exc).lower()
-        return "pytorch" in message or "upstream" in message or "dacvae runtime dependencies" in message
-    return False
+    return isinstance(exc, PartialPreconditionError)
 
 
 def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
@@ -256,7 +278,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--allow-partial",
         action="store_true",
-        help="Write a partial report and exit 0 when required local artifacts or optional runtime dependencies are absent.",
+        help="Write a partial report and exit 0 when preflight detects absent local artifacts or runtime dependencies.",
     )
     return parser.parse_args(argv)
 
@@ -264,6 +286,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        _preflight_decode_pair(args)
         report = decode_pair(args)
     except Exception as exc:
         report = build_incomplete_report(args, exc)

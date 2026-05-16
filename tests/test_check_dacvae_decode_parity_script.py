@@ -128,7 +128,9 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
             report = {
                 "comparison": {"status": "failed"},
             }
-            with mock.patch.object(check_dacvae_decode_parity, "decode_pair", return_value=report):
+            with mock.patch.object(check_dacvae_decode_parity, "_preflight_decode_pair"), mock.patch.object(
+                check_dacvae_decode_parity, "decode_pair", return_value=report
+            ):
                 rc = check_dacvae_decode_parity.main(
                     [
                         "--latents-npy",
@@ -143,6 +145,37 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
             report_path = Path(td) / "dacvae-decode-parity.json"
             self.assertEqual(rc, 1)
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8")), report)
+
+    def test_main_does_not_treat_runtime_file_errors_as_partial(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            latents_path = root / "latents.npy"
+            codec_path = root / "codec.npz"
+            np.save(latents_path, np.array([[[0.1, -0.2], [0.3, -0.4]]], dtype=np.float32))
+            codec_path.write_bytes(b"fake codec")
+
+            with mock.patch.object(check_dacvae_decode_parity, "_preflight_decode_pair"), mock.patch.object(
+                check_dacvae_decode_parity,
+                "decode_pair",
+                side_effect=FileNotFoundError("internal decode artifact missing"),
+            ):
+                rc = check_dacvae_decode_parity.main(
+                    [
+                        "--latents-npy",
+                        str(latents_path),
+                        "--codec-path",
+                        str(codec_path),
+                        "--output-dir",
+                        td,
+                        "--allow-partial",
+                    ]
+                )
+
+            report_path = root / "dacvae-decode-parity.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(rc, 1)
+            self.assertEqual(report["comparison"]["status"], "failed")
+            self.assertEqual(report["run"]["status"], "failed")
 
     def test_main_writes_partial_report_for_missing_codec_when_allowed(self):
         with tempfile.TemporaryDirectory() as td:
