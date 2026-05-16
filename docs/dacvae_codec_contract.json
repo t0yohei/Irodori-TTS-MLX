@@ -1,0 +1,78 @@
+{
+  "contract_version": "0.2-research",
+  "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/111",
+  "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/123",
+  "codec": {
+    "repo_id": "Aratako/Semantic-DACVAE-Japanese-32dim",
+    "filename": "weights.pth",
+    "upstream_class": "dacvae.DACVAE",
+    "wrapper": "irodori_tts.codec.DACVAECodec",
+    "sample_rate": 48000,
+    "hop_length": 512,
+    "latent_dim": 32,
+    "latent_layout_runtime": "B,T,D",
+    "latent_layout_dacvae": "B,D,T"
+  },
+  "architecture": {
+    "base": "facebook/dacvae-watermarked",
+    "semantic_distillation": "WavLM semantic distillation, Japanese fine-tune",
+    "encoder_rates": [2, 4, 8, 8],
+    "decoder_rates": [8, 8, 4, 2],
+    "hop_length_formula": "product(encoder_rates)",
+    "encoder_stages": "NormConv1d stem, four EncoderBlock stages, Snake1d, final NormConv1d",
+    "bottleneck": "VAEBottleneck with in_proj mean/scale and out_proj back to decoder channels",
+    "decoder": "quantizer.out_proj followed by DACVAE Decoder and optional watermark branch",
+    "watermark_policy": "Irodori disables the watermark branch for this codec by setting decoder.alpha=0 and replacing decoder.watermark with wm_model.encoder_block.forward_no_conv"
+  },
+  "runtime_semantics": {
+    "encode_input": "mono waveform B,1,samples; resample to codec sample_rate; optional -16.0 dB loudness normalization; reflect-pad to hop_length multiple",
+    "encode_output": "mean latent from quantizer.in_proj, transposed to B,T,32 for Irodori runtime",
+    "decode_input": "B,T,32 runtime latent transposed to B,32,T for DACVAE",
+    "decode_output": "mono waveform B,1,samples at 48000 Hz",
+    "deterministic_encode": "uses quantizer.in_proj mean and ignores sampled scale",
+    "deterministic_decode": "uses a fixed zero watermark message when the upstream watermark processor is present"
+  },
+  "required_logical_tensors": [
+    {
+      "group": "encoder",
+      "pattern": "encoder.block.{stem_or_stage}.*",
+      "required_for": ["encode"],
+      "shape_notes": "1-D convolutional weights; stem maps 1 channel to encoder_dim, downsample stages follow encoder_rates [2,4,8,8], final channel count feeds quantizer.in_proj"
+    },
+    {
+      "group": "quantizer_in_proj",
+      "pattern": "quantizer.in_proj.{bias,parametrizations.weight.original0,parametrizations.weight.original1}",
+      "required_for": ["encode"],
+      "shape_notes": "logical Conv1d from internal encoder channels to 64 channels; split into mean[32] and scale[32]"
+    },
+    {
+      "group": "quantizer_out_proj",
+      "pattern": "quantizer.out_proj.{bias,parametrizations.weight.original0,parametrizations.weight.original1}",
+      "required_for": ["decode"],
+      "shape_notes": "logical Conv1d from 32 latent channels back to internal decoder channels"
+    },
+    {
+      "group": "decoder",
+      "pattern": "decoder.*",
+      "required_for": ["decode"],
+      "shape_notes": "transposed-convolution/residual stack following decoder_rates [8,8,4,2], with watermark submodules present but bypassed for Irodori"
+    }
+  ],
+  "shared_checkpoint_families": {
+    "base_v2": "uses the same 32-dim codec for speaker/reference encode and final decode",
+    "voicedesign_v2": "uses the same 32-dim codec for final decode; speaker/reference branch is disabled",
+    "v3": "uses the same 32-dim codec and adds duration-predictor RF-DiT weights"
+  },
+  "unknowns_and_blockers": [
+    "The public codec is distributed as a PyTorch weights.pth file, not safetensors; a real converter must inspect torch state_dict keys after loading the exact dacvae version.",
+    "The lightweight MLX fixture codec in this repository is not an acoustic Semantic-DACVAE conversion and must not be treated as parity evidence.",
+    "Exact MLX parity requires fixed waveform/latent fixtures covering encode mean latents, decode waveform shape/range, watermark bypass, and tail padding behavior.",
+    "Redistribution of converted codec weights remains subject to the repository license/distribution policy and must stay separate from test fixtures."
+  ],
+  "implementation_consumers": [
+    "https://github.com/t0yohei/Irodori-TTS-MLX/issues/112",
+    "https://github.com/t0yohei/Irodori-TTS-MLX/issues/113",
+    "https://github.com/t0yohei/Irodori-TTS-MLX/issues/114",
+    "https://github.com/t0yohei/Irodori-TTS-MLX/issues/115"
+  ]
+}

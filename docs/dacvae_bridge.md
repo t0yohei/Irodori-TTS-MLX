@@ -202,6 +202,11 @@ by itself, a redistributed Semantic-DACVAE checkpoint. Real acoustic parity
 requires a converted codec artifact produced from the supported upstream codec
 weights and validated with fixed latent/audio fixtures.
 
+The upstream architecture, runtime constants, logical tensor groups, and known
+conversion blockers for that real codec artifact are tracked in
+[dacvae_architecture.md](dacvae_architecture.md) and its machine-readable
+[dacvae_codec_contract.json](dacvae_codec_contract.json).
+
 ## Duration semantics
 
 - `--seconds` is an explicit manual override.
