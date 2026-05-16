@@ -79,6 +79,8 @@ For the v0.1 checkpoint-family support contract, including supported / experimen
 
 For the v0.2 hosted/pre-converted MLX weights layout contract, including local-directory versus Hugging Face repository resolution, required metadata files, provenance, and license-review boundaries, see [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md). For the user-facing hosted-weights quick path, local hosted-layout directory flow, and fallback local conversion recipe, see [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md).
 
+For the v0.2 cross-repository delivery plan that maps Linear TOY-5 to the GitHub issue cluster, dependency order, validation gates, and downstream local-assistant/OpenClaw smoke path, see [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md).
+
 For the current `Aratako/Irodori-TTS-500M-v3` support statement, manual validation recipe, and hosted Apple Silicon coverage, see [docs/v3_support.md](docs/v3_support.md).
 
 For the packaged install story, supported Python versions, and reproducible runtime / benchmark environment setup, see [docs/packaging.md](docs/packaging.md).
