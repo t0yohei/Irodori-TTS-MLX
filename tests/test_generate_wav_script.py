@@ -269,6 +269,35 @@ class GenerateWavScriptTests(unittest.TestCase):
                 ]
             )
 
+    def test_parse_args_cli_codec_source_overrides_config_codec_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                json.dumps(
+                    {
+                        "weights": "weights.npz",
+                        "output": "out.wav",
+                        "text": "hello",
+                        "codec_path": "from-config-codec.npz",
+                        "codec_artifact_revision": "from-config-revision",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(
+                [
+                    "--config-json",
+                    str(cfg_path),
+                    "--codec-artifact-dir",
+                    "override-codec-layout",
+                ]
+            )
+
+        self.assertIsNone(args.codec_path)
+        self.assertEqual(args.codec_artifact_dir, "override-codec-layout")
+        self.assertIsNone(args.codec_artifact_repo)
+        self.assertIsNone(args.codec_artifact_revision)
+
     def test_resolve_codec_artifact_dir_supplies_codec_path(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

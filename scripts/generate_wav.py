@@ -486,6 +486,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 args.text_tokenizer_repo = None
             if not _has_cli_override(argv, "--caption-tokenizer-repo"):
                 args.caption_tokenizer_repo = None
+    explicit_codec_sources = {
+        name
+        for option, name in (
+            ("--codec-path", "codec_path"),
+            ("--codec-artifact-dir", "codec_artifact_dir"),
+            ("--codec-artifact-repo", "codec_artifact_repo"),
+        )
+        if _has_cli_override(argv, option)
+    }
+    if explicit_codec_sources:
+        for name in {"codec_path", "codec_artifact_dir", "codec_artifact_repo"} - explicit_codec_sources:
+            setattr(args, name, None)
+        if not _has_cli_override(argv, "--codec-artifact-revision"):
+            args.codec_artifact_revision = None
     args.num_steps = _resolve_num_steps(
         preset=args.preset,
         current_num_steps=int(args.num_steps),
