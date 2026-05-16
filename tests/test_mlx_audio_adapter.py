@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ import numpy as np
 from irodori_mlx.hosted_weights import validate_weights_layout
 from irodori_mlx.mlx_audio_adapter import (
     MlxAudioAdapterError,
+    _sha256,
     adapt_mlx_audio_layout,
     remap_mlx_audio_tensor_name,
     translate_mlx_audio_config,
@@ -109,6 +111,22 @@ class MlxAudioAdapterTests(unittest.TestCase):
         self.assertEqual(remap_mlx_audio_tensor_name("model.blocks.0.attention.wq.weight"), "blocks.0.attention.wq.weight")
         self.assertEqual(remap_mlx_audio_tensor_name("dit.text_norm.weight"), "text_norm.weight")
         self.assertEqual(remap_mlx_audio_tensor_name("text_norm.weight"), "text_norm.weight")
+
+    def test_sha256_streams_file_without_reading_all_bytes(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "weights.npz"
+            payload = (b"fixture-weights" * 1000) + b"tail"
+            path.write_bytes(payload)
+            original_read_bytes = Path.read_bytes
+
+            def fail_read_bytes(self: Path) -> bytes:
+                raise AssertionError("sha256 must stream files instead of using Path.read_bytes()")
+
+            Path.read_bytes = fail_read_bytes
+            try:
+                self.assertEqual(_sha256(path), hashlib.sha256(payload).hexdigest())
+            finally:
+                Path.read_bytes = original_read_bytes
 
 
 if __name__ == "__main__":
