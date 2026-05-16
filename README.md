@@ -117,7 +117,20 @@ irodori-tts-generate \
   --metadata-json /tmp/irodori-v3-mlx-decode-metadata.json
 ```
 
-The metadata for that no-reference path reports `codec_decode_backend: "mlx"` and `codec_encode_backend: "not-required"`. Reference-audio generation with `mlx-decode` still needs the documented PyTorch encode fallback until an encode-capable MLX codec artifact is available. If no approved hosted repository is available, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, provenance checklist, `--weights-dir` examples, and fallback decision rules.
+Approved hosted DACVAE codec artifacts use a separate repo/layout from RF-DiT weights. Use `--codec-artifact-repo` for an approved Hugging Face codec artifact, or `--codec-artifact-dir` for local staging:
+
+```bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --codec-runtime-mode mlx-decode \
+  --codec-artifact-repo t0yohei/Irodori-DACVAE-Codec-MLX \
+  --codec-artifact-revision <approved-hf-commit> \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3-hosted-codec.wav
+```
+
+The metadata for that no-reference path reports `codec_decode_backend: "mlx"` and `codec_encode_backend: "not-required"`. Reference-audio generation with `mlx-decode` still needs the documented PyTorch encode fallback until an encode-capable MLX codec artifact is available. If no approved hosted repository is available, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, provenance checklist, `--weights-dir` / `--codec-artifact-dir` examples, and fallback decision rules.
 
 ## Quickstart: Local Conversion Fallback
 
@@ -198,10 +211,10 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - DACVAE bridge and generation CLI: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
 - v0.2 hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
-- Hosted weights usage and local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
+- Hosted weights/codec artifact usage and local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
 - Hosted RF-DiT artifact publication status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
 - mlx-audio interop and adapter boundary: [docs/mlx_audio_interop.md](docs/mlx_audio_interop.md)
-- DACVAE artifact layout: [docs/codec_artifact_layout.md](docs/codec_artifact_layout.md)
+- DACVAE codec artifact layout and hosted repo contract: [docs/codec_artifact_layout.md](docs/codec_artifact_layout.md)
 - Checkpoint support matrix: [docs/checkpoint_support.md](docs/checkpoint_support.md)
 - VoiceDesign support: [docs/caption_condition_support.md](docs/caption_condition_support.md)
 - v3 support: [docs/v3_support.md](docs/v3_support.md)

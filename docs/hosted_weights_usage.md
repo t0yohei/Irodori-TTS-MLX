@@ -10,6 +10,9 @@ Hosted weights are a convenience path, not a new model source or redistribution 
 > MLX RF-DiT inference + upstream PyTorch DACVAE encode/decode bridge
 
 That means users still need the runtime dependencies and upstream `irodori_tts` / `DACVAECodec` import path described in [dacvae_bridge.md](dacvae_bridge.md) and [upstream_dependency.md](upstream_dependency.md). Hosted converted weights do **not** bundle upstream source code, Semantic-DACVAE codec weights, reference audio, generated samples, Hugging Face cache snapshots, or unaudited tokenizer/model artifacts.
+When an approved DACVAE codec artifact exists, resolve it separately with
+`--codec-artifact-repo` or `--codec-artifact-dir`; RF-DiT `--weights-repo` and
+DACVAE codec artifacts intentionally remain separate contracts.
 
 ## When to use hosted weights
 
@@ -65,6 +68,27 @@ irodori-tts-generate \
   --preset balanced
 ```
 
+To use an approved hosted DACVAE codec artifact for the MLX decode path, add
+the codec artifact repo explicitly. This is a hosted artifact contract only; do
+not use unpublished or unapproved repos as public examples.
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --codec-runtime-mode mlx-decode \
+  --codec-artifact-repo t0yohei/Irodori-DACVAE-Codec-MLX \
+  --codec-artifact-revision <approved-hf-commit> \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3-hosted-codec.wav
+```
+
+The CLI validates `irodori_dacvae_codec_manifest.json`, the declared
+`dacvae-codec.npz`, `codec_metadata.json`, checksum coverage, and approved
+license review before passing the resolved codec file to the existing
+`--codec-path` runtime.
+
 For VoiceDesign v2 hosted artifacts, `--seconds` can also be omitted for the normal path. Because those checkpoints do not have the v3 duration predictor, the runtime estimates a bounded fallback from normalized text length and reports the resolved value in JSON metadata/messages. Keep `--seconds` as the manual override when a specific prompt still clips or when the generated tail becomes audibly over-extended.
 
 ## Local hosted-layout directory
@@ -82,6 +106,9 @@ irodori-tts-generate \
 ```
 
 A local directory may be useful even when `license_review.status` is `pending`, but do not publish it or document it as a public model until the review is approved. Local-only use does not remove your obligation to follow the upstream terms.
+The same staging rule applies to `--codec-artifact-dir` for DACVAE codec
+artifacts: `pending` is acceptable locally, while public hosted codec repos must
+be approved.
 
 ## Fallback: local conversion
 
@@ -90,6 +117,7 @@ Local conversion remains the supported fallback for:
 - unaudited, third-party, fine-tuned, quantized, LoRA, renamed, or otherwise modified checkpoints;
 - unquantized mlx-audio Irodori v2/VoiceDesign artifacts that first need the supported `irodori-tts-adapt-mlx-audio` interop path;
 - hosted repos with missing files, incompatible manifest/runtime metadata, or unapproved redistribution status;
+- hosted DACVAE codec repos with missing `irodori_dacvae_codec_manifest.json`, checksum mismatches, or unapproved license review status;
 - offline or private workflows where Hugging Face resolution is unavailable;
 - users who prefer to keep all model artifacts local.
 

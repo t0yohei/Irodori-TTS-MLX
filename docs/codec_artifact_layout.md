@@ -1,7 +1,9 @@
 # Hosted/local DACVAE codec artifact layout and bridge fallback policy
 
-Issue: [#116](https://github.com/t0yohei/Irodori-TTS-MLX/issues/116)
-Parent epic: [#123](https://github.com/t0yohei/Irodori-TTS-MLX/issues/123)
+Issue: [#116](https://github.com/t0yohei/Irodori-TTS-MLX/issues/116),
+[#158](https://github.com/t0yohei/Irodori-TTS-MLX/issues/158)
+Parent epic: [#123](https://github.com/t0yohei/Irodori-TTS-MLX/issues/123),
+[#160](https://github.com/t0yohei/Irodori-TTS-MLX/issues/160)
 
 This page defines the v0.2 artifact story for DACVAE codec weights. It is a
 layout and runtime-policy contract only; acoustic parity, real codec conversion,
@@ -135,6 +137,108 @@ Decode parity comparison becomes the required validation path only after the
 real MLX executor can consume those decoder tensors.
 
 ## Hosted companion metadata
+
+The approved public hosted path for converted DACVAE codec artifacts is a
+dedicated Hugging Face model repository, not an RF-DiT weights repository
+subdirectory. The recommended name is:
+
+```text
+<t0yohei-or-approved-org>/Irodori-DACVAE-Codec-MLX
+```
+
+Equivalent local staging directories and public hosted repos use this layout:
+
+```text
+repo-or-local-dir/
+|-- README.md
+|-- LICENSE.md
+|-- irodori_dacvae_codec_manifest.json
+|-- dacvae-codec.npz
+|-- codec_metadata.json
+|-- checksums.sha256
+```
+
+`irodori_dacvae_codec_manifest.json` is the source of truth. It must contain:
+
+```json
+{
+  "schema_version": 1,
+  "artifact_format": "irodori-tts-mlx-dacvae-codec",
+  "artifact_format_version": "0.2",
+  "files": {
+    "codec": "dacvae-codec.npz",
+    "metadata": "codec_metadata.json",
+    "checksums": "checksums.sha256"
+  },
+  "codec": {
+    "source_repo": "Aratako/Semantic-DACVAE-Japanese-32dim",
+    "source_revision": "<hf-commit>",
+    "source_file": "weights.pth",
+    "artifact_kind": "semantic-dacvae",
+    "sample_rate": 48000,
+    "hop_length": 512,
+    "latent_dim": 32
+  },
+  "runtime": {
+    "minimum_irodori_tts_mlx_version": "0.2.0",
+    "supports_mlx_decode": true,
+    "supports_mlx_encode": false,
+    "requires_pytorch_fallback": true
+  },
+  "license_review": {
+    "status": "approved",
+    "review_reference": "<public-review-url>"
+  }
+}
+```
+
+`codec_metadata.json` must repeat the artifact format/version and record
+provenance plus validation evidence:
+
+- upstream codec repo id, exact source revision, and source file;
+- converter repository and converter commit/tag;
+- `dacvae` package revision used for tensor interpretation;
+- license review status and review reference;
+- decode and encode parity report locations, or an explicit reason that a path
+  is not yet executable by the current MLX runtime;
+- checksum validation for `dacvae-codec.npz`, `codec_metadata.json`, and the
+  manifest.
+
+Public hosted repositories require `license_review.status: "approved"` before
+`irodori-tts-generate --codec-artifact-repo` accepts them. Local staging
+directories may use `pending` while conversion or parity work is in progress.
+
+Resolve a local staged codec artifact with:
+
+```bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --codec-runtime-mode mlx-decode \
+  --codec-artifact-dir /models/Irodori-DACVAE-Codec-MLX \
+  --text "こんにちは。" \
+  --no-reference \
+  --output /tmp/irodori-v3-mlx-codec.wav
+```
+
+Resolve a public hosted codec artifact with:
+
+```bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --codec-runtime-mode mlx-decode \
+  --codec-artifact-repo t0yohei/Irodori-DACVAE-Codec-MLX \
+  --codec-artifact-revision <approved-hf-commit> \
+  --text "こんにちは。" \
+  --no-reference \
+  --output /tmp/irodori-v3-hosted-codec.wav
+```
+
+The CLI downloads only manifest-declared files from the codec repo, validates
+checksums and approved license status, then passes the resolved
+`dacvae-codec.npz` path into the existing `--codec-path` runtime. Use
+`--codec-path` directly for private one-file experiments or as the fallback
+when hosted resolution is unavailable.
+
 
 If a hosted RF-DiT repo references a companion codec, add the pointer under the
 manifest `codec` key instead of copying codec weights into `weights.npz`:

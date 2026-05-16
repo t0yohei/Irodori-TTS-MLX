@@ -28,6 +28,11 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
             "tokenizer_config.json",
             "weights.npz",
             "huggingface_hub",
+            "--codec-artifact-repo t0yohei/Irodori-DACVAE-Codec-MLX",
+            "--codec-artifact-revision <approved-hf-commit>",
+            "irodori_dacvae_codec_manifest.json",
+            "dacvae-codec.npz",
+            "codec_metadata.json",
         ]
         for term in required_terms:
             with self.subTest(term=term):
@@ -43,6 +48,8 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
             "--model-config-json \"$WORK/model_config.json\"",
             "unaudited, third-party, fine-tuned, quantized, LoRA",
             "local-conversion-only",
+            "--codec-artifact-dir",
+            "unapproved license review status",
         ]
         for term in required_terms:
             with self.subTest(term=term):
@@ -58,6 +65,7 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
                 self.assertIn("docs/hosted_rf_dit_artifacts.md", text)
                 self.assertIn("--weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign", text)
                 self.assertIn("upstream PyTorch DACVAE bridge", text)
+                self.assertIn("codec artifact", text)
 
         self.assertIn("local conversion fallback", readme)
         self.assertIn("local conversion fallback", readme_ja)

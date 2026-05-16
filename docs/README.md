@@ -4,7 +4,7 @@ This directory keeps the public technical documentation for Irodori-TTS-MLX.
 The current user-facing entry points are:
 
 - [README.md](../README.md): quick project overview, install, hosted weights, local conversion, and mlx-audio adapter examples.
-- [hosted_weights_usage.md](hosted_weights_usage.md): shortest current generation path with `--weights-repo` / `--weights-dir` plus local conversion fallback.
+- [hosted_weights_usage.md](hosted_weights_usage.md): shortest current generation path with `--weights-repo` / `--weights-dir`, optional `--codec-artifact-repo` / `--codec-artifact-dir`, plus local conversion fallback.
 - [dacvae_bridge.md](dacvae_bridge.md): generation CLI, codec runtime modes, JSON configuration, and persistent batch generation.
 - [checkpoint_support.md](checkpoint_support.md): supported checkpoint families and unsupported/local-only boundaries.
 - [packaging.md](packaging.md): reproducible install and console script setup.
@@ -30,7 +30,7 @@ The current user-facing entry points are:
 
 - [upstream_dependency.md](upstream_dependency.md): upstream PyTorch DACVAE bridge dependency boundary.
 - [dacvae_bridge.md](dacvae_bridge.md): runtime bridge details and codec mode choices.
-- [codec_artifact_layout.md](codec_artifact_layout.md): local/hosted DACVAE codec artifact contract.
+- [codec_artifact_layout.md](codec_artifact_layout.md): local/hosted DACVAE codec artifact contract, including `irodori_dacvae_codec_manifest.json` and the separate hosted codec repo path.
 - [dacvae_architecture.md](dacvae_architecture.md): DACVAE architecture and checkpoint research notes.
 - [dacvae_decode_parity.md](dacvae_decode_parity.md): decode-only parity evidence.
 - [dacvae_encode_parity.md](dacvae_encode_parity.md): encode parity evidence.
