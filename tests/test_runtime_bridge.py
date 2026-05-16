@@ -211,6 +211,20 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertTrue(decode_report["requires_pytorch_encode"])
             self.assertIn("reference-audio encode falls back", "\n".join(decode_report["messages"]))
 
+            caption_decode_report = describe_codec_capabilities(
+                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(decode_only)),
+                model_config=ModelConfig(use_caption_condition=True),
+            )
+            self.assertFalse(caption_decode_report["requires_pytorch_encode"])
+            self.assertEqual(caption_decode_report["reference_encode_policy"], "not-required")
+            self.assertIn("reference-audio encode is not used", "\n".join(caption_decode_report["messages"]))
+
+            encode_capable_decode_report = describe_codec_capabilities(
+                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(encode_decode)),
+                model_config=ModelConfig(),
+            )
+            self.assertTrue(encode_capable_decode_report["mlx_encode_available"])
+
             full_report = describe_codec_capabilities(
                 DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(encode_decode)),
                 model_config=ModelConfig(),

@@ -511,6 +511,8 @@ def describe_codec_capabilities(
     mode = codec.runtime_mode
     family = model_config.checkpoint_family if model_config is not None else None
     uses_speaker = bool(model_config.use_speaker_condition) if model_config is not None else None
+    needs_reference_encode = uses_speaker is not False
+    uses_pytorch_encode = mode in {"persistent", "subprocess", "mlx-decode", "mlx-decode-subprocess"}
     report: dict[str, object] = {
         "runtime_mode": mode,
         "checkpoint_family": family,
@@ -519,16 +521,26 @@ def describe_codec_capabilities(
         "mlx_encode_available": False,
         "requires_codec_artifact": mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"},
         "requires_pytorch_decode": mode in {"persistent", "subprocess"},
-        "requires_pytorch_encode": mode in {"persistent", "subprocess", "mlx-decode", "mlx-decode-subprocess"},
-        "reference_encode_policy": "pytorch-bridge" if mode != "mlx" else "mlx-artifact",
+        "requires_pytorch_encode": uses_pytorch_encode and needs_reference_encode,
+        "reference_encode_policy": "not-required"
+        if uses_speaker is False
+        else "pytorch-bridge"
+        if mode != "mlx"
+        else "mlx-artifact",
         "decode_policy": "mlx-artifact" if mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"} else "pytorch-bridge",
         "messages": [],
     }
     messages: list[str] = []
     if mode in {"persistent", "subprocess"}:
-        messages.append("PyTorch bridge required for both DACVAE encode and decode.")
+        if uses_speaker is False:
+            messages.append("PyTorch bridge required for DACVAE decode; reference-audio encode is not used.")
+        else:
+            messages.append("PyTorch bridge required for both DACVAE encode and decode.")
     elif mode in {"mlx-decode", "mlx-decode-subprocess"}:
-        messages.append("MLX codec artifact is used for decode; reference-audio encode falls back to the PyTorch bridge.")
+        if uses_speaker is False:
+            messages.append("MLX codec artifact is used for decode; reference-audio encode is not used.")
+        else:
+            messages.append("MLX codec artifact is used for decode; reference-audio encode falls back to the PyTorch bridge.")
         if uses_speaker:
             messages.append("Use --no-reference to avoid PyTorch encode, or install upstream Irodori-TTS for reference-audio requests.")
     elif mode == "mlx":
@@ -547,7 +559,7 @@ def describe_codec_capabilities(
             else:
                 report["artifact"] = artifact
                 report["mlx_decode_available"] = bool(artifact["has_mlx_decode"])
-                report["mlx_encode_available"] = bool(artifact["has_mlx_encode"]) and mode == "mlx"
+                report["mlx_encode_available"] = bool(artifact["has_mlx_encode"])
                 if not artifact["has_mlx_decode"]:
                     messages.append("Codec artifact is missing decode_basis/decode_bias, so MLX decode is unavailable.")
                 if mode == "mlx" and not artifact["has_mlx_encode"]:
