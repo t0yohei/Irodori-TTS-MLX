@@ -236,7 +236,7 @@ Decode-only parity fixtures and the reproducible upstream PyTorch versus MLX
 comparison command are documented in
 [dacvae_decode_parity.md](dacvae_decode_parity.md). That check owns fixed-latent
 decode evidence for #113. Encode parity fixtures, length/mask contract checks,
-and the reproducible fixed-audio command for #115 are documented in
+and the reproducible fixed-audio command for #155 are documented in
 [dacvae_encode_parity.md](dacvae_encode_parity.md).
 
 ## Duration semantics
