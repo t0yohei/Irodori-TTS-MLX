@@ -4,7 +4,7 @@ Issues: [#121](https://github.com/t0yohei/Irodori-TTS-MLX/issues/121), [#123](ht
 
 This is the current checked-in baseline for the end-to-end upstream PyTorch vs
 MLX generation parity harness. It records reproducible fixture and setup-audit
-evidence for TOY-5 v0.2 without committing heavyweight upstream artifacts,
+evidence for v0.2 without committing heavyweight upstream artifacts,
 generated WAVs, Hugging Face caches, converted `.npz` weights, or reference
 audio.
 

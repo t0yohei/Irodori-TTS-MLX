@@ -1,8 +1,6 @@
 # v0.2 delivery plan
 
-Linear rollup: [TOY-5](https://linear.app/toyontech/issue/TOY-5/irodori-tts-mlx-v02-cross-repo-delivery)
-
-This document is the implementation plan for delivering Irodori-TTS-MLX v0.2 across the model/runtime repository and downstream local-assistant/OpenClaw consumers. GitHub issues and pull requests remain the implementation source of truth; the Linear issue is the project-level status rollup.
+This document is the public implementation plan for delivering Irodori-TTS-MLX v0.2 across the model/runtime repository and downstream consumers. GitHub issues and pull requests remain the implementation source of truth.
 
 ## Goal
 
@@ -12,7 +10,7 @@ Deliver Irodori-TTS-MLX as a usable local TTS path with:
 - a practical VoiceDesign/v3 generation path that avoids known duration and artifact traps;
 - MLX-native DACVAE encode/decode work planned behind parity evidence and a PyTorch bridge fallback;
 - reproducible upstream-vs-MLX parity reports for supported families;
-- a documented downstream smoke path for local-assistant/OpenClaw integration.
+- a documented downstream consumer handoff contract.
 
 ## Completion criteria
 
@@ -22,7 +20,7 @@ v0.2 is ready when all of the following are true:
 - VoiceDesign v2 no-reference generation can choose a fallback duration without truncating ordinary prompts or over-extending tails.
 - DACVAE decode and encode have either MLX parity evidence or an explicit bridge-only fallback statement for each generation path.
 - Upstream-vs-MLX parity harness reports cover at least VoiceDesign and v3 scenarios, including partial reports when optional dependencies are missing.
-- Local-assistant/OpenClaw smoke docs show the exact command path, expected metadata, and fallback behavior.
+- Downstream consumer handoff docs show the command shape, expected metadata, and fallback behavior without project-specific private details.
 - Release/runbook docs state the remaining bridge boundary, artifact provenance rules, unsupported families, and known limitations.
 
 ## Workstreams
@@ -97,35 +95,35 @@ Validation:
 - Real-checkpoint local or hosted runs attach reports under ignored runtime directories or committed text summaries only.
 - Docs explain what the metrics can and cannot prove.
 
-### 4. Downstream local-assistant/OpenClaw integration
+### 4. Downstream consumer handoff
 
-Primary issue: tracked by TOY-5 until a downstream repository issue exists.
+Primary issue: tracked as a downstream integration follow-up outside this public repository when project-specific validation is needed.
 
 Start this only after the runtime metadata from Workstream 1 is stable enough for a smoke assertion.
 
 Required work:
 
-- Pick the downstream consumer repository and entry point for the local TTS smoke path.
+- Define the downstream consumer entry point shape for a local TTS smoke path.
 - Document the environment variables, model/artifact location, command, expected metadata fields, and output WAV check.
 - Define fallback behavior when hosted weights, upstream `irodori_tts`, DACVAE codec assets, or MLX runtime dependencies are missing.
-- Link the downstream PR and smoke report back from TOY-5.
+- Keep project-specific downstream PRs, smoke reports, and environment paths in the downstream repository.
 
 Validation:
 
 - Smoke command runs from a clean local environment or produces an actionable missing-dependency message.
-- OpenClaw/local-assistant docs identify the exact Irodori-TTS-MLX version or PR head used.
+- Downstream docs identify the exact Irodori-TTS-MLX version or PR head used.
 - No generated audio, checkpoint cache, codec weights, or secrets are committed.
 
 ### 5. Release and runbook cleanup
 
-Primary issue: tracked by TOY-5 after the preceding workstreams have current evidence.
+Primary issue: tracked after the preceding workstreams have current evidence.
 
 Required work:
 
 - Update README and focused docs to describe the v0.2 support boundary.
 - Keep hosted/pre-converted artifact provenance and license language aligned with `docs/hosted_weights_layout.md`, `docs/hosted_weights_usage.md`, and `docs/license_and_distribution.md`.
 - Add a release checklist that links runtime UX, DACVAE parity, parity harness reports, downstream smoke results, and known limitations.
-- Close or defer child issues explicitly rather than letting the Linear rollup become the only state record.
+- Close or defer child issues explicitly rather than letting any external rollup become the only state record.
 
 Validation:
 
@@ -141,8 +139,8 @@ Validation:
 4. Implement MLX DACVAE decode (#112) and decode parity (#113).
 5. Add audio/intermediate metrics (#120) and publish current baseline docs (#121).
 6. Implement MLX DACVAE encode (#114) and encode parity (#115).
-7. Run downstream local-assistant/OpenClaw smoke once metadata and artifact behavior are stable.
-8. Finish release/runbook cleanup and update TOY-5 with final issue/PR links.
+7. Run downstream consumer smoke validation once metadata and artifact behavior are stable.
+8. Finish release/runbook cleanup and update the public GitHub issue/PR links.
 
 ## Current risks
 
@@ -154,5 +152,5 @@ Validation:
 ## Tracking policy
 
 - Every implementation PR should link the GitHub issue it closes or advances.
-- TOY-5 should be updated with milestone status, not low-level implementation details.
+- Public GitHub issues should be updated with milestone status, not low-level environment details.
 - Heavy artifacts stay out of git; reports can commit compact Markdown/JSON summaries only when they contain no generated audio, checkpoint payloads, cache paths with secrets, or private machine details.

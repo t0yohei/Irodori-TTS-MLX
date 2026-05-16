@@ -25,8 +25,8 @@ The practical result is straightforward: hosted loading changes setup and distri
 - torch: 2.11.0
 - huggingface_hub: 0.36.2
 - numpy: 2.4.5
-- upstream runtime import path: /Users/kouka/.openclaw/workspace/repos/Irodori-TTS
-- benchmark harness: /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/benchmark.py
+- upstream runtime import path: /path/to/Irodori-TTS
+- benchmark harness: /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/benchmark.py
 
 ## Benchmark configuration
 
@@ -89,10 +89,10 @@ Hosted repo cold/warm, using an empty isolated Hugging Face cache:
 
     mkdir -p benchmark-runs/issue-103-hosted
     HF_HOME="$PWD/benchmark-runs/issue-103-hosted/hf-home-cold" \
-    PYTHONPATH="/Users/kouka/.openclaw/workspace/repos/Irodori-TTS:${PYTHONPATH:-}" \
-    /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/benchmark.py \
+    PYTHONPATH="/path/to/Irodori-TTS:${PYTHONPATH:-}" \
+    /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/benchmark.py \
       --mode mlx \
-      --mlx-python /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python \
+      --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python \
       --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
       --text '今日はいい天気ですね。' \
       --caption '落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。' \
@@ -110,10 +110,10 @@ Hosted repo cold/warm, using an empty isolated Hugging Face cache:
 
 Local hosted-layout directory from the resolved snapshot:
 
-    PYTHONPATH="/Users/kouka/.openclaw/workspace/repos/Irodori-TTS:${PYTHONPATH:-}" \
-    /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/benchmark.py \
+    PYTHONPATH="/path/to/Irodori-TTS:${PYTHONPATH:-}" \
+    /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/benchmark.py \
       --mode mlx \
-      --mlx-python /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python \
+      --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python \
       --weights-dir benchmark-runs/issue-103-hosted/hf-home-cold/hub/models--t0yohei--Irodori-TTS-MLX-500M-v2-VoiceDesign/snapshots/bf877a3beb7d921dc6bfb2b6812d02be07f39f2a \
       --text '今日はいい天気ですね。' \
       --caption '落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。' \
@@ -131,12 +131,12 @@ Local hosted-layout directory from the resolved snapshot:
 
 Direct local .npz fallback:
 
-    PYTHONPATH="/Users/kouka/.openclaw/workspace/repos/Irodori-TTS:${PYTHONPATH:-}" \
-    /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/benchmark.py \
+    PYTHONPATH="/path/to/Irodori-TTS:${PYTHONPATH:-}" \
+    /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/benchmark.py \
       --mode mlx \
-      --mlx-python /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python \
-      --weights /Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/irodori-voicedesign.npz \
-      --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-voicedesign/voicedesign-model-config.json \
+      --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python \
+      --weights /path/to/irodori-voicedesign-artifacts/irodori-voicedesign.npz \
+      --model-config-json /path/to/irodori-voicedesign-artifacts/voicedesign-model-config.json \
       --text '今日はいい天気ですね。' \
       --caption '落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。' \
       --seconds 2 \
