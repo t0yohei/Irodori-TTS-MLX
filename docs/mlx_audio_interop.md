@@ -69,11 +69,11 @@ dacvae/
 
 The observed v2 DACVAE config uses `sample_rate: 48000`, encoder rates `[2, 8, 10, 12]`, decoder rates `[12, 10, 8, 2]`, `n_codebooks: 16`, `codebook_size: 1024`, and `codebook_dim: 32`. That matches the Semantic-DACVAE Japanese 32-dim family this repository already names, but the runtime contract differs from the small test `.npz` codec contract documented in [dacvae_bridge.md](dacvae_bridge.md).
 
-Recommendation: use mlx-audio's DACVAE implementation as an implementation reference for #106/#111-class work, but keep this repository's DACVAE artifact contract explicit. A future converter can add `dacvae/config.json` + `dacvae/model.safetensors` ingestion only after fixed latent/audio parity fixtures prove equivalent encode/decode semantics.
+Recommendation: use mlx-audio's DACVAE implementation as an implementation reference for #106/#111-class work, but keep this repository's DACVAE artifact contract explicit. The DACVAE-specific comparison in [mlx_audio_dacvae_contract.md](mlx_audio_dacvae_contract.md) selects the current compatibility path: keep runtime loading on the local `dacvae-codec.npz` contract, treat `dacvae/config.json` + `dacvae/model.safetensors` as converter inputs only, and require fixed latent/audio parity fixtures before any converted mlx-audio codec artifact is treated as compatible.
 
 ## Recommended follow-up work
 
-1. [#131](https://github.com/t0yohei/Irodori-TTS-MLX/issues/131): add an adapter for importing unquantized mlx-audio Irodori v2/VoiceDesign artifacts into the Irodori-TTS-MLX hosted layout. The adapter should reject 4-bit/8-bit quantized repos until this runtime has an explicit quantization story.
+1. [#131](https://github.com/t0yohei/Irodori-TTS-MLX/issues/131): add an adapter for importing unquantized mlx-audio Irodori v2/VoiceDesign artifacts into the Irodori-TTS-MLX hosted layout. The adapter should reject 4-bit/8-bit quantized repos until this runtime has an explicit quantization story. It should not add direct runtime loading for bundled `dacvae/config.json` + `dacvae/model.safetensors`; preserve DACVAE provenance and convert to the existing hosted/local codec companion contract only after the parity gate exists.
 2. [#130](https://github.com/t0yohei/Irodori-TTS-MLX/issues/130): compare mlx-audio's MLX DACVAE output against the current PyTorch `DACVAECodec` bridge and the local `.npz` codec artifact contract.
 3. Keep direct `--weights-repo mlx-community/...` loading out of scope for v0.2 unless a manifest sidecar or adapter layer is added. Silent fallback from mlx-audio's `config.json` shape would be too easy to misconfigure.
 
