@@ -175,9 +175,12 @@ The current recommendation is to keep `persistent` as the normal runtime mode
 unless you are explicitly validating MLX codec artifacts.
 
 For v0.2 codec-port work, `--codec-runtime-mode mlx-decode` selects the
-decode-only MLX path. No-reference VoiceDesign generation can then write the
-final WAV without calling the PyTorch DACVAE decode path, while reference-audio
-requests still route encode through the PyTorch bridge:
+decode-only MLX path. No-reference v3 and VoiceDesign generation can then write
+the final WAV without importing the upstream PyTorch DACVAE bridge, because
+reference encode is not required and generated-latent decode uses the local MLX
+codec artifact. Reference-audio requests still route encode through the PyTorch
+bridge and fail with a direct fallback message when that upstream bridge is not
+installed:
 
 ```bash
 python3 scripts/generate_wav.py \
@@ -213,6 +216,13 @@ speaker patching/mask logic runs.
 It is not, by itself, a redistributed Semantic-DACVAE checkpoint. Real acoustic
 parity requires a converted codec artifact produced from the supported upstream
 codec weights and validated with fixed latent/audio fixtures.
+
+Generation metadata distinguishes the request-specific boundary. On the
+no-reference `mlx-decode` path, `codec_decode_backend` is `"mlx"` and
+`codec_encode_backend` is `"not-required"`. On reference-audio
+`mlx-decode` requests, `codec_decode_backend` remains `"mlx"`, while
+`codec_encode_backend` reports the PyTorch fallback backend used for reference
+encode.
 
 The upstream architecture, runtime constants, logical tensor groups, and known
 conversion blockers for that real codec artifact are tracked in

@@ -1097,6 +1097,11 @@ class MLXDACVAERuntime:
         timings_ms["decode_dacvae"] = (time.perf_counter() - started) * 1000.0
         timings_ms["total_to_decode"] = (time.perf_counter() - total_started) * 1000.0
         codec_boundaries = self.describe_boundaries()["codec"]
+        codec_encode_backend = (
+            "not-required"
+            if request.no_reference or not self.config.model_config.use_speaker_condition
+            else str(codec_boundaries["encode_backend"])
+        )
         return GenerationResult(
             output_wav=str(output),
             sample_rate=int(self.bridge.sample_rate),
@@ -1112,7 +1117,7 @@ class MLXDACVAERuntime:
             timings_ms=timings_ms,
             messages=tuple(messages),
             codec_backend=str(codec_boundaries["decode_backend"]),
-            codec_encode_backend=str(codec_boundaries["encode_backend"]),
+            codec_encode_backend=codec_encode_backend,
             codec_decode_backend=str(codec_boundaries["decode_backend"]),
         )
 
