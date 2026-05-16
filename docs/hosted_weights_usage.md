@@ -62,6 +62,8 @@ irodori-tts-generate \
   --preset balanced
 ```
 
+For VoiceDesign v2 hosted artifacts, `--seconds` can also be omitted for the normal path. Because those checkpoints do not have the v3 duration predictor, the runtime estimates a bounded fallback from normalized text length and reports the resolved value in JSON metadata/messages. Keep `--seconds` as the manual override when a specific prompt still clips or when the generated tail becomes audibly over-extended.
+
 ## Local hosted-layout directory
 
 Use `--weights-dir` when you have the same v0.2 layout on disk, for example during private staging, CI fixtures, or local-only conversions that cannot be redistributed publicly:
@@ -119,7 +121,7 @@ python scripts/generate_wav.py \
   --preset balanced
 ```
 
-For v3, verify that `$WORK/model_config.json` includes `"use_duration_predictor": true`, then use `--no-reference` and omit `--seconds` when you want predicted duration. For VoiceDesign, verify that it includes `"use_caption_condition": true` and add the `--caption` argument described in [caption_condition_support.md](caption_condition_support.md).
+For v3, verify that `$WORK/model_config.json` includes `"use_duration_predictor": true`, then use `--no-reference` and omit `--seconds` when you want predicted duration. For VoiceDesign, verify that it includes `"use_caption_condition": true`, add the `--caption` argument described in [caption_condition_support.md](caption_condition_support.md), and omit `--seconds` to use the bounded text-length fallback unless you need a manual duration override.
 
 ## Provenance and licensing checklist
 

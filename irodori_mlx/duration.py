@@ -109,6 +109,46 @@ def count_annotation_emojis(text: str) -> int:
     return len(_ALLOWED_ANNOTATION_EMOJI_PATTERN.findall(text))
 
 
+def estimate_fallback_duration_seconds(
+    text: str,
+    *,
+    min_seconds: float = 1.6,
+    max_seconds: float = 10.0,
+) -> float:
+    """Estimate duration for checkpoints that do not have a duration predictor."""
+
+    normalized = str(text).strip()
+    if normalized == "":
+        raise ValueError("text must not be empty when estimating fallback duration")
+    if min_seconds <= 0:
+        raise ValueError(f"min_seconds must be > 0, got {min_seconds}")
+    if max_seconds < min_seconds:
+        raise ValueError(f"max_seconds must be >= min_seconds, got {max_seconds} < {min_seconds}")
+
+    speech_units = 0.0
+    for ch in normalized:
+        if ch.isspace():
+            continue
+        if ch in "ー～~":
+            speech_units += 0.35
+        elif _is_kana(ch) or _is_kanji(ch):
+            speech_units += 1.0
+        elif _is_alnum(ch):
+            speech_units += 0.55
+        elif ch in "、,，;；:：":
+            speech_units += 0.45
+        elif ch in "。.!！?？…":
+            speech_units += 0.65
+        else:
+            speech_units += 0.45
+
+    sentence_breaks = sum(normalized.count(ch) for ch in ("。", ".", "!", "！", "?", "？"))
+    phrase_breaks = sum(normalized.count(ch) for ch in ("、", ",", "，", ";", "；", ":", "："))
+    tail_margin = 0.3
+    estimated = 0.85 + (speech_units / 6.3) + min(sentence_breaks, 6) * 0.12 + min(phrase_breaks, 8) * 0.06 + tail_margin
+    return min(float(max_seconds), max(float(min_seconds), estimated))
+
+
 def build_duration_features(
     texts: Sequence[str] | Iterable[str],
     *,
