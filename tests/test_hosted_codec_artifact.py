@@ -175,6 +175,18 @@ class HostedCodecArtifactTests(unittest.TestCase):
             ):
                 resolve_codec_artifact_source(codec_artifact_repo="t0yohei/private-codec")
 
+    def test_rejects_non_numeric_codec_dimensions_as_hosted_codec_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "codec"
+            _write_codec_layout(root)
+            manifest_path = root / "irodori_dacvae_codec_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["codec"]["sample_rate"] = None
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            with self.assertRaisesRegex(HostedCodecError, "codec manifest codec.sample_rate must be 48000"):
+                validate_codec_artifact_layout(root)
+
 
 if __name__ == "__main__":
     unittest.main()

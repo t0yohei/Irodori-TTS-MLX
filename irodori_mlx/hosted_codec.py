@@ -140,7 +140,11 @@ def _validate_manifest(manifest: dict[str, Any], *, source_kind: str) -> dict[st
         _manifest_relative_path(entry, label=f"codec manifest files.{key}")
     codec = _require_mapping(manifest, "codec", label="codec manifest")
     for key, expected in (("sample_rate", 48000), ("hop_length", 512), ("latent_dim", 32)):
-        if int(codec.get(key, -1)) != expected:
+        try:
+            actual = int(codec.get(key, -1))
+        except (TypeError, ValueError) as exc:
+            raise HostedCodecError(f"codec manifest codec.{key} must be {expected}") from exc
+        if actual != expected:
             raise HostedCodecError(f"codec manifest codec.{key} must be {expected}")
     if codec.get("source_repo") != "Aratako/Semantic-DACVAE-Japanese-32dim":
         raise HostedCodecError("codec manifest codec.source_repo must be Aratako/Semantic-DACVAE-Japanese-32dim")
