@@ -167,11 +167,17 @@ support matrix and runner caveats.
 
 - `persistent` (default): keep the codec in-process and eagerly release PyTorch-side intermediates after encode/decode
 - `subprocess`: run encode/decode in short-lived helper processes for investigation and benchmarking
+- `mlx-decode`: decode generated latents with a local MLX codec artifact; reference-audio encode remains on the in-process PyTorch bridge
+- `mlx-decode-subprocess`: decode generated latents with a local MLX codec artifact; reference-audio encode remains on the subprocess PyTorch bridge
+- `mlx`: use the local MLX fixture codec for both encode and decode, mainly for fixture/contract tests until real encode parity exists
 
-The current recommendation is to keep `persistent` as the normal runtime mode.
+The current recommendation is to keep `persistent` as the normal runtime mode
+unless you are explicitly validating decode-only MLX codec artifacts.
 
-For v0.2 codec-port work, `--codec-runtime-mode mlx` selects the MLX-native
-codec boundary instead of importing upstream PyTorch DACVAE code:
+For v0.2 codec-port work, `--codec-runtime-mode mlx-decode` selects the
+decode-only MLX path. No-reference VoiceDesign generation can then write the
+final WAV without calling the PyTorch DACVAE decode path, while any future
+reference-audio request still routes encode through the PyTorch bridge:
 
 ```bash
 python3 scripts/generate_wav.py \
@@ -181,7 +187,7 @@ python3 scripts/generate_wav.py \
   --no-reference \
   --output /tmp/irodori-mlx-codec.wav \
   --seconds 2 \
-  --codec-runtime-mode mlx \
+  --codec-runtime-mode mlx-decode \
   --codec-path /path/to/dacvae-codec.npz
 ```
 
@@ -190,17 +196,17 @@ The MLX codec artifact contract is a local `.npz` file with:
 - `sample_rate`, `hop_length`, `latent_dim` scalar arrays
 - `decode_basis` shaped `(latent_dim, hop_length)`
 - `decode_bias` shaped `(hop_length,)`
-- `encode_basis` shaped `(hop_length, latent_dim)`
-- `encode_bias` shaped `(latent_dim,)`
+- optional `encode_basis` shaped `(hop_length, latent_dim)` for the experimental `mlx` encode fixture path
+- optional `encode_bias` shaped `(latent_dim,)` for the experimental `mlx` encode fixture path
 - optional `metadata_json` scalar string with the same metadata and provenance
 
 This contract is intentionally small enough for checked-in unit tests and local
-parity fixtures. It proves the runtime can encode/decode through an MLX-owned
-codec object and that VoiceDesign/no-reference generation can decode generated
-latents without importing upstream `irodori_tts.codec.DACVAECodec`. It is not,
-by itself, a redistributed Semantic-DACVAE checkpoint. Real acoustic parity
-requires a converted codec artifact produced from the supported upstream codec
-weights and validated with fixed latent/audio fixtures.
+parity fixtures. It proves the runtime can decode through an MLX-owned codec
+object and that VoiceDesign/no-reference generation can decode generated
+latents without calling upstream `irodori_tts.codec.DACVAECodec.decode_latent`.
+It is not, by itself, a redistributed Semantic-DACVAE checkpoint. Real acoustic
+parity requires a converted codec artifact produced from the supported upstream
+codec weights and validated with fixed latent/audio fixtures.
 
 The upstream architecture, runtime constants, logical tensor groups, and known
 conversion blockers for that real codec artifact are tracked in
@@ -216,7 +222,9 @@ conversion blockers for that real codec artifact are tracked in
 - If a generated sample still sounds clipped or develops a buzzer-like tail, pass `--seconds` explicitly. Manual `--seconds` remains the highest-priority duration rule.
 - Hosted v3 validation (`scripts/run_v3_generation_ci.py` / `.github/workflows/v3-hosted-generation.yml`) intentionally omits `--seconds` and asserts `duration_mode="predicted"` in the JSON payload so the first-class v3 semantics stay exercised.
 
-JSON output now includes `duration_mode`, `requested_seconds`, and `resolved_seconds` so automation can tell which rule was used.
+JSON output now includes `duration_mode`, `requested_seconds`,
+`resolved_seconds`, `codec_encode_backend`, and `codec_decode_backend` so
+automation can tell which duration rule and codec path were used.
 
 ## Python API
 

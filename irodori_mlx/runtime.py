@@ -84,6 +84,9 @@ class GenerationResult:
     duration_mode: str
     checkpoint_family: str
     checkpoint_capabilities: tuple[str, ...]
+    codec_backend: str = "pytorch"
+    codec_encode_backend: str = "pytorch"
+    codec_decode_backend: str = "pytorch"
     requested_seconds: float | None = None
     resolved_seconds: float | None = None
     timings_ms: dict[str, float] | None = None
@@ -475,7 +478,7 @@ class MLXDACVAEBridge:
 
     artifact_version = 1
 
-    def __init__(self, *, config: DACVAEBridgeConfig) -> None:
+    def __init__(self, *, config: DACVAEBridgeConfig, require_encode: bool = True) -> None:
         if not config.codec_path:
             raise ValueError("codec_runtime_mode='mlx' requires --codec-path pointing to a converted codec .npz")
         self.config = config
@@ -491,8 +494,16 @@ class MLXDACVAEBridge:
                 self.latent_dim = int(metadata.get("latent_dim", _load_npz_scalar_int(archive, "latent_dim")))
                 self.decode_basis = mx.array(archive["decode_basis"].astype("float32", copy=False))
                 self.decode_bias = mx.array(archive["decode_bias"].astype("float32", copy=False))
-                self.encode_basis = mx.array(archive["encode_basis"].astype("float32", copy=False))
-                self.encode_bias = mx.array(archive["encode_bias"].astype("float32", copy=False))
+                self.encode_basis = (
+                    mx.array(archive["encode_basis"].astype("float32", copy=False))
+                    if "encode_basis" in archive.files
+                    else None
+                )
+                self.encode_bias = (
+                    mx.array(archive["encode_bias"].astype("float32", copy=False))
+                    if "encode_bias" in archive.files
+                    else None
+                )
         except FileNotFoundError as exc:
             raise FileNotFoundError(f"Converted MLX DACVAE codec artifact was not found: {self.codec_path}") from exc
         except KeyError as exc:
@@ -506,11 +517,16 @@ class MLXDACVAEBridge:
             )
         if tuple(self.decode_bias.shape) != (self.hop_length,):
             raise ValueError(f"decode_bias must have shape ({self.hop_length},), got {self.decode_bias.shape}")
-        if tuple(self.encode_basis.shape) != (self.hop_length, self.latent_dim):
+        if require_encode and (self.encode_basis is None or self.encode_bias is None):
+            raise ValueError(
+                f"Converted MLX DACVAE codec artifact {self.codec_path} is missing encode_basis/encode_bias; "
+                "use codec_runtime_mode='mlx-decode' for decode-only artifacts."
+            )
+        if self.encode_basis is not None and tuple(self.encode_basis.shape) != (self.hop_length, self.latent_dim):
             raise ValueError(
                 f"encode_basis must have shape ({self.hop_length}, {self.latent_dim}), got {self.encode_basis.shape}"
             )
-        if tuple(self.encode_bias.shape) != (self.latent_dim,):
+        if self.encode_bias is not None and tuple(self.encode_bias.shape) != (self.latent_dim,):
             raise ValueError(f"encode_bias must have shape ({self.latent_dim},), got {self.encode_bias.shape}")
 
     def encode_reference(
@@ -522,6 +538,8 @@ class MLXDACVAEBridge:
         ensure_max: bool,
     ) -> mx.array:
         del normalize_db, ensure_max
+        if self.encode_basis is None or self.encode_bias is None:
+            raise RuntimeError("This MLX DACVAE artifact is decode-only and cannot encode reference audio.")
         samples, sample_rate = _load_audio_numpy(path)
         if int(sample_rate) != int(self.sample_rate):
             raise ValueError(
@@ -548,6 +566,61 @@ class MLXDACVAEBridge:
         if max_samples is not None:
             samples = samples[: int(max_samples)]
         return save_wav_numpy(output_path, samples, self.sample_rate)
+
+
+class MLXDACVAEDecodeOnlyBridge:
+    """Use an MLX codec artifact for decode while keeping reference encode on the PyTorch bridge."""
+
+    def __init__(self, *, config: DACVAEBridgeConfig) -> None:
+        self.config = config
+        self.decode_bridge = MLXDACVAEBridge(config=config, require_encode=False)
+        self.sample_rate = self.decode_bridge.sample_rate
+        self.latent_dim = self.decode_bridge.latent_dim
+        self.hop_length = self.decode_bridge.hop_length
+        self._encode_bridge: PyTorchDACVAEBridge | SubprocessDACVAEBridge | None = None
+
+    @property
+    def encode_backend(self) -> str:
+        if self.config.runtime_mode == "mlx-decode-subprocess":
+            return "pytorch-subprocess"
+        return "pytorch-persistent"
+
+    @property
+    def decode_backend(self) -> str:
+        return "mlx"
+
+    def _get_encode_bridge(self) -> PyTorchDACVAEBridge | SubprocessDACVAEBridge:
+        if self._encode_bridge is None:
+            mode = "subprocess" if self.config.runtime_mode == "mlx-decode-subprocess" else "persistent"
+            py_config = replace(self.config, runtime_mode=mode, codec_path=None)
+            if mode == "subprocess":
+                self._encode_bridge = SubprocessDACVAEBridge(config=py_config)
+            else:
+                self._encode_bridge = PyTorchDACVAEBridge(config=py_config)
+            if int(self._encode_bridge.latent_dim) != int(self.latent_dim):
+                raise ValueError(
+                    "PyTorch DACVAE encode fallback latent_dim does not match MLX decode artifact: "
+                    f"encode={self._encode_bridge.latent_dim}, decode={self.latent_dim}"
+                )
+        return self._encode_bridge
+
+    def encode_reference(
+        self,
+        path: str | Path,
+        *,
+        max_seconds: float | None,
+        normalize_db: float | None,
+        ensure_max: bool,
+    ) -> mx.array:
+        return self._get_encode_bridge().encode_reference(
+            path,
+            max_seconds=max_seconds,
+            normalize_db=normalize_db,
+            ensure_max=ensure_max,
+        )
+
+    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
+        return self.decode_bridge.decode_to_wav(latents, output_path, max_samples=max_samples)
 
 
 def _load_audio_numpy(path: str | Path) -> tuple["object", int]:
@@ -662,7 +735,7 @@ def save_wav_numpy(path: str | Path, samples, sample_rate: int) -> Path:
 
 
 class MLXDACVAERuntime:
-    """End-to-end prototype: MLX RF-DiT latent generation + PyTorch DACVAE decode."""
+    """End-to-end prototype: MLX RF-DiT latent generation + selectable DACVAE decode."""
 
     def __init__(
         self,
@@ -682,6 +755,8 @@ class MLXDACVAERuntime:
                 bridge = SubprocessDACVAEBridge(config=config.codec)
             elif config.codec.runtime_mode == "mlx":
                 bridge = MLXDACVAEBridge(config=config.codec)
+            elif config.codec.runtime_mode in {"mlx-decode", "mlx-decode-subprocess"}:
+                bridge = MLXDACVAEDecodeOnlyBridge(config=config.codec)
             else:
                 raise ValueError(f"Unsupported codec runtime_mode={config.codec.runtime_mode!r}")
         self.bridge = bridge
@@ -850,6 +925,7 @@ class MLXDACVAERuntime:
         output = self.bridge.decode_to_wav(z, request.output_wav, max_samples=target_samples)
         timings_ms["decode_dacvae"] = (time.perf_counter() - started) * 1000.0
         timings_ms["total_to_decode"] = (time.perf_counter() - total_started) * 1000.0
+        codec_boundaries = self.describe_boundaries()["codec"]
         return GenerationResult(
             output_wav=str(output),
             sample_rate=int(self.bridge.sample_rate),
@@ -864,6 +940,9 @@ class MLXDACVAERuntime:
             resolved_seconds=resolved_seconds,
             timings_ms=timings_ms,
             messages=tuple(messages),
+            codec_backend=str(codec_boundaries["decode_backend"]),
+            codec_encode_backend=str(codec_boundaries["encode_backend"]),
+            codec_decode_backend=str(codec_boundaries["decode_backend"]),
         )
 
     def describe_boundaries(self) -> dict[str, object]:
@@ -883,11 +962,23 @@ class MLXDACVAERuntime:
             },
             "codec": {
                 "implementation": self.bridge.__class__.__name__,
-                "imports_pytorch": isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge)),
+                "imports_pytorch": isinstance(
+                    self.bridge,
+                    (PyTorchDACVAEBridge, SubprocessDACVAEBridge, MLXDACVAEDecodeOnlyBridge),
+                ),
+                "encode_imports_pytorch": isinstance(
+                    self.bridge,
+                    (PyTorchDACVAEBridge, SubprocessDACVAEBridge, MLXDACVAEDecodeOnlyBridge),
+                ),
+                "decode_imports_pytorch": isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge)),
+                "encode_backend": getattr(self.bridge, "encode_backend", self.config.codec.runtime_mode),
+                "decode_backend": getattr(self.bridge, "decode_backend", self.config.codec.runtime_mode),
             },
             "conversion": (
                 "PyTorch tensor -> CPU NumPy -> MLX array, and reverse for DACVAE decode"
                 if isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge))
+                else "PyTorch bridge encode for reference audio; MLX codec artifact decode"
+                if isinstance(self.bridge, MLXDACVAEDecodeOnlyBridge)
                 else "MLX codec artifact encode/decode; WAV IO crosses through NumPy"
             ),
             "config": asdict(self.config),
@@ -907,6 +998,12 @@ def iter_messages(result: GenerationResult) -> Iterable[str]:
     yield f"checkpoint_family: {result.checkpoint_family}"
     yield "checkpoint_capabilities: " + ", ".join(result.checkpoint_capabilities)
     yield f"duration_mode: {result.duration_mode}"
+    if getattr(result, "codec_backend", None):
+        yield f"codec_backend: {result.codec_backend}"
+    if getattr(result, "codec_encode_backend", None):
+        yield f"codec_encode_backend: {result.codec_encode_backend}"
+    if getattr(result, "codec_decode_backend", None):
+        yield f"codec_decode_backend: {result.codec_decode_backend}"
     if result.requested_seconds is not None:
         yield f"requested_seconds: {result.requested_seconds}"
     if result.resolved_seconds is not None:
