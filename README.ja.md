@@ -147,6 +147,7 @@ python3 scripts/benchmark.py --self-test
 - RF-DiT forward parity: [docs/rf_dit_forward.md](docs/rf_dit_forward.md)
 - RF sampler: [docs/rf_sampler.md](docs/rf_sampler.md)
 - DACVAE bridge / WAV 生成: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
+- DACVAE encode parity: [docs/dacvae_encode_parity.md](docs/dacvae_encode_parity.md)
 - upstream `irodori_tts` 依存境界: [docs/upstream_dependency.md](docs/upstream_dependency.md)
 - ライセンス / 再配布ポリシー: [docs/license_and_distribution.md](docs/license_and_distribution.md)
 - v0.2 hosted MLX weights layout: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
