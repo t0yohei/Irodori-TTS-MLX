@@ -22,6 +22,8 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "semantic_encoder_manifest_json",
             "artifact_kind",
             "metadata_json",
+            "scripts/convert_dacvae_decoder.py",
+            "dacvae_decoder/<state-dict-key>",
             "upstream codec repo id, source file, and exact revision",
             "license-review status",
         ):
@@ -53,6 +55,7 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "voicedesign",
             "v3",
             "reference encode still uses the PyTorch bridge",
+            "cannot yet execute the full",
             "--no-reference",
             "irodori-tts-convert-dacvae-codec",
             "blocked conversion status",

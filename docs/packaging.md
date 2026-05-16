@@ -146,6 +146,7 @@ Installed environments expose stable command names for the primary runtime surfa
 - `irodori-tts-generate` for WAV generation
 - `irodori-tts-convert` for checkpoint conversion
 - `irodori-tts-convert-dacvae-codec` for Semantic-DACVAE codec conversion inspection/blocker reports
+- `irodori-tts-convert-dacvae-decoder` for Semantic-DACVAE decoder artifact conversion
 - `irodori-tts-inspect` for checkpoint inspection
 
 Smoke-check them with:
@@ -154,6 +155,7 @@ Smoke-check them with:
 irodori-tts-generate --help
 irodori-tts-convert --help
 irodori-tts-convert-dacvae-codec --help
+irodori-tts-convert-dacvae-decoder --help
 irodori-tts-inspect --help
 ```
 
@@ -163,6 +165,7 @@ The existing repository scripts remain supported repo-local entry points:
 - `python scripts/benchmark.py`
 - `python scripts/convert_weights.py`
 - `python scripts/convert_dacvae_codec.py`
+- `python scripts/convert_dacvae_decoder.py`
 - `python scripts/inspect_checkpoint.py`
 
 They continue to work with the packaged dependency layout because the repo is installed editable (`-e`) and each script already resolves the repository root when importing local modules.
