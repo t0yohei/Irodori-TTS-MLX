@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -44,6 +46,30 @@ class ConvertDACVAECodecScriptTests(unittest.TestCase):
         self.assertFalse(report["state_dict"]["encode_contract_present"])
         self.assertTrue(report["state_dict"]["encode_groups_present"]["encoder"])
         self.assertFalse(report["state_dict"]["encode_groups_present"]["quantizer_in_proj"])
+
+    def test_model_state_dict_wrapper_feeds_accurate_blocker_diagnosis(self):
+        fake_torch = types.SimpleNamespace(
+            load=mock.Mock(
+                return_value={
+                    "epoch": 12,
+                    "model_state_dict": {key: object() for key in SEMANTIC_KEYS},
+                }
+            )
+        )
+
+        with mock.patch.dict(sys.modules, {"torch": fake_torch}):
+            keys = convert_dacvae_codec.load_state_dict_keys("/tmp/weights.pth")
+
+        report = convert_dacvae_codec.build_blocked_conversion_report(
+            source="/tmp/weights.pth",
+            output="/tmp/dacvae-codec.npz",
+            state_keys=keys,
+        )
+
+        self.assertEqual(keys, sorted(SEMANTIC_KEYS))
+        self.assertEqual(report["state_dict"]["key_count"], len(SEMANTIC_KEYS))
+        self.assertTrue(report["state_dict"]["encode_contract_present"])
+        self.assertTrue(report["state_dict"]["decode_contract_present"])
 
     def test_main_inspect_only_writes_report_and_returns_success(self):
         with tempfile.TemporaryDirectory() as td:

@@ -45,10 +45,10 @@ class DACVAEConversionError(RuntimeError):
 
 def _state_dict_from_loaded(obj: Any) -> Mapping[str, Any]:
     if isinstance(obj, Mapping):
-        if "state_dict" in obj and isinstance(obj["state_dict"], Mapping):
-            return obj["state_dict"]
-        if "model" in obj and isinstance(obj["model"], Mapping):
-            return obj["model"]
+        for key in ("state_dict", "model", "model_state_dict", "codec", "net"):
+            value = obj.get(key)
+            if isinstance(value, Mapping):
+                return value
         return obj
     raise DACVAEConversionError("PyTorch checkpoint did not contain a mapping state_dict")
 
