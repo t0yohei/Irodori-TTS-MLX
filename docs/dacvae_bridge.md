@@ -169,15 +169,15 @@ support matrix and runner caveats.
 - `subprocess`: run encode/decode in short-lived helper processes for investigation and benchmarking
 - `mlx-decode`: decode generated latents with a local MLX codec artifact; reference-audio encode remains on the in-process PyTorch bridge
 - `mlx-decode-subprocess`: decode generated latents with a local MLX codec artifact; reference-audio encode remains on the subprocess PyTorch bridge
-- `mlx`: use the local MLX fixture codec for both encode and decode, mainly for fixture/contract tests until real encode parity exists
+- `mlx`: use the local MLX codec artifact for both reference-audio encode and generated-latent decode when the artifact includes encode tensors
 
 The current recommendation is to keep `persistent` as the normal runtime mode
-unless you are explicitly validating decode-only MLX codec artifacts.
+unless you are explicitly validating MLX codec artifacts.
 
 For v0.2 codec-port work, `--codec-runtime-mode mlx-decode` selects the
 decode-only MLX path. No-reference VoiceDesign generation can then write the
-final WAV without calling the PyTorch DACVAE decode path, while any future
-reference-audio request still routes encode through the PyTorch bridge:
+final WAV without calling the PyTorch DACVAE decode path, while reference-audio
+requests still route encode through the PyTorch bridge:
 
 ```bash
 python3 scripts/generate_wav.py \
@@ -201,9 +201,15 @@ The MLX codec artifact contract is a local `.npz` file with:
 - optional `metadata_json` scalar string with the same metadata and provenance
 
 This contract is intentionally small enough for checked-in unit tests and local
-parity fixtures. It proves the runtime can decode through an MLX-owned codec
-object and that VoiceDesign/no-reference generation can decode generated
-latents without calling upstream `irodori_tts.codec.DACVAECodec.decode_latent`.
+parity fixtures. It proves the runtime can encode reference audio and decode
+generated latents through an MLX-owned codec object without calling upstream
+`irodori_tts.codec.DACVAECodec` when `--codec-runtime-mode mlx` is used with
+both encode and decode tensors. The MLX encode path downmixes to mono, truncates
+to `--max-reference-seconds`, resamples to the artifact sample rate, applies the
+configured `normalize_db` or peak safety, reflect-pads to the hop multiple, and
+returns runtime latents as `(batch, latent_steps, latent_dim)` before the normal
+speaker patching/mask logic runs.
+
 It is not, by itself, a redistributed Semantic-DACVAE checkpoint. Real acoustic
 parity requires a converted codec artifact produced from the supported upstream
 codec weights and validated with fixed latent/audio fixtures.

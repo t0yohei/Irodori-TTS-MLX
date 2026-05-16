@@ -537,16 +537,16 @@ class MLXDACVAEBridge:
         normalize_db: float | None,
         ensure_max: bool,
     ) -> mx.array:
-        del normalize_db, ensure_max
         if self.encode_basis is None or self.encode_bias is None:
             raise RuntimeError("This MLX DACVAE artifact is decode-only and cannot encode reference audio.")
         samples, sample_rate = _load_audio_numpy(path)
-        if int(sample_rate) != int(self.sample_rate):
-            raise ValueError(
-                f"MLX DACVAE codec artifact expects sample_rate={self.sample_rate}, got reference sample_rate={sample_rate}"
-            )
         if max_seconds is not None and float(max_seconds) > 0:
             samples = samples[: max(1, int(float(max_seconds) * float(sample_rate)))]
+        samples = _resample_audio_linear(samples, source_rate=int(sample_rate), target_rate=int(self.sample_rate))
+        if normalize_db is not None:
+            samples = _normalize_audio_db(samples, target_db=float(normalize_db))
+        elif ensure_max:
+            samples = _ensure_audio_peak(samples)
         if samples.size == 0:
             raise ValueError("reference audio is empty")
         frames = _frame_audio(samples, self.hop_length)
@@ -652,8 +652,50 @@ def _frame_audio(samples, hop_length: int):
     hop = int(hop_length)
     pad = (-int(samples.shape[0])) % hop
     if pad:
-        samples = np.pad(samples, (0, pad))
+        mode = "reflect" if int(samples.shape[0]) > 1 else "edge"
+        samples = np.pad(samples, (0, pad), mode=mode)
     return samples.reshape((-1, hop)).astype("float32", copy=False)
+
+
+def _resample_audio_linear(samples, *, source_rate: int, target_rate: int):
+    import numpy as np
+
+    if int(source_rate) <= 0:
+        raise ValueError(f"reference audio sample_rate must be positive, got {source_rate}")
+    if int(target_rate) <= 0:
+        raise ValueError(f"codec sample_rate must be positive, got {target_rate}")
+    samples = np.asarray(samples, dtype="float32")
+    if int(source_rate) == int(target_rate) or samples.size == 0:
+        return samples
+    target_len = max(1, int(round(samples.shape[0] * float(target_rate) / float(source_rate))))
+    if samples.shape[0] == 1:
+        return np.full((target_len,), float(samples[0]), dtype="float32")
+    source_positions = np.linspace(0.0, float(samples.shape[0] - 1), num=int(target_len), dtype=np.float64)
+    source_index = np.arange(samples.shape[0], dtype=np.float64)
+    return np.interp(source_positions, source_index, samples.astype("float64")).astype("float32", copy=False)
+
+
+def _ensure_audio_peak(samples):
+    import numpy as np
+
+    samples = np.asarray(samples, dtype="float32")
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    if peak > 1.0:
+        samples = samples / peak
+    return samples.astype("float32", copy=False)
+
+
+def _normalize_audio_db(samples, *, target_db: float):
+    import numpy as np
+
+    samples = np.asarray(samples, dtype="float32")
+    if samples.size == 0:
+        return samples
+    rms = float(np.sqrt(np.mean(np.square(samples.astype("float64")))))
+    if rms <= 0.0:
+        return samples
+    target_rms = 10.0 ** (float(target_db) / 20.0)
+    return _ensure_audio_peak(samples * (target_rms / rms))
 
 
 def _load_audio_torch(path: str | Path):
