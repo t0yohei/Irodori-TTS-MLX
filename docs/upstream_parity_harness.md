@@ -11,6 +11,8 @@ The harness is intentionally small for the first #109 slice:
 - it captures scenario metadata for tokenizer, duration, sampling, and codec boundaries
 - it records lightweight WAV properties when generated audio exists
 - it classifies reports as `expected_drift`, `regression`, or `not_comparable`
+- it marks each report as `complete`, `partial`, or `failed`
+- it records `unavailable` side states with a machine-readable reason when optional upstream checkouts or MLX weights are absent
 - it supports deterministic fixture mode for CI and schema coverage without checkpoints
 
 Full VoiceDesign/v3 baseline matrices, intermediate tensor comparisons, and richer audio metrics are deferred to the follow-up issues linked from #109.
@@ -28,6 +30,21 @@ python scripts/run_upstream_parity.py \
 ```
 
 This writes `parity-runs/fixture-v3/v3-no-reference.parity.json` with deterministic evidence. It does not download weights, import upstream `irodori_tts`, or generate audio.
+
+## Partial Report Command
+
+The runner can intentionally record only one side, or record why a requested side could not run. For example, this command asks for both sides but omits the external artifacts:
+
+```bash
+python scripts/run_upstream_parity.py \
+  --scenario v3-no-reference \
+  --run-upstream \
+  --run-mlx \
+  --output-dir parity-runs/partial-v3 \
+  --json
+```
+
+The JSON is still written with `report_status: "partial"`. The upstream side is marked `status: "unavailable"` with `availability.reason: "missing_upstream_root"`, and the MLX side is marked `status: "unavailable"` with `availability.reason: "missing_mlx_weights"`. This is the expected representation for CI or developer machines that do not have heavyweight checkpoints, caches, or an upstream checkout.
 
 ## Real v3 Command
 
@@ -87,13 +104,16 @@ python scripts/run_upstream_parity.py \
 
 ## Report Schema
 
+The canonical machine-readable schema is [upstream_parity_report_schema.json](upstream_parity_report_schema.json). It is intentionally permissive about additive fields so #118/#119 can add metrics without breaking existing consumers.
+
 Top-level fields:
 
 - `schema_version`: currently `1`
+- `report_status`: `complete` when both sides produced fixture or passed evidence, `partial` when one or both sides were not requested or unavailable, and `failed` when a requested side ran and failed
 - `scenario`: prompt, checkpoint family, checkpoint id, reference/caption settings, seed, sampling, duration, tokenizer, and codec settings
 - `metadata_axes`: normalized diagnostic axes for tokenizer, duration, sampling, and codec differences
-- `upstream`: command, status, command result when run, WAV properties when present
-- `mlx`: command, status, command result when run, WAV properties and `generate_wav.py` metadata when present
+- `upstream`: command, status, availability, command result when run, WAV properties when present
+- `mlx`: command, status, availability, command result when run, WAV properties and `generate_wav.py` metadata when present
 - `comparison`: `expected_drift`, `regression`, or `not_comparable`
 - `deferred_scope`: intentionally omitted work for follow-up issues
 

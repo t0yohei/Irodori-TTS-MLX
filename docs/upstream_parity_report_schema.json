@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/t0yohei/Irodori-TTS-MLX/blob/main/docs/upstream_parity_report_schema.json",
+  "title": "Irodori upstream-vs-MLX parity report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "created_by",
+    "report_status",
+    "environment",
+    "scenario",
+    "metadata_axes",
+    "artifacts",
+    "upstream",
+    "mlx",
+    "comparison",
+    "deferred_scope"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "created_by": {
+      "const": "scripts/run_upstream_parity.py"
+    },
+    "report_status": {
+      "enum": ["complete", "partial", "failed"]
+    },
+    "environment": {
+      "type": "object",
+      "required": ["platform", "python", "cwd"]
+    },
+    "scenario": {
+      "type": "object",
+      "required": [
+        "name",
+        "checkpoint_family",
+        "checkpoint",
+        "text",
+        "no_reference",
+        "reference_wav",
+        "caption",
+        "seconds",
+        "duration_scale",
+        "num_steps",
+        "seed",
+        "model_device",
+        "codec_device",
+        "codec_repo",
+        "text_tokenizer_repo",
+        "caption_tokenizer_repo",
+        "text_max_length",
+        "caption_max_length",
+        "cfg_scale_text",
+        "cfg_scale_caption",
+        "cfg_scale_speaker",
+        "cfg_guidance_mode",
+        "cfg_min_t",
+        "cfg_max_t"
+      ]
+    },
+    "metadata_axes": {
+      "type": "object",
+      "required": ["tokenizer", "duration", "sampling", "codec"]
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["output_dir", "commit_note"]
+    },
+    "upstream": {
+      "$ref": "#/$defs/side"
+    },
+    "mlx": {
+      "$ref": "#/$defs/side"
+    },
+    "comparison": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["expected_drift", "regression", "not_comparable"]
+        }
+      }
+    },
+    "deferred_scope": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "side": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "status", "command", "availability", "audio", "metadata"],
+      "properties": {
+        "name": {
+          "enum": ["upstream", "mlx"]
+        },
+        "status": {
+          "enum": ["not_run", "unavailable", "fixture", "passed", "failed"]
+        },
+        "command": {
+          "type": "object",
+          "required": ["argv", "shell"],
+          "properties": {
+            "argv": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "shell": {
+              "type": "string"
+            }
+          }
+        },
+        "availability": {
+          "type": "object",
+          "required": ["state", "reason", "detail"],
+          "properties": {
+            "state": {
+              "enum": ["not_run", "unavailable", "fixture", "passed", "failed"]
+            },
+            "reason": {
+              "type": ["string", "null"]
+            },
+            "detail": {
+              "type": ["string", "null"]
+            }
+          }
+        },
+        "audio": {
+          "type": ["object", "null"]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
