@@ -94,6 +94,49 @@ class FakeSamplerModel:
         return mx.broadcast_to(scalar[:, None, None], x_t.shape)
 
 
+class CaptionContentSamplerModel(FakeSamplerModel):
+    def __init__(self):
+        super().__init__(caption=True, speaker=False)
+
+    def encode_conditions(self, **kwargs):
+        encoded = super().encode_conditions(**kwargs)
+        caption_ids = kwargs["caption_input_ids"].astype(mx.float32)
+        caption_mask = kwargs["caption_mask"].astype(mx.bool_)
+        caption_state = caption_ids[:, :, None] * mx.ones((1, 1, 3), dtype=mx.float32)
+        caption_state = caption_state * caption_mask[:, :, None].astype(mx.float32)
+        return EncodedConditions(
+            text_state=encoded.text_state,
+            text_mask=encoded.text_mask,
+            speaker_state=None,
+            speaker_mask=None,
+            caption_state=caption_state,
+            caption_mask=caption_mask,
+        )
+
+    def forward_with_encoded_conditions(
+        self,
+        *,
+        x_t,
+        t,
+        text_state,
+        text_mask,
+        speaker_state,
+        speaker_mask,
+        caption_state=None,
+        caption_mask=None,
+        context_kv_cache=None,
+    ):
+        self.calls.append(
+            {
+                "batch": int(x_t.shape[0]),
+                "t": to_np(t),
+                "cached": context_kv_cache is not None,
+            }
+        )
+        caption_score = mx.sum(caption_state, axis=(1, 2)) / 100.0
+        return mx.broadcast_to(caption_score[:, None, None].astype(x_t.dtype), x_t.shape)
+
+
 class SamplingTests(unittest.TestCase):
     def tiny_config(self) -> ModelConfig:
         return ModelConfig(
@@ -235,6 +278,62 @@ class SamplingTests(unittest.TestCase):
         init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(9))
         expected = init + (111 + 3 * (111 - 0)) * (0.0 - 0.999)
         np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_fixed_seed_caption_content_changes_mlx_sample(self):
+        common = dict(
+            text_input_ids=mx.array([[1, 2]], dtype=mx.int32),
+            text_mask=mx.array([[True, True]]),
+            ref_latent=None,
+            ref_mask=None,
+            sequence_length=2,
+            num_steps=2,
+            cfg_scale_text=0.0,
+            cfg_scale_speaker=0.0,
+            cfg_scale_caption=0.0,
+            seed=17,
+            use_context_kv_cache=True,
+        )
+        calm = sample_euler_rf_cfg(
+            CaptionContentSamplerModel(),
+            caption_input_ids=mx.array([[3, 4, 5]], dtype=mx.int32),
+            caption_mask=mx.array([[True, True, True]]),
+            **common,
+        )
+        energetic = sample_euler_rf_cfg(
+            CaptionContentSamplerModel(),
+            caption_input_ids=mx.array([[30, 40, 50]], dtype=mx.int32),
+            caption_mask=mx.array([[True, True, True]]),
+            **common,
+        )
+
+        self.assertFalse(np.allclose(to_np(calm), to_np(energetic), rtol=0, atol=0))
+
+    @require_mlx
+    def test_caption_cfg_cache_on_and_off_are_equivalent_for_same_caption(self):
+        common = dict(
+            text_input_ids=mx.array([[1, 2]], dtype=mx.int32),
+            text_mask=mx.array([[True, True]]),
+            ref_latent=None,
+            ref_mask=None,
+            caption_input_ids=mx.array([[9, 8, 7]], dtype=mx.int32),
+            caption_mask=mx.array([[True, True, True]]),
+            sequence_length=2,
+            num_steps=2,
+            cfg_scale_text=0.0,
+            cfg_scale_speaker=0.0,
+            cfg_scale_caption=2.0,
+            cfg_guidance_mode="independent",
+            seed=23,
+        )
+        cached_model = CaptionContentSamplerModel()
+        uncached_model = CaptionContentSamplerModel()
+        cached = sample_euler_rf_cfg(cached_model, use_context_kv_cache=True, **common)
+        uncached = sample_euler_rf_cfg(uncached_model, use_context_kv_cache=False, **common)
+
+        np.testing.assert_allclose(to_np(cached), to_np(uncached), rtol=1e-6, atol=1e-6)
+        self.assertGreater(cached_model.cache_builds, 0)
+        self.assertEqual(uncached_model.cache_builds, 0)
 
     @require_mlx
     def test_sampler_runs_against_tiny_mlx_rf_dit_model(self):
