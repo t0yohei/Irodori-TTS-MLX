@@ -78,6 +78,10 @@ def _preflight_decode_pair(args: argparse.Namespace) -> None:
         "irodori_tts.codec",
         "Upstream irodori_tts.codec dependency is required for DACVAE decode parity.",
     )
+    _require_module(
+        "torch",
+        "PyTorch runtime dependency is required for DACVAE decode parity.",
+    )
 
 
 def _load_latents(path: str | Path):

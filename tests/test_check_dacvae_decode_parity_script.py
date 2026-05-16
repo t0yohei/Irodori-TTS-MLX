@@ -245,6 +245,46 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
             self.assertEqual(report["comparison"]["status"], "partial")
             self.assertIn("MLX runtime dependency", report["run"]["reason"])
 
+    def test_main_writes_partial_report_for_missing_torch_before_runtime_import(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            latents_path = root / "latents.npy"
+            codec_path = root / "codec.npz"
+            np.save(latents_path, np.array([[[0.1, -0.2], [0.3, -0.4]]], dtype=np.float32))
+            codec_path.write_bytes(b"fake codec")
+            original_find_spec = check_dacvae_decode_parity.importlib.util.find_spec
+
+            def fake_find_spec(module_name):
+                if module_name == "irodori_tts.codec":
+                    return object()
+                if module_name == "torch":
+                    return None
+                return original_find_spec(module_name)
+
+            with mock.patch.object(
+                check_dacvae_decode_parity.importlib.util, "find_spec", side_effect=fake_find_spec
+            ), mock.patch.object(
+                check_dacvae_decode_parity,
+                "_load_runtime_decode_dependencies",
+                side_effect=AssertionError("runtime import should be deferred until after preflight"),
+            ):
+                rc = check_dacvae_decode_parity.main(
+                    [
+                        "--latents-npy",
+                        str(latents_path),
+                        "--codec-path",
+                        str(codec_path),
+                        "--output-dir",
+                        td,
+                        "--allow-partial",
+                    ]
+                )
+
+            report = json.loads((root / "dacvae-decode-parity.json").read_text(encoding="utf-8"))
+            self.assertEqual(rc, 0)
+            self.assertEqual(report["comparison"]["status"], "partial")
+            self.assertIn("PyTorch runtime dependency", report["run"]["reason"])
+
     @require_real_decode_parity_env
     def test_real_decode_parity_command_runs_when_artifact_env_is_set(self):
         with tempfile.TemporaryDirectory() as td:
