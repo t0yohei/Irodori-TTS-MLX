@@ -23,6 +23,9 @@ from irodori_mlx.runtime import (  # noqa: E402
     _load_audio_numpy,
 )
 
+SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/155"
+PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160"
+
 
 @dataclass(frozen=True)
 class EncodeParityTolerances:
@@ -188,8 +191,9 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
     )
     return {
         "schema_version": 1,
-        "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/115",
-        "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/123",
+        "status": "complete" if comparison["status"] == "passed" else "failed",
+        "source_issue": SOURCE_ISSUE,
+        "parent_epic": PARENT_EPIC,
         "audio": _audio_stats(audio_path),
         "codec": {
             "repo": args.codec_repo,
@@ -208,6 +212,45 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "mlx_latents_npy": str(mlx_path),
         },
         "comparison": comparison,
+    }
+
+
+def partial_report(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
+    codec_path = Path(args.codec_path).expanduser()
+    audio_path = Path(args.audio_wav).expanduser()
+    return {
+        "schema_version": 1,
+        "status": "partial",
+        "source_issue": SOURCE_ISSUE,
+        "parent_epic": PARENT_EPIC,
+        "blocker": {
+            "stage": "setup-or-encode",
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "notes": [
+                "The parity gate reached setup or encode but could not complete the upstream-vs-MLX comparison.",
+                "This is expected while real Semantic-DACVAE encoder conversion is blocked; keep the report with the PR or issue evidence.",
+            ],
+        },
+        "audio": {
+            "path": str(audio_path),
+            "stats_available": bool(audio_path.exists()),
+        },
+        "codec": {
+            "repo": args.codec_repo,
+            "device": args.codec_device,
+            "mlx_codec_path": str(codec_path),
+            "mlx_codec_path_exists": bool(codec_path.exists()),
+            "watermark": "disabled",
+            "normalize_db": None if args.normalize_db is None else float(args.normalize_db),
+            "ensure_max": bool(args.ensure_max),
+            "max_seconds": args.max_seconds,
+        },
+        "outputs": {
+            "upstream_latents_npy": None,
+            "mlx_latents_npy": None,
+        },
+        "comparison": None,
     }
 
 
@@ -235,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         report = encode_pair(args)
     except Exception as exc:
         print(f"DACVAE encode parity failed before comparison: {exc}", file=sys.stderr)
-        return 2
+        report = partial_report(args, exc)
     report_path = (
         Path(args.report_json).expanduser()
         if args.report_json
@@ -243,8 +286,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"status": report["comparison"]["status"], "report": str(report_path)}, sort_keys=True))
-    return 0 if report["comparison"]["status"] == "passed" else 1
+    print(json.dumps({"status": report["status"], "report": str(report_path)}, sort_keys=True))
+    if report["status"] == "complete":
+        return 0
+    if report["status"] == "failed":
+        return 1
+    return 2
 
 
 if __name__ == "__main__":  # pragma: no cover

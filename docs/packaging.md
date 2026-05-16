@@ -2,7 +2,9 @@
 
 Issue: [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/Irodori-TTS-MLX/issues/31)
 
-The repository now exposes a project-level `pyproject.toml` so contributors can install dependencies by use case instead of guessing from ad hoc notes.
+The repository now exposes a project-level `pyproject.toml` so package users and contributors can install dependencies by use case instead of guessing from ad hoc notes.
+
+The next package release candidate is `0.2.0a1`. It is still alpha software: the CLI surface is intended for v0.2 consumers, while the public Python module API remains conservative and may change before a stable release.
 
 ## Supported Python
 
@@ -23,6 +25,30 @@ The project defines these install targets:
 - `.[runtime]`: end-to-end WAV generation with the PyTorch DACVAE bridge
 - `.[bench]`: benchmark-oriented environment for `scripts/benchmark.py` and checkpoint conversion helpers
 - `.[dev]`: local contributor environment for tests plus packaging validation helpers
+
+There is intentionally no separate codec-only extra yet. The v0.2 MLX codec path is artifact-driven through `--codec-runtime-mode mlx`, `--codec-runtime-mode mlx-decode`, and `--codec-path`; keep a future codec-only dependency split blocked until the redistributed DACVAE artifact contract is approved.
+
+## Package users versus repository contributors
+
+Package users should install a built wheel or source distribution into a clean virtual environment and use installed console scripts:
+
+```bash
+python3.11 -m venv .venv-irodori
+. .venv-irodori/bin/activate
+python -m pip install --upgrade pip
+python -m pip install /path/to/irodori_tts_mlx-0.2.0a1-py3-none-any.whl
+irodori-tts-generate --help
+```
+
+Repository contributors should install from a checkout in editable mode so tests and script changes are exercised directly:
+
+```bash
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+python -m unittest discover -s tests -v
+```
 
 ## Quick start
 
@@ -157,6 +183,7 @@ irodori-tts-convert --help
 irodori-tts-convert-dacvae-codec --help
 irodori-tts-convert-dacvae-decoder --help
 irodori-tts-inspect --help
+irodori-tts-adapt-mlx-audio --help
 ```
 
 The existing repository scripts remain supported repo-local entry points:
@@ -174,5 +201,31 @@ They continue to work with the packaged dependency layout because the repo is in
 
 - The packaging surface is still prototype-grade; there is no stable API guarantee yet.
 - Python 3.11 through 3.14 are the currently supported packaged environments; newer Python versions should stay unsupported until they are validated.
-- The repository's packaging smoke test workflow exercises editable-install resolution and metadata checks across Python 3.11, 3.12, 3.13, and 3.14 on GitHub Actions macOS runners.
+- The repository's packaging smoke test workflow exercises metadata checks, wheel/sdist builds, clean wheel installation, installed console-script help checks, and editable-install resolution across Python 3.11, 3.12, 3.13, and 3.14 on GitHub Actions macOS runners.
 - Benchmark reproducibility still depends on access to upstream `irodori_tts`, model weights, and Apple Silicon hardware.
+
+## v0.2 release artifact checklist
+
+Do not publish or upload packages until the v0.2 release decision is explicit. For a local or CI release-candidate validation, run:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install build
+python -m build --wheel --sdist --outdir dist
+
+python -m venv .venv-wheel-smoke
+.venv-wheel-smoke/bin/python -m pip install --upgrade pip
+.venv-wheel-smoke/bin/python -m pip install --no-deps dist/irodori_tts_mlx-0.2.0a1-py3-none-any.whl
+.venv-wheel-smoke/bin/irodori-tts-generate --help
+.venv-wheel-smoke/bin/irodori-tts-convert --help
+.venv-wheel-smoke/bin/irodori-tts-inspect --help
+.venv-wheel-smoke/bin/irodori-tts-adapt-mlx-audio --help
+```
+
+Before opening a release PR or tag:
+
+- confirm `pyproject.toml` has the intended prerelease version and not `0.0.0`;
+- confirm `dist/` contains exactly one wheel and one sdist for the candidate version;
+- confirm the wheel smoke checks run from the clean environment, not from an editable checkout;
+- confirm optional runtime gates that need upstream `irodori_tts`, PyTorch, model checkpoints, or DACVAE artifacts are either run in the appropriate environment or documented as unavailable for the packaging-only gate;
+- keep generated `dist/`, virtual environments, Hugging Face caches, model weights, converted `.npz` archives, reference audio, and generated audio out of git.
