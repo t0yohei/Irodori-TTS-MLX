@@ -67,6 +67,9 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
             "v3 hosted artifact is intentionally marked blocked",
             "Do not replace the blocked status with a local filesystem path",
             "local conversion fallback",
+            'mkdir -p "$WORK"',
+            'python - "$WORK/checkpoint-inspect.json" > "$WORK/model_config.json"',
+            "from irodori_mlx.config import ModelConfig",
         ]
         for term in required_terms:
             with self.subTest(term=term):

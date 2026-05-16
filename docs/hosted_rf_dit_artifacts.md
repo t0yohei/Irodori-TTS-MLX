@@ -54,17 +54,31 @@ Smoke command:
 
 The v3 hosted artifact is intentionally marked blocked until there is an approved public repository and immutable revision. The documented fallback remains local conversion from the upstream checkpoint:
 
-    CHECKPOINT=/path/to/Irodori-TTS-500M-v3/model.safetensors
-    WORK=/tmp/irodori-v3-local
+```bash
+CHECKPOINT=/path/to/Irodori-TTS-500M-v3/model.safetensors
+WORK=/tmp/irodori-v3-local
+mkdir -p "$WORK"
 
-    irodori-tts-inspect "$CHECKPOINT" --json > "$WORK/checkpoint-inspect.json"
-    irodori-tts-convert "$CHECKPOINT" "$WORK/weights.npz"
-    irodori-tts-generate \
-      --weights "$WORK/weights.npz" \
-      --model-config-json "$WORK/model_config.json" \
-      --text "こんにちは。今日は良い天気です。" \
-      --no-reference \
-      --output "$WORK/irodori-v3.wav" \
-      --preset balanced
+irodori-tts-inspect "$CHECKPOINT" --json > "$WORK/checkpoint-inspect.json"
+python - "$WORK/checkpoint-inspect.json" > "$WORK/model_config.json" <<'PY'
+import json
+import sys
+from dataclasses import fields
+from irodori_mlx.config import ModelConfig
+
+payload = json.load(open(sys.argv[1]))
+allowed = {field.name for field in fields(ModelConfig)}
+config = {key: value for key, value in payload["config"].items() if key in allowed}
+print(json.dumps(config, ensure_ascii=False, indent=2, sort_keys=True))
+PY
+irodori-tts-convert "$CHECKPOINT" "$WORK/weights.npz"
+irodori-tts-generate \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output "$WORK/irodori-v3.wav" \
+  --preset balanced
+```
 
 Do not replace the blocked status with a local filesystem path, a private Hugging Face repo, or a mutable staging branch. Publication requires an approved public repo id, immutable revision, matching checksums, README/model-card provenance, and license_review.status: "approved" in the hosted manifest.
