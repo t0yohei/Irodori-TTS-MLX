@@ -63,6 +63,7 @@ v0.1 で対応対象としている checkpoint family:
 - Web UI / Gradio は対象外です
 - すべての歴史的 / third-party checkpoint 互換を保証するものではありません
 - このリポジトリ自身のコードとドキュメントは MIT License です。ただし upstream code、checkpoint、DACVAE weights、converted `.npz`、生成音声は原則再配布しません。v0.2 の hosted pre-converted weights に限る監査結果と provenance 要件は [docs/preconverted_weights_redistribution_audit.md](docs/preconverted_weights_redistribution_audit.md)、hosted 利用手順と local conversion fallback は [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)、通常の再配布方針は [docs/license_and_distribution.md](docs/license_and_distribution.md) を参照してください
+- v0.2 の cross-repo delivery plan、Linear TOY-5 と GitHub issue 群の対応、依存順、検証 gate、downstream local-assistant/OpenClaw smoke path は [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md) を参照してください
 
 ## セットアップ
 
