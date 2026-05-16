@@ -12,6 +12,8 @@ The v0.1 runtime is intentionally a mixed MLX + PyTorch bridge:
 
 That boundary is a deliberate v0.1 constraint, not an accidental missing import. A full MLX DACVAE port is not required to validate v0.1 because the current milestone is about the latent-generation path: converted Irodori-TTS weights running through MLX and then crossing back through the known upstream DACVAE implementation for audio I/O.
 
+For v0.2 DACVAE port work, `scripts/generate_wav.py --codec-runtime-mode mlx --codec-path /path/to/dacvae-codec.npz` can use a local MLX codec artifact instead of importing upstream PyTorch codec code. That path is covered by local contract tests and is suitable for fixed parity fixtures, but this repository still does not bundle Semantic-DACVAE weights or claim that arbitrary codec artifacts match the upstream acoustic model.
+
 ## Recommended install path
 
 For WAV generation, first install this repository with its runtime dependencies:
@@ -67,3 +69,5 @@ That message is expected. Fix the environment by either running `python -m pip i
 ## What this does not claim
 
 This repository does **not** provide standalone v0.1 WAV generation without upstream `irodori_tts`. It also does not vendor upstream code or replace the DACVAE model with MLX yet. Those are possible later milestones, but v0.1 keeps the DACVAE boundary in PyTorch so the MLX RF-DiT path can be validated first.
+
+Standalone v0.2 codec experiments require a caller-provided converted MLX codec artifact. Without that artifact, keep using the upstream PyTorch DACVAE bridge for both reference encode and waveform decode.

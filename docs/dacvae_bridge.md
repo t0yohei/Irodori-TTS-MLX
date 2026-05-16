@@ -1,4 +1,4 @@
-# PyTorch DACVAE bridge
+# DACVAE bridge and MLX codec contract
 
 Issue #12 adds the first end-to-end prototype boundary:
 
@@ -170,6 +170,38 @@ support matrix and runner caveats.
 
 The current recommendation is to keep `persistent` as the normal runtime mode.
 
+For v0.2 codec-port work, `--codec-runtime-mode mlx` selects the MLX-native
+codec boundary instead of importing upstream PyTorch DACVAE code:
+
+```bash
+python3 scripts/generate_wav.py \
+  --weights /path/to/irodori-tts-500m-v2.npz \
+  --model-config-json /path/to/model-config.json \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-mlx-codec.wav \
+  --seconds 2 \
+  --codec-runtime-mode mlx \
+  --codec-path /path/to/dacvae-codec.npz
+```
+
+The MLX codec artifact contract is a local `.npz` file with:
+
+- `sample_rate`, `hop_length`, `latent_dim` scalar arrays
+- `decode_basis` shaped `(latent_dim, hop_length)`
+- `decode_bias` shaped `(hop_length,)`
+- `encode_basis` shaped `(hop_length, latent_dim)`
+- `encode_bias` shaped `(latent_dim,)`
+- optional `metadata_json` scalar string with the same metadata and provenance
+
+This contract is intentionally small enough for checked-in unit tests and local
+parity fixtures. It proves the runtime can encode/decode through an MLX-owned
+codec object and that VoiceDesign/no-reference generation can decode generated
+latents without importing upstream `irodori_tts.codec.DACVAECodec`. It is not,
+by itself, a redistributed Semantic-DACVAE checkpoint. Real acoustic parity
+requires a converted codec artifact produced from the supported upstream codec
+weights and validated with fixed latent/audio fixtures.
+
 ## Duration semantics
 
 - `--seconds` is an explicit manual override.
@@ -209,6 +241,8 @@ print(result.output_wav)
 - PyTorch DACVAE encode returns `(batch, latent_steps, latent_dim)` tensors.
 - The bridge converts PyTorch tensors through an explicit CPU/NumPy boundary into
   MLX arrays.
+- The MLX codec mode loads a local artifact, keeps encode/decode math in MLX,
+  and uses NumPy only at the WAV/file boundary.
 - The default bridge now also releases PyTorch-side tensors and backend cache
   state after reference encode and waveform decode so those allocations do not
   linger longer than necessary.
@@ -252,8 +286,36 @@ In practical terms, the runtime needs:
 - Codec watermarking remains optional and only has an effect when the upstream
   DACVAE runtime exposes watermark support; `--enable-watermark` should be
   treated as best-effort rather than guaranteed output tagging.
-- DACVAE remains PyTorch-only in v0.
+- DACVAE remains PyTorch-backed by default for v0.1-style runs. The v0.2
+  `--codec-runtime-mode mlx` path is available for local converted codec
+  artifacts and parity fixtures, but this repository still does not bundle
+  Semantic-DACVAE weights.
 - The experimental subprocess codec mode is mainly for memory investigation; it
   is currently slower than the default persistent bridge.
 - End-to-end audio quality still depends on full checkpoint conversion quality
   and the already documented RF sampler deviations.
+
+## Parity fixture boundary
+
+Focused local tests cover the MLX codec artifact contract without large model
+downloads:
+
+```bash
+python -m pytest tests/test_runtime_bridge.py -k 'mlx_dacvae or mlx_codec'
+```
+
+Full Semantic-DACVAE parity should be run only when a converted codec artifact
+and the upstream PyTorch baseline are available locally. Use fixed latent/audio
+fixtures and compare both directions:
+
+```bash
+export IRODORI_MLX_DACVAE_CODEC_NPZ=/path/to/converted-dacvae-codec.npz
+export IRODORI_MLX_DACVAE_DECODE_LATENTS_NPY=/path/to/decode-latents.npy
+export IRODORI_MLX_DACVAE_DECODE_AUDIO_NPY=/path/to/upstream-decoded-audio.npy
+export IRODORI_MLX_DACVAE_ENCODE_AUDIO_WAV=/path/to/reference.wav
+export IRODORI_MLX_DACVAE_ENCODE_LATENTS_NPY=/path/to/upstream-encoded-latents.npy
+python -m pytest tests/test_dacvae_mlx_parity_fixtures.py -q
+```
+
+That command is a fixture boundary, not a network-downloading test; the artifact
+and upstream-generated `.npy` fixture outputs must be prepared by the runner.

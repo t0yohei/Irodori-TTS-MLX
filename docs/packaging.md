@@ -66,6 +66,8 @@ The v0.1 runtime still reuses upstream `irodori_tts.codec.DACVAECodec` for refer
 That means the local environment must also be able to import upstream `irodori_tts`.
 This is intentional: this MLX repo owns the text/caption conditioning, RF-DiT, converted-weight runtime, duration handling, and sampler path, while upstream still owns the PyTorch DACVAE codec boundary.
 A full MLX DACVAE port is not required for v0.1 WAV generation.
+
+The v0.2 `--codec-runtime-mode mlx` path is artifact-driven: package users must provide `--codec-path /path/to/dacvae-codec.npz`, and the repository does not ship Semantic-DACVAE codec weights. The local contract keeps encode/decode math in MLX and is intended for converted codec artifacts and parity fixtures; default runtime packaging should continue to include the PyTorch bridge dependencies until a real redistributed codec artifact is approved.
 See [upstream_dependency.md](upstream_dependency.md) for the full responsibility split and import-failure guidance.
 
 Supported ways to provide upstream:

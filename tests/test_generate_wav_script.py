@@ -106,6 +106,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             text_max_length=256,
             caption_max_length=None,
             codec_repo="Aratako/Semantic-DACVAE-Japanese-32dim",
+            codec_path=None,
             codec_device="cpu",
             codec_runtime_mode="subprocess",
             disable_codec_normalize=False,
@@ -152,6 +153,16 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertIsNone(request.reference_wav)
         self.assertFalse(request.no_reference)
         self.assertEqual(runtime.config.codec.runtime_mode, "subprocess")
+
+    def test_build_runtime_config_accepts_mlx_codec_artifact_path(self):
+        args = self._args("out.wav")
+        args.codec_runtime_mode = "mlx"
+        args.codec_path = "codec.npz"
+
+        runtime_config = generate_wav.build_runtime_config(args, ModelConfig(use_caption_condition=True))
+
+        self.assertEqual(runtime_config.codec.runtime_mode, "mlx")
+        self.assertEqual(runtime_config.codec.codec_path, "codec.npz")
 
     def test_parse_args_config_json_supplies_defaults_and_cli_overrides(self):
         with tempfile.TemporaryDirectory() as td:
