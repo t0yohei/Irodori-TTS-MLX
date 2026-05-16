@@ -40,6 +40,8 @@ class DownstreamOpenClawSmokeDocTests(unittest.TestCase):
             "codec_encode_backend",
             "codec_decode_backend",
             "timings_ms",
+            'metadata_payload["result"]',
+            'stdout_payload["result"]',
             "wave.open",
             "getnframes",
         ]

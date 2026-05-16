@@ -103,8 +103,10 @@ hold:
     from pathlib import Path
 
     root = Path(os.environ["IRODORI_SMOKE_DIR"])
-    metadata = json.loads((root / "openclaw-smoke.metadata.json").read_text())
-    stdout = json.loads((root / "openclaw-smoke.stdout.json").read_text())
+    metadata_payload = json.loads((root / "openclaw-smoke.metadata.json").read_text())
+    stdout_payload = json.loads((root / "openclaw-smoke.stdout.json").read_text())
+    metadata = metadata_payload["result"]
+    stdout_result = stdout_payload["result"]
 
     required = [
         "checkpoint_family",
@@ -123,7 +125,7 @@ hold:
         raise SystemExit(f"unexpected checkpoint_family: {metadata['checkpoint_family']!r}")
     if metadata["duration_mode"] not in {"predicted", "fallback", "manual"}:
         raise SystemExit(f"unexpected duration_mode: {metadata['duration_mode']!r}")
-    if stdout.get("output_wav") != str(root / "openclaw-smoke.wav"):
+    if stdout_result.get("output_wav") != str(root / "openclaw-smoke.wav"):
         raise SystemExit("stdout output_wav does not match smoke WAV path")
 
     with wave.open(str(root / "openclaw-smoke.wav"), "rb") as wav:
