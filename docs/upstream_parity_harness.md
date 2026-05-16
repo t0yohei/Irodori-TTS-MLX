@@ -48,6 +48,20 @@ The JSON is still written with `report_status: "partial"`. The upstream side is 
 
 ## Real v3 Command
 
+Issue [#119](https://github.com/t0yohei/Irodori-TTS-MLX/issues/119) adds the fixed `v3-reference-predicted` scenario. It uses a short Japanese text prompt, reference-audio speaker conditioning through `tests/fixtures/v3-reference.wav`, fixed seed `20260519`, omitted `--seconds`, and `--num-steps 8` so the v3 duration predictor path stays visible in the report.
+
+Use fixture mode for a schema-covered smoke run that does not need checkpoints, an upstream checkout, or the reference WAV:
+
+```bash
+python scripts/run_upstream_parity.py \
+  --fixture \
+  --scenario v3-reference-predicted \
+  --output-dir parity-runs/fixture-v3-reference \
+  --json
+```
+
+The fixture report records `duration_mode: "predicted"`, `requested_seconds: null`, synthetic predicted-duration details, runtime messages, reference-audio command arguments, and deterministic WAV properties for both sides. If you request a real `v3-reference-predicted` run without providing `tests/fixtures/v3-reference.wav`, the report remains `partial` and both sides are marked `unavailable` with `availability.reason: "missing_reference_wav"`.
+
 Prepare the upstream checkout and converted MLX checkpoint first:
 
 ```bash
@@ -66,7 +80,7 @@ Then run both sides and write one report:
 ```bash
 PYTHONPATH="$(pwd)/external/Irodori-TTS:${PYTHONPATH:-}" \
 python scripts/run_upstream_parity.py \
-  --scenario v3-no-reference \
+  --scenario v3-reference-predicted \
   --run-upstream \
   --run-mlx \
   --upstream-root external/Irodori-TTS \
@@ -75,7 +89,7 @@ python scripts/run_upstream_parity.py \
   --output-dir parity-runs/v3-real \
   --codec-device cpu \
   --num-steps 8 \
-  --seed 20260516 \
+  --seed 20260519 \
   --json
 ```
 
