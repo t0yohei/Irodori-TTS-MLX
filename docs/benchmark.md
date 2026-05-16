@@ -16,6 +16,7 @@ We now have both:
 - the warm-cache / codec-device / memory follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md](benchmark-reports/2026-05-12-apple-silicon-mlx-followup.md)
 - the reference-path memory mitigation follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md](benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md)
 - the local Apple Silicon `num_steps` preset sweep for v3 + VoiceDesign from [docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md)
+- the real hosted/pre-converted weights loading measurement from [docs/benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md](benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md)
 
 Current read:
 
@@ -34,6 +35,8 @@ For day-to-day local generation defaults, the later `num_steps` sweep now sugges
 - `--num-steps 12` for fastest acceptable local iteration
 - `--num-steps 24` for balanced local usage
 - keep `--num-steps 40` as the higher-quality comparison/default anchor when latency matters less
+
+The v0.2 hosted weights measurement shows that hosted loading is a setup/UX improvement rather than a generation-latency optimization: the first hosted run is dominated by the artifact download, while warm hosted repo, local hosted-layout directory, and direct local `.npz` fallback all produce similar `sample_rf` and `total_to_decode` timings.
 
 ## Existing upstream baseline numbers
 
@@ -196,7 +199,7 @@ python3 scripts/benchmark.py \
 
 ### MLX bridge benchmark
 
-The MLX benchmark expects a converted `.npz` checkpoint from `scripts/convert_weights.py` and an environment that can import the `.[bench]` dependency group plus upstream `irodori_tts`.
+The MLX benchmark accepts a converted `.npz` checkpoint from `scripts/convert_weights.py`, a local hosted/pre-converted weights layout directory, or a Hugging Face repo id with the hosted weights layout. It also expects an environment that can import the `.[bench]` dependency group plus upstream `irodori_tts`.
 That means the benchmark venv should contain this repository with `pip install -e ".[bench]"`, while upstream Irodori-TTS is either installed into the same venv or provided on `PYTHONPATH`.
 
 Example:
@@ -214,6 +217,34 @@ python3 scripts/benchmark.py \
 ```
 
 For no-reference benchmarking, omit `--reference-wav`.
+
+Hosted/pre-converted repo example:
+
+```bash
+python3 scripts/benchmark.py \
+  --mode mlx \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
+  --caption "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。" \
+  --seconds 2 \
+  --num-steps 24 \
+  --repeat 2 \
+  --cache-state auto \
+  --case-label hosted-repo-voicedesign \
+  --output-dir benchmark-runs/hosted-repo \
+  --report docs/benchmark-latest.md
+```
+
+Local hosted-layout directory example:
+
+```bash
+python3 scripts/benchmark.py \
+  --mode mlx \
+  --weights-dir /path/to/Irodori-TTS-MLX-500M-v2-VoiceDesign \
+  --caption "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。" \
+  --seconds 2 \
+  --num-steps 24 \
+  --case-label local-hosted-layout-voicedesign
+```
 
 ### Repeated runs and warm-cache tracking
 
