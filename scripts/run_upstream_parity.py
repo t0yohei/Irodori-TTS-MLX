@@ -330,7 +330,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("--mlx-weights is required when --run-mlx is set")
     output_dir = Path(args.output_dir).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
-    if args.run_upstream:
+    if args.run_upstream or args.run_mlx:
         output_dir = output_dir.resolve()
     upstream_wav = output_dir / f"{scenario.name}.upstream.wav"
     mlx_wav = output_dir / f"{scenario.name}.mlx.wav"
