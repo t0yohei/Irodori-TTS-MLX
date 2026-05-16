@@ -69,6 +69,8 @@ For checkpoint metadata and state_dict layout notes that will guide weight conve
 
 For optional upstream PyTorch vs MLX deterministic component parity tests, see [docs/pytorch_parity.md](docs/pytorch_parity.md).
 
+For the end-to-end upstream PyTorch vs MLX generation parity harness, deterministic fixture mode, and real-checkpoint commands, see [docs/upstream_parity_harness.md](docs/upstream_parity_harness.md).
+
 For the initial MLX rectified-flow Euler sampler and CFG behavior, see [docs/rf_sampler.md](docs/rf_sampler.md).
 
 For Apple Silicon benchmark workflow, current baseline conclusions, and the benchmark harness for upstream vs MLX bridge comparison, see [docs/benchmark.md](docs/benchmark.md).
