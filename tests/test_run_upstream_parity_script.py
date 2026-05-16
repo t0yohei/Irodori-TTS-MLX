@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import tempfile
 import unittest
 import wave
@@ -275,6 +276,33 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertEqual(report["mlx"]["intermediates"]["sampling"]["latent_shape"], [1, 24, 32])
         self.assertEqual(report["mlx"]["availability"]["state"], "passed")
         self.assertEqual(report["report_status"], "partial")
+
+    def test_wav_properties_computes_metrics_for_ieee_float_wav(self):
+        with tempfile.TemporaryDirectory() as td:
+            wav_path = Path(td) / "float.wav"
+            samples = struct.pack("<ffff", 0.0, 0.5, -0.5, 0.0)
+            fmt = struct.pack("<HHIIHH", 3, 1, 24000, 24000 * 4, 4, 32)
+            with wav_path.open("wb") as fh:
+                fh.write(b"RIFF")
+                fh.write(struct.pack("<I", 4 + (8 + len(fmt)) + (8 + len(samples))))
+                fh.write(b"WAVE")
+                fh.write(b"fmt ")
+                fh.write(struct.pack("<I", len(fmt)))
+                fh.write(fmt)
+                fh.write(b"data")
+                fh.write(struct.pack("<I", len(samples)))
+                fh.write(samples)
+
+            props = run_upstream_parity.wav_properties(wav_path)
+
+        self.assertIsNotNone(props)
+        assert props is not None
+        self.assertTrue(props["readable"])
+        self.assertEqual(props["format"], "ieee_float")
+        self.assertEqual(props["metrics_status"], "computed")
+        self.assertEqual(props["sample_width_bytes"], 4)
+        self.assertAlmostEqual(props["metrics"]["peak_abs"], 0.5)
+        self.assertAlmostEqual(props["metrics"]["rms"], 0.3535533905932738)
 
     def test_missing_requested_upstream_is_partial_unavailable_instead_of_raising(self):
         with tempfile.TemporaryDirectory() as td:

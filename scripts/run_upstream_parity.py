@@ -9,6 +9,7 @@ import math
 import os
 import platform
 import shlex
+import struct
 import subprocess
 import sys
 import time
@@ -25,6 +26,9 @@ VOICEDESIGN_CONTRAST_TEXT = "新しい音声デザインの確認です。短い
 VOICEDESIGN_CONTRAST_CAPTION = "低めの落ち着いた男性の声で、遠くから響くようにゆっくり読み上げてください。"
 DEFAULT_CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
 SCHEMA_VERSION = 1
+WAVE_FORMAT_PCM = 0x0001
+WAVE_FORMAT_IEEE_FLOAT = 0x0003
+WAVE_FORMAT_EXTENSIBLE = 0xFFFE
 
 
 @dataclass(frozen=True)
@@ -231,6 +235,53 @@ def _mlx_command(scenario: Scenario, args: argparse.Namespace, output_wav: Path,
     return command
 
 
+def _wav_format_name(format_tag: int) -> str:
+    if format_tag == WAVE_FORMAT_PCM:
+        return "pcm"
+    if format_tag == WAVE_FORMAT_IEEE_FLOAT:
+        return "ieee_float"
+    return f"unknown_{format_tag}"
+
+
+def _read_wav_chunks(path: Path) -> dict[str, Any] | None:
+    data = path.read_bytes()
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return None
+    fmt: bytes | None = None
+    payload: bytes | None = None
+    offset = 12
+    while offset + 8 <= len(data):
+        chunk_id = data[offset : offset + 4]
+        chunk_size = struct.unpack_from("<I", data, offset + 4)[0]
+        chunk_start = offset + 8
+        chunk_end = chunk_start + chunk_size
+        if chunk_end > len(data):
+            return None
+        if chunk_id == b"fmt ":
+            fmt = data[chunk_start:chunk_end]
+        elif chunk_id == b"data":
+            payload = data[chunk_start:chunk_end]
+        offset = chunk_end + (chunk_size % 2)
+    if fmt is None or payload is None or len(fmt) < 16:
+        return None
+    format_tag, channels, sample_rate, _byte_rate, block_align, bits_per_sample = struct.unpack_from("<HHIIHH", fmt, 0)
+    if format_tag == WAVE_FORMAT_EXTENSIBLE and len(fmt) >= 40:
+        format_tag = struct.unpack_from("<H", fmt, 24)[0]
+    sample_width = max(1, int(bits_per_sample + 7) // 8)
+    frames = len(payload) // block_align if block_align else 0
+    return {
+        "format_tag": int(format_tag),
+        "format": _wav_format_name(int(format_tag)),
+        "channels": int(channels),
+        "sample_rate": int(sample_rate),
+        "sample_width": int(sample_width),
+        "bits_per_sample": int(bits_per_sample),
+        "block_align": int(block_align),
+        "frames": int(frames),
+        "data": payload[: frames * block_align] if block_align else b"",
+    }
+
+
 def _pcm_frame_values(raw: bytes, *, sample_width: int, channels: int) -> list[float]:
     if not raw:
         return []
@@ -261,6 +312,32 @@ def _pcm_frame_values(raw: bytes, *, sample_width: int, channels: int) -> list[f
             channel_values.append(max(-1.0, min(1.0, float(value) / scale)))
         values.append(mean(channel_values))
     return values
+
+
+def _float_frame_values(raw: bytes, *, sample_width: int, channels: int) -> list[float]:
+    if sample_width not in {4, 8}:
+        return []
+    values: list[float] = []
+    frame_bytes = int(sample_width) * int(channels)
+    if frame_bytes <= 0:
+        return values
+    fmt = "<f" if sample_width == 4 else "<d"
+    for offset in range(0, len(raw) - frame_bytes + 1, frame_bytes):
+        channel_values: list[float] = []
+        for channel in range(channels):
+            start = offset + channel * sample_width
+            value = float(struct.unpack(fmt, raw[start : start + sample_width])[0])
+            channel_values.append(value if math.isfinite(value) else 0.0)
+        values.append(mean(channel_values))
+    return values
+
+
+def _wav_frame_values(raw: bytes, *, sample_width: int, channels: int, format_tag: int) -> list[float]:
+    if format_tag == WAVE_FORMAT_PCM:
+        return _pcm_frame_values(raw, sample_width=sample_width, channels=channels)
+    if format_tag == WAVE_FORMAT_IEEE_FLOAT:
+        return _float_frame_values(raw, sample_width=sample_width, channels=channels)
+    return []
 
 
 def _audio_metrics(samples: list[float], *, sample_rate: int, tail_seconds: float = 0.25) -> dict[str, Any]:
@@ -304,6 +381,30 @@ def _audio_metrics(samples: list[float], *, sample_rate: int, tail_seconds: floa
 def wav_properties(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
+    parsed = _read_wav_chunks(path)
+    if parsed is not None:
+        samples = _wav_frame_values(
+            parsed["data"],
+            sample_width=parsed["sample_width"],
+            channels=parsed["channels"],
+            format_tag=parsed["format_tag"],
+        )
+        metrics = _audio_metrics(samples, sample_rate=parsed["sample_rate"]) if samples else None
+        return {
+            "path": str(path),
+            "bytes": path.stat().st_size,
+            "readable": True,
+            "format": parsed["format"],
+            "format_tag": parsed["format_tag"],
+            "sample_rate": parsed["sample_rate"],
+            "samples": parsed["frames"],
+            "channels": parsed["channels"],
+            "sample_width_bytes": parsed["sample_width"],
+            "bits_per_sample": parsed["bits_per_sample"],
+            "duration_seconds": parsed["frames"] / parsed["sample_rate"] if parsed["sample_rate"] else None,
+            "metrics": metrics,
+            "metrics_status": "computed" if metrics is not None else "unsupported_format",
+        }
     try:
         with wave.open(str(path), "rb") as fh:
             frames = fh.getnframes()
