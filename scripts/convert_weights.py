@@ -29,7 +29,16 @@ except ImportError:  # pragma: no cover - fallback for unusual invocation paths
     from inspect_checkpoint import InspectionError, inspect_local_safetensors
 
 SUPPORTED_SOURCE_SUFFIX = ".safetensors"
-FLOAT32_NAMES = {"F32", "float32", "torch.float32", "dtype('float32')"}
+SUPPORTED_FLOAT_NAMES = {
+    "F16",
+    "F32",
+    "float16",
+    "float32",
+    "torch.float16",
+    "torch.float32",
+    "dtype('float16')",
+    "dtype('float32')",
+}
 CHECKPOINT_FAMILY_BASE = "base_v2"
 CHECKPOINT_FAMILY_VOICEDESIGN = "voicedesign"
 CHECKPOINT_FAMILY_V3 = "v3"
@@ -467,8 +476,8 @@ def validate_records(
             shape_mismatches.append(
                 {"key": key, "expected": list(expected_shape), "actual": list(record.shape)}
             )
-        if dtype_name(record.dtype) not in FLOAT32_NAMES:
-            dtype_mismatches.append({"key": key, "expected": "float32/F32", "actual": record.dtype})
+        if dtype_name(record.dtype) not in SUPPORTED_FLOAT_NAMES:
+            dtype_mismatches.append({"key": key, "expected": "float16/F16 or float32/F32", "actual": record.dtype})
 
     config_errors = list(family_errors)
     if family == CHECKPOINT_FAMILY_BASE:
