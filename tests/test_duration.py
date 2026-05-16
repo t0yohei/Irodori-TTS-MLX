@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 try:
-    from irodori_mlx.duration import build_duration_features
+    from irodori_mlx.duration import build_duration_features, estimate_fallback_duration_seconds
 
     HAS_MLX = True
 except Exception as exc:  # pragma: no cover - exercised only without MLX.
@@ -18,6 +18,25 @@ def require_mlx(test_func):
 
 
 class DurationFeatureTests(unittest.TestCase):
+    def test_estimate_fallback_duration_short_prompt_is_below_old_fixed_five_seconds(self):
+        seconds = estimate_fallback_duration_seconds("こんにちは。")
+
+        self.assertGreaterEqual(seconds, 1.6)
+        self.assertLess(seconds, 5.0)
+
+    def test_estimate_fallback_duration_smoke_text_is_longer_than_old_fixed_five_seconds(self):
+        seconds = estimate_fallback_duration_seconds(
+            "こんにちは。私はいろどりです。今日は音声生成のテストをしています。"
+        )
+
+        self.assertGreater(seconds, 5.0)
+        self.assertLess(seconds, 8.0)
+
+    def test_estimate_fallback_duration_clamps_very_long_prompts(self):
+        seconds = estimate_fallback_duration_seconds("今日は音声生成のテストです。" * 20)
+
+        self.assertEqual(seconds, 10.0)
+
     @require_mlx
     def test_build_duration_features_matches_expected_aux_dim(self):
         features = build_duration_features(

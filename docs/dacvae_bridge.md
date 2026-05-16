@@ -175,7 +175,8 @@ The current recommendation is to keep `persistent` as the normal runtime mode.
 - `--seconds` is an explicit manual override.
 - When `--seconds` is omitted and the loaded `ModelConfig` enables `use_duration_predictor`, the runtime predicts latent length from the current text/reference conditions.
 - `--duration-scale` scales only that predicted length; it has no effect when `--seconds` is set.
-- When `--seconds` is omitted for checkpoints without the duration predictor, the MLX runtime keeps the existing fixed 5-second fallback instead of changing older checkpoint behavior.
+- When `--seconds` is omitted for checkpoints without the duration predictor, the MLX runtime estimates a bounded fallback from normalized text length instead of using a fixed 5 seconds. Short prompts can resolve below 5 seconds; moderately longer VoiceDesign prompts get more room without allocating a very long tail.
+- If a generated sample still sounds clipped or develops a buzzer-like tail, pass `--seconds` explicitly. Manual `--seconds` remains the highest-priority duration rule.
 - Hosted v3 validation (`scripts/run_v3_generation_ci.py` / `.github/workflows/v3-hosted-generation.yml`) intentionally omits `--seconds` and asserts `duration_mode="predicted"` in the JSON payload so the first-class v3 semantics stay exercised.
 
 JSON output now includes `duration_mode`, `requested_seconds`, and `resolved_seconds` so automation can tell which rule was used.

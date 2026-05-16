@@ -14,7 +14,7 @@ from typing import Iterable
 import mlx.core as mx
 
 from .config import ModelConfig
-from .duration import build_duration_features
+from .duration import build_duration_features, estimate_fallback_duration_seconds
 from .layers import unpatch_latents
 from .model import TextToLatentRFDiT
 from .sampling import sample_euler_rf_cfg
@@ -642,12 +642,12 @@ class MLXDACVAERuntime:
                 f"frames={pred_frames:.1f}, scale={float(request.duration_scale):.3f}, seconds={resolved_seconds:.3f}"
             )
         else:
-            fallback_seconds = 5.0
+            fallback_seconds = estimate_fallback_duration_seconds(normalized_text)
             target_samples = int(fallback_seconds * float(self.bridge.sample_rate))
             latent_steps = max(1, (target_samples + self.bridge.hop_length - 1) // self.bridge.hop_length)
             resolved_seconds = float(target_samples) / float(self.bridge.sample_rate)
             messages.append(
-                "duration predictor unavailable; falling back to fixed duration "
+                "duration predictor unavailable; estimated fallback duration from text length: "
                 f"{resolved_seconds:.3f}s"
             )
         patched_steps = (latent_steps + int(self.config.model_config.latent_patch_size) - 1) // int(
