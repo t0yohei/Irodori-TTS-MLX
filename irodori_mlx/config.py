@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+CHECKPOINT_FAMILY_BASE_V2 = "base_v2"
+CHECKPOINT_FAMILY_VOICEDESIGN_V2 = "voicedesign"
+CHECKPOINT_FAMILY_V3 = "v3"
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -104,6 +108,38 @@ class ModelConfig:
     @property
     def use_speaker_condition(self) -> bool:
         return not bool(self.use_caption_condition)
+
+    @property
+    def checkpoint_family(self) -> str:
+        if self.use_caption_condition:
+            return CHECKPOINT_FAMILY_VOICEDESIGN_V2
+        if self.use_duration_predictor:
+            return CHECKPOINT_FAMILY_V3
+        return CHECKPOINT_FAMILY_BASE_V2
+
+    @property
+    def checkpoint_family_label(self) -> str:
+        labels = {
+            CHECKPOINT_FAMILY_BASE_V2: "base v2 speaker/reference",
+            CHECKPOINT_FAMILY_VOICEDESIGN_V2: "VoiceDesign v2 caption",
+            CHECKPOINT_FAMILY_V3: "v3 speaker/reference duration-predictor",
+        }
+        return labels[self.checkpoint_family]
+
+    @property
+    def checkpoint_capabilities(self) -> tuple[str, ...]:
+        capabilities = ["text"]
+        if self.use_caption_condition:
+            capabilities.append("caption")
+            capabilities.append("no-reference")
+        else:
+            capabilities.append("speaker-reference")
+            capabilities.append("no-reference")
+        if self.use_duration_predictor:
+            capabilities.append("predicted-duration")
+        else:
+            capabilities.append("manual-or-fallback-duration")
+        return tuple(capabilities)
 
     @property
     def text_mlp_ratio_resolved(self) -> float:
