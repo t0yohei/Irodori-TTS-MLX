@@ -17,12 +17,30 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from irodori_mlx.runtime import (  # noqa: E402
-    DACVAEBridgeConfig,
-    MLXDACVAEBridge,
-    PyTorchDACVAEBridge,
-    _load_audio_numpy,
-)
+DACVAEBridgeConfig: Any = None
+MLXDACVAEBridge: Any = None
+PyTorchDACVAEBridge: Any = None
+_load_audio_numpy: Any = None
+
+
+def _load_runtime_decode_dependencies() -> None:
+    global DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy
+    if all(
+        dependency is not None
+        for dependency in (DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy)
+    ):
+        return
+    from irodori_mlx.runtime import (  # noqa: E402
+        DACVAEBridgeConfig as runtime_config,
+        MLXDACVAEBridge as mlx_bridge,
+        PyTorchDACVAEBridge as pytorch_bridge,
+        _load_audio_numpy as runtime_load_audio_numpy,
+    )
+
+    DACVAEBridgeConfig = runtime_config
+    MLXDACVAEBridge = mlx_bridge
+    PyTorchDACVAEBridge = pytorch_bridge
+    _load_audio_numpy = runtime_load_audio_numpy
 
 
 @dataclass(frozen=True)
@@ -181,6 +199,7 @@ def compare_audio(
 
 
 def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
+    _load_runtime_decode_dependencies()
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     latents = _load_latents(args.latents_npy)
