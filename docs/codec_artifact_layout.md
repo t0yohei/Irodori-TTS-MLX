@@ -33,6 +33,7 @@ dacvae-codec.npz
 |-- decode_bias              # required by current MLX decode fixture path
 |-- encode_basis             # required only for experimental full mlx mode
 |-- encode_bias              # required only for experimental full mlx mode
+|-- semantic_encoder_manifest_json  # required by a future real Semantic-DACVAE encoder artifact
 `-- metadata_json            # optional scalar JSON string with provenance
 ```
 
@@ -42,6 +43,35 @@ routing, and metadata reporting without claiming Semantic-DACVAE acoustic
 parity. A real converted codec artifact must replace the fixture tensors with
 the full DACVAE encoder, quantizer projections, decoder, and watermark-bypass
 metadata described in [dacvae_architecture.md](dacvae_architecture.md).
+
+`metadata_json.artifact_kind` distinguishes this temporary runtime fixture from
+a future real conversion. The current writer/fixtures use
+`"linear-fixture"`. A real Semantic-DACVAE artifact must use
+`"semantic-dacvae"` and include `semantic_encoder_manifest_json` alongside the
+complete encoder, `quantizer.in_proj`, `quantizer.out_proj`, decoder, and
+watermark-bypass tensors. `irodori_mlx.runtime.inspect_mlx_codec_artifact()`
+reports `artifact_kind` and `is_semantic_dacvae` so parity scripts and hosted
+artifact checks can reject fixture artifacts when real codec evidence is
+required.
+
+## Semantic-DACVAE encoder conversion status
+
+Issue [#154](https://github.com/t0yohei/Irodori-TTS-MLX/issues/154) adds the
+explicit conversion entrypoint for the real encoder path:
+
+```bash
+irodori-tts-convert-dacvae-codec /path/to/weights.pth /path/to/dacvae-codec.npz \
+  --inspect-only \
+  --report-json /tmp/dacvae-codec-conversion-blocker.json \
+  --json
+```
+
+The command loads and inspects the local `weights.pth` state_dict, verifies
+whether the expected encoder and `quantizer.in_proj` logical groups are present,
+and writes a machine-readable blocker report. It intentionally does not write a
+`dacvae-codec.npz` while the runtime lacks MLX implementations of the real
+DACVAE conv/residual/VAEBottleneck modules. Running without `--inspect-only`
+returns a blocked conversion status instead of emitting a misleading artifact.
 
 ## Hosted companion metadata
 
@@ -126,6 +156,7 @@ Every real codec artifact, local or hosted, must record:
 - upstream codec repo id, source file, and exact revision;
 - `dacvae` package revision and converter commit/tag;
 - runtime constants (`sample_rate`, `hop_length`, `latent_dim`);
+- `artifact_kind: "semantic-dacvae"` and `semantic_encoder_manifest_json`;
 - whether encode, decode, or both are present;
 - parity evidence location for decode and encode when available;
 - license-review status and review reference;

@@ -67,8 +67,10 @@ class DACVAECodecContractDocTests(unittest.TestCase):
 
         blocker_text = "\n".join(self.contract["unknowns_and_blockers"])
         self.assertIn("weights.pth", blocker_text)
+        self.assertIn("scripts/convert_dacvae_codec.py", blocker_text)
         self.assertIn("fixed waveform/latent fixtures", blocker_text)
         self.assertIn("Redistribution", blocker_text)
+        self.assertIn("https://github.com/t0yohei/Irodori-TTS-MLX/issues/154", self.contract["implementation_consumers"])
 
 
 if __name__ == "__main__":

@@ -63,6 +63,7 @@ Issues = "https://github.com/t0yohei/Irodori-TTS-MLX/issues"
 [project.scripts]
 irodori-tts-generate = "scripts.generate_wav:cli_main"
 irodori-tts-convert = "scripts.convert_weights:cli_main"
+irodori-tts-convert-dacvae-codec = "scripts.convert_dacvae_codec:cli_main"
 irodori-tts-inspect = "scripts.inspect_checkpoint:cli_main"
 irodori-tts-adapt-mlx-audio = "scripts.adapt_mlx_audio:cli_main"
 

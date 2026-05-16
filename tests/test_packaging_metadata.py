@@ -37,6 +37,7 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn('[project.scripts]', pyproject)
         self.assertIn('irodori-tts-generate = "scripts.generate_wav:cli_main"', pyproject)
         self.assertIn('irodori-tts-convert = "scripts.convert_weights:cli_main"', pyproject)
+        self.assertIn('irodori-tts-convert-dacvae-codec = "scripts.convert_dacvae_codec:cli_main"', pyproject)
         self.assertIn('irodori-tts-inspect = "scripts.inspect_checkpoint:cli_main"', pyproject)
 
     def test_packaging_doc_references_editable_install_targets(self):
@@ -69,6 +70,7 @@ class PackagingMetadataTests(unittest.TestCase):
             for command, expected in (
                 ("irodori-tts-generate", "Generate a WAV"),
                 ("irodori-tts-convert", "Convert a local Irodori-TTS safetensors checkpoint"),
+                ("irodori-tts-convert-dacvae-codec", "Semantic-DACVAE weights.pth"),
                 ("irodori-tts-inspect", "Inspect a local safetensors checkpoint"),
             ):
                 script = bin_dir / command

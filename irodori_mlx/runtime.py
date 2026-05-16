@@ -492,6 +492,9 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
             files = set(archive.files)
             has_decode = {"decode_basis", "decode_bias"}.issubset(files)
             has_encode = {"encode_basis", "encode_bias"}.issubset(files)
+            artifact_kind = str(metadata.get("artifact_kind") or "linear-fixture")
+            if has_encode and "semantic_encoder_manifest_json" in files:
+                artifact_kind = "semantic-dacvae"
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"MLX DACVAE codec artifact was not found: {codec_path}") from exc
     except KeyError as exc:
@@ -506,6 +509,8 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
         "latent_dim": latent_dim,
         "has_mlx_decode": has_decode,
         "has_mlx_encode": has_encode,
+        "artifact_kind": artifact_kind,
+        "is_semantic_dacvae": artifact_kind == "semantic-dacvae",
         "metadata": metadata,
     }
 
