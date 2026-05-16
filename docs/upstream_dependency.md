@@ -44,6 +44,12 @@ Both methods must expose this import path:
 from irodori_tts.codec import DACVAECodec
 ```
 
+Use a current upstream checkout whose `DACVAECodec.load` accepts the codec
+keyword arguments used by this runtime, including `enable_watermark` and
+`normalize_db`. When watermarking is disabled, the bridge can still retry older
+`DACVAECodec.load` signatures that do not expose `enable_watermark`; requesting
+watermarking requires an upstream checkout with that keyword.
+
 ## Responsibility split
 
 | Area | Owner in v0.1 | Notes |
@@ -65,6 +71,11 @@ The PyTorch DACVAE bridge currently reuses upstream irodori_tts.codec.DACVAECode
 ```
 
 That message is expected. Fix the environment by either running `python -m pip install -e /path/to/Irodori-TTS` in the active venv or exporting `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}` before starting `scripts/generate_wav.py`, `scripts/benchmark.py --mode mlx`, or any code that constructs `PyTorchDACVAEBridge` / `MLXDACVAERuntime`.
+
+If runtime construction fails with a message about `DACVAECodec.load` keyword
+arguments, update the upstream checkout installed in the active environment. The
+MLX bridge only retries the older no-`enable_watermark` signature when
+watermarking is disabled.
 
 ## What this does not claim
 

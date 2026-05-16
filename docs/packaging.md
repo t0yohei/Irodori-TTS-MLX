@@ -112,7 +112,7 @@ irodori-tts-generate \
   --codec-device cpu
 ```
 
-The legacy script path is still supported for repository checkouts:
+For repository development, invoke scripts directly from a checkout:
 
 ```bash
 python scripts/generate_wav.py --help

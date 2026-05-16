@@ -7,7 +7,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .config import ModelConfig
 
@@ -23,6 +23,13 @@ SUPPORTED_SCHEMA_VERSION = 1
 SUPPORTED_FORMAT = "irodori-tts-mlx-weights"
 SUPPORTED_FORMAT_VERSION = "0.2"
 SUPPORTED_FAMILIES = {"base_v2", "voicedesign", "v3"}
+HOSTED_WEIGHTS_ALLOW_PATTERNS = (
+    "README.md",
+    "LICENSE.md",
+    MANIFEST_NAME,
+)
+MANIFEST_GLOB_METACHARACTERS = frozenset("*?[]")
+
 
 
 class HostedWeightsError(ValueError):
@@ -339,43 +346,8 @@ def resolve_weights_layout_source(
         return validate_weights_layout(snapshot, source=source, source_kind="repo")
     return None
 
-# Compatibility helpers kept for the hosted-layout smoke/contract tests added by #84.
-# The runtime path above uses validate_weights_layout/resolve_weights_layout_source;
-# these wrappers intentionally remain metadata-oriented and avoid loading ModelConfig.
-from typing import Callable, Mapping, Union
-
-HOSTED_WEIGHTS_MANIFEST = MANIFEST_NAME
-HOSTED_WEIGHTS_REQUIRED_FILES = (
-    "manifest",
-    "weights",
-    "model_config",
-    "tokenizer_config",
-    "conversion_metadata",
-    "checksums",
-)
-HOSTED_WEIGHTS_ALLOW_PATTERNS = (
-    "README.md",
-    "LICENSE.md",
-    HOSTED_WEIGHTS_MANIFEST,
-)
-HOSTED_WEIGHTS_GLOB_METACHARACTERS = frozenset("*?[]")
-SnapshotDownloader = Callable[[str], Union[str, Path]]
-
-
-@dataclass(frozen=True)
-class WeightsSourceResolution:
-    """Resolved runtime inputs for either hosted-layout or direct local weights."""
-
-    weights_path: Path
-    model_config_path: Path | None
-    layout_dir: Path | None
-    source_label: str
-    source_kind: str
-    manifest: Mapping[str, Any] | None = None
-
-
 def _manifest_relative_path(entry: str, *, label: str) -> Path:
-    if any(char in entry for char in HOSTED_WEIGHTS_GLOB_METACHARACTERS):
+    if any(char in entry for char in MANIFEST_GLOB_METACHARACTERS):
         raise HostedWeightsError(f"{label} manifest file path must not contain glob metacharacters: {entry}")
     relative = Path(entry)
     if relative.is_absolute() or ".." in relative.parts:
@@ -393,175 +365,12 @@ def _hosted_weights_allow_patterns_from_manifest(manifest: Mapping[str, Any], *,
         raise HostedWeightsError(f"{label} manifest must include a files object")
 
     normalized_files = dict(files)
-    normalized_files["manifest"] = HOSTED_WEIGHTS_MANIFEST
+    normalized_files["manifest"] = MANIFEST_NAME
     allow_patterns = [*HOSTED_WEIGHTS_ALLOW_PATTERNS]
-    for key in HOSTED_WEIGHTS_REQUIRED_FILES:
+    for key in ("manifest", *sorted(REQUIRED_MANIFEST_FILES)):
         entry = normalized_files.get(key)
         if not isinstance(entry, str) or not entry.strip():
             raise HostedWeightsError(f"{label} manifest is missing file entries: {key}")
         _layout_file_path(Path("."), entry, label=label)
         allow_patterns.append(entry)
     return list(dict.fromkeys(allow_patterns))
-
-
-def _parse_sha256sum_lines(payload: str, *, label: str) -> dict[str, str]:
-    entries: dict[str, str] = {}
-    for line_number, raw_line in enumerate(payload.splitlines(), start=1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split(maxsplit=1)
-        if len(parts) != 2 or len(parts[0]) != 64:
-            raise HostedWeightsError(f"{label} checksums file has invalid sha256 entry on line {line_number}")
-        digest, filename = parts
-        if not all(char in "0123456789abcdefABCDEF" for char in digest):
-            raise HostedWeightsError(f"{label} checksums file has invalid sha256 entry on line {line_number}")
-        entries[filename.lstrip("*")] = digest.lower()
-    return entries
-
-
-def default_huggingface_snapshot_download(repo_id: str) -> Path:
-    """Download a hosted weights snapshot without requiring the dependency at import time."""
-
-    try:
-        from huggingface_hub import HfApi, snapshot_download
-    except ImportError as exc:  # pragma: no cover - depends on optional user setup.
-        raise HostedWeightsError(
-            "Hosted pre-converted MLX weights by repo id require huggingface_hub. Install it, use a local "
-            "hosted-layout directory, or fall back to locally converted .npz weights."
-        ) from exc
-    try:
-        repo_info = HfApi().model_info(repo_id=repo_id)
-        revision = repo_info.sha
-        manifest_snapshot = Path(
-            snapshot_download(
-                repo_id=repo_id,
-                revision=revision,
-                allow_patterns=list(HOSTED_WEIGHTS_ALLOW_PATTERNS),
-            )
-        )
-        manifest = _read_json_object(manifest_snapshot / HOSTED_WEIGHTS_MANIFEST, label=f"hosted repo {repo_id!r}")
-        license_review = _require_mapping(manifest, "license_review", label=f"hosted repo {repo_id!r} manifest")
-        if license_review.get("status") != "approved":
-            raise HostedWeightsError("hosted weights repos require manifest license_review.status='approved'")
-        allow_patterns = _hosted_weights_allow_patterns_from_manifest(manifest, label=f"hosted repo {repo_id!r}")
-        return Path(snapshot_download(repo_id=repo_id, revision=revision, allow_patterns=allow_patterns))
-    except Exception as exc:
-        raise HostedWeightsError(
-            f"Could not resolve hosted pre-converted MLX weights repo {repo_id!r}: {exc}. "
-            "Check the repo id, network/cache access, and license approval; fallback to locally converted .npz "
-            "weights if needed."
-        ) from exc
-
-
-def validate_hosted_weights_layout(
-    layout_dir: str | Path,
-    *,
-    source_label: str | None = None,
-    require_approved_license: bool = False,
-) -> WeightsSourceResolution:
-    """Validate the #84 hosted/pre-converted layout contract without importing MLX runtime deps."""
-
-    root = Path(layout_dir).expanduser()
-    label = source_label or str(root)
-    manifest = _read_json_object(root / HOSTED_WEIGHTS_MANIFEST, label="hosted weights manifest")
-    if manifest.get("schema_version") != 1:
-        raise HostedWeightsError(f"{label} has unsupported {HOSTED_WEIGHTS_MANIFEST} schema_version; expected 1")
-    if manifest.get("format") != "irodori-tts-mlx-weights":
-        raise HostedWeightsError(f"{label} is not an irodori-tts-mlx pre-converted weights layout")
-    if manifest.get("format_version") != "0.2":
-        raise HostedWeightsError(f"{label} has unsupported weights format_version {manifest.get('format_version')!r}; expected '0.2'")
-
-    files = manifest.get("files")
-    if not isinstance(files, dict):
-        raise HostedWeightsError(f"{label} manifest must include a files object")
-    normalized_files = dict(files)
-    normalized_files["manifest"] = HOSTED_WEIGHTS_MANIFEST
-
-    missing_entries = [
-        key
-        for key in HOSTED_WEIGHTS_REQUIRED_FILES
-        if not isinstance(normalized_files.get(key), str) or not normalized_files[key].strip()
-    ]
-    if missing_entries:
-        raise HostedWeightsError(f"{label} manifest is missing file entries: {', '.join(missing_entries)}")
-
-    layout_files = {key: _layout_file_path(root, str(normalized_files[key]), label=label) for key in HOSTED_WEIGHTS_REQUIRED_FILES}
-    missing_files = [str(normalized_files[key]) for key in HOSTED_WEIGHTS_REQUIRED_FILES if not layout_files[key].is_file()]
-    if missing_files:
-        raise HostedWeightsError(
-            f"{label} pre-converted weights layout is missing required files: {', '.join(missing_files)}. "
-            "Fallback: run local conversion and pass the converted .npz weights path."
-        )
-
-    runtime = manifest.get("runtime")
-    if not isinstance(runtime, dict):
-        raise HostedWeightsError(f"{label} manifest must include runtime metadata")
-    license_review = manifest.get("license_review")
-    if not isinstance(license_review, dict):
-        raise HostedWeightsError(f"{label} manifest must include license_review metadata")
-    status = license_review.get("status")
-    if require_approved_license and status != "approved":
-        raise HostedWeightsError(
-            f"{label} hosted weights license_review.status is {status!r}, expected 'approved'. "
-            "Do not use unpublished or unapproved hosted weights; fallback to locally converted .npz weights."
-        )
-
-    checksums = _parse_sha256sum_lines(layout_files["checksums"].read_text(encoding="utf-8"), label=label)
-    checksum_required = [key for key in HOSTED_WEIGHTS_REQUIRED_FILES if key != "checksums"]
-    not_listed = [str(normalized_files[key]) for key in checksum_required if str(normalized_files[key]) not in checksums]
-    if not_listed:
-        raise HostedWeightsError(f"{label} checksums file does not list required files: {', '.join(not_listed)}")
-    mismatched = [
-        str(normalized_files[key])
-        for key in checksum_required
-        if checksums[str(normalized_files[key])] != _sha256_file(layout_files[key])
-    ]
-    if mismatched:
-        raise HostedWeightsError(f"{label} checksums file has mismatched sha256 digests: {', '.join(mismatched)}")
-
-    return WeightsSourceResolution(
-        weights_path=layout_files["weights"],
-        model_config_path=layout_files["model_config"],
-        layout_dir=root,
-        source_label=label,
-        source_kind="hosted-layout",
-        manifest=manifest,
-    )
-
-
-def resolve_weights_source(
-    *,
-    weights: str | Path | None = None,
-    weights_dir: str | Path | None = None,
-    weights_repo: str | None = None,
-    snapshot_downloader: SnapshotDownloader | None = None,
-) -> WeightsSourceResolution:
-    """Resolve exactly one #84 smoke-test source: direct local .npz, local hosted layout, or repo id."""
-
-    selected = [value for value in (weights, weights_dir, weights_repo) if value is not None and str(value).strip()]
-    if not selected:
-        raise HostedWeightsError("choose one weights source: local .npz, hosted-layout directory, or hosted repo id")
-    if len(selected) > 1:
-        raise HostedWeightsError("choose only one weights source; local .npz remains the fallback path")
-
-    if weights is not None and str(weights).strip():
-        return WeightsSourceResolution(
-            weights_path=Path(weights).expanduser(),
-            model_config_path=None,
-            layout_dir=None,
-            source_label="local converted .npz fallback",
-            source_kind="local-npz",
-            manifest=None,
-        )
-    if weights_dir is not None and str(weights_dir).strip():
-        return validate_hosted_weights_layout(weights_dir, source_label="local hosted-layout directory")
-
-    assert weights_repo is not None
-    downloader = snapshot_downloader or default_huggingface_snapshot_download
-    snapshot = Path(downloader(str(weights_repo))).expanduser()
-    return validate_hosted_weights_layout(
-        snapshot,
-        source_label=f"hosted repo {weights_repo!r}",
-        require_approved_license=True,
-    )

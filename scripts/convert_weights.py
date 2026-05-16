@@ -309,10 +309,6 @@ def load_checkpoint(path: Path, *, load_arrays: bool) -> tuple[dict[str, Any] | 
     return config, load_safetensors_arrays(path)
 
 
-def _has_prefixed_key(config: Mapping[str, Any] | None, prefix: str) -> bool:
-    return bool(config) and any(str(key).startswith(prefix) for key in config)
-
-
 def _has_caption_tensors(records: Mapping[str, TensorRecord]) -> bool:
     return any(name.startswith(CAPTION_PREFIXES) or any(fragment in name for fragment in CAPTION_FRAGMENTS) for name in records)
 
@@ -335,7 +331,7 @@ def detect_checkpoint_family(
         return None, errors
 
     caption_config = bool(config.get("use_caption_condition") is True)
-    speaker_config = bool(config.get("use_speaker_condition") is True or _has_prefixed_key(config, "speaker_"))
+    speaker_config = bool(config.get("use_speaker_condition") is True)
     duration_config = bool(config.get("use_duration_predictor") is True)
     caption_tensors = _has_caption_tensors(records)
     speaker_tensors = _has_speaker_tensors(records)
@@ -353,8 +349,6 @@ def detect_checkpoint_family(
         return None, errors
 
     if caption_config or caption_tensors:
-        # Public VoiceDesign checkpoints may still carry legacy speaker_* config
-        # fields while using a purely caption-conditioned tensor layout.
         return CHECKPOINT_FAMILY_VOICEDESIGN, errors
 
     if duration_config or duration_tensors:
@@ -418,9 +412,8 @@ def validate_voicedesign_config(config: dict[str, Any] | None) -> list[str]:
             errors.append(f"config {key}: expected {expected!r}, got {config.get(key)!r}")
     if config.get("use_caption_condition") is not True:
         errors.append("VoiceDesign checkpoints must set use_caption_condition=true")
-    # Some public VoiceDesign checkpoints still carry legacy speaker_* metadata
-    # even though the tensor layout is caption-conditioned. Treat those config
-    # keys as tolerated metadata noise rather than a hard validation failure.
+    if config.get("use_speaker_condition") is True or any(key.startswith("speaker_") for key in config):
+        errors.append("VoiceDesign checkpoints must not include speaker conditioning metadata")
     return errors
 
 

@@ -176,7 +176,9 @@ class SamplingTests(unittest.TestCase):
             sequence_length=3,
             num_steps=1,
             seed=123,
-            cfg_scale=0.0,
+            cfg_scale_text=0.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
             use_context_kv_cache=True,
         )
         out1 = sample_euler_rf_cfg(**kwargs)
@@ -227,7 +229,9 @@ class SamplingTests(unittest.TestCase):
             caption_mask=mx.array([[True]]),
             sequence_length=1,
             num_steps=1,
-            cfg_scale=2.0,
+            cfg_scale_text=2.0,
+            cfg_scale_speaker=2.0,
+            cfg_scale_caption=2.0,
             cfg_guidance_mode="joint",
             seed=5,
             use_context_kv_cache=False,
@@ -346,7 +350,9 @@ class SamplingTests(unittest.TestCase):
             ref_mask=mx.array([[True, True]]),
             sequence_length=2,
             num_steps=2,
-            cfg_scale=0.0,
+            cfg_scale_text=0.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
             seed=11,
         )
         self.assertEqual(out.shape, (1, 2, 4))

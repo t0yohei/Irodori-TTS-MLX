@@ -171,7 +171,7 @@ irodori-tts-adapt-mlx-audio --help
 python scripts/benchmark.py --self-test
 ```
 
-The legacy `python scripts/*.py` entry points still work from a checkout, but installed console scripts are the preferred user-facing commands.
+Use the installed console scripts for normal workflows. Direct `python scripts/*.py` invocation is reserved for repository development and benchmark maintenance.
 
 ## Documentation Map
 

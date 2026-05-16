@@ -34,7 +34,7 @@ The current user-facing entry points are:
 - [dacvae_architecture.md](dacvae_architecture.md): DACVAE architecture and checkpoint research notes.
 - [dacvae_decode_parity.md](dacvae_decode_parity.md): decode-only parity evidence.
 - [dacvae_encode_parity.md](dacvae_encode_parity.md): encode parity evidence.
-- [mlx_audio_dacvae_contract.md](mlx_audio_dacvae_contract.md): mlx-audio DACVAE layout comparison and selected compatibility path.
+- [mlx_audio_dacvae_contract.md](mlx_audio_dacvae_contract.md): mlx-audio DACVAE layout comparison and selected adapter path.
 
 ## Validation And Benchmarks
 
