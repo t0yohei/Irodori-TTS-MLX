@@ -145,7 +145,7 @@ FLOAT_KEYS = {
 NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
     "preset": {"fast", "balanced", "quality"},
-    "codec_runtime_mode": {"persistent", "subprocess", "mlx"},
+    "codec_runtime_mode": {"persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
 }
 
@@ -362,8 +362,11 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument(
         "--codec-runtime-mode",
         default=_default(config, "codec_runtime_mode", "persistent"),
-        choices=("persistent", "subprocess", "mlx"),
-        help="How to host DACVAE encode/decode: PyTorch in-process, PyTorch subprocesses, or a converted local MLX codec artifact.",
+        choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
+        help=(
+            "How to host DACVAE encode/decode: PyTorch in-process, PyTorch subprocesses, a converted local "
+            "MLX fixture codec, or MLX decode-only with PyTorch encode fallback."
+        ),
     )
     _add_configurable_bool(
         parser,
@@ -561,6 +564,9 @@ def _result_to_dict(result: Any) -> dict[str, Any]:
         "duration_mode": getattr(result, "duration_mode", None),
         "checkpoint_family": getattr(result, "checkpoint_family", None),
         "checkpoint_capabilities": list(getattr(result, "checkpoint_capabilities", ())),
+        "codec_backend": getattr(result, "codec_backend", None),
+        "codec_encode_backend": getattr(result, "codec_encode_backend", None),
+        "codec_decode_backend": getattr(result, "codec_decode_backend", None),
         "requested_seconds": getattr(result, "requested_seconds", None),
         "resolved_seconds": getattr(result, "resolved_seconds", None),
         "timings_ms": result.timings_ms,
