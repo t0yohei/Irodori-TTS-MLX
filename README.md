@@ -70,6 +70,8 @@ The bridge runtime needs upstream `irodori_tts.codec.DACVAECodec` for the defaul
 
 The shortest current CLI path is an approved hosted/pre-converted weights layout loaded with `--weights-repo` or the same layout from disk with `--weights-dir`. Use only repositories whose `irodori_mlx_manifest.json` has `license_review.status: "approved"` and whose README/model card records provenance for the exact upstream checkpoint revision.
 
+Published RF-DiT artifact status is tracked in [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md). VoiceDesign currently has an approved public hosted artifact; v3 remains on the local conversion fallback until an approved public repo and immutable revision are published.
+
 VoiceDesign example:
 
 ```bash
@@ -84,12 +86,13 @@ irodori-tts-generate \
   --json
 ```
 
-v3 no-reference smoke example:
+v3 local fallback smoke example:
 
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3.wav \
@@ -101,7 +104,8 @@ This path still uses the upstream PyTorch DACVAE bridge unless you explicitly ch
 
 ```bash
 irodori-tts-generate \
-  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3-mlx-decode.wav \
@@ -193,6 +197,7 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 - DACVAE bridge and generation CLI: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
 - v0.2 hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
 - Hosted weights usage and local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
+- Hosted RF-DiT artifact publication status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
 - mlx-audio interop and adapter boundary: [docs/mlx_audio_interop.md](docs/mlx_audio_interop.md)
 - DACVAE artifact layout: [docs/codec_artifact_layout.md](docs/codec_artifact_layout.md)
 - Checkpoint support matrix: [docs/checkpoint_support.md](docs/checkpoint_support.md)

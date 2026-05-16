@@ -70,6 +70,8 @@ default の `persistent` / `subprocess` codec mode では upstream `irodori_tts.
 
 現行 CLI の最短経路は、承認済み hosted/pre-converted weights layout を `--weights-repo` で読むか、同じ layout を disk から `--weights-dir` で読む方法です。`irodori_mlx_manifest.json` の `license_review.status: "approved"` と、README/model card の upstream checkpoint revision provenance を確認してください。
 
+RF-DiT artifact の公開状況は [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md) に固定しています。VoiceDesign は承認済み public hosted artifact があります。v3 は承認済み public repo と immutable revision が公開されるまで local conversion fallback を使います。
+
 VoiceDesign の例:
 
 ```bash
@@ -84,12 +86,13 @@ irodori-tts-generate \
   --json
 ```
 
-v3 no-reference smoke の例:
+v3 local fallback smoke の例:
 
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3.wav \
@@ -101,7 +104,8 @@ irodori-tts-generate \
 
 ```bash
 irodori-tts-generate \
-  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3-mlx-decode.wav \
@@ -193,6 +197,7 @@ python scripts/benchmark.py --self-test
 - DACVAE bridge / generation CLI: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
 - v0.2 hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
 - Hosted weights usage / local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
+- Hosted RF-DiT artifact publication status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
 - mlx-audio interop / adapter boundary: [docs/mlx_audio_interop.md](docs/mlx_audio_interop.md)
 - DACVAE artifact layout: [docs/codec_artifact_layout.md](docs/codec_artifact_layout.md)
 - Checkpoint support matrix: [docs/checkpoint_support.md](docs/checkpoint_support.md)
