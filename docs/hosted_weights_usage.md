@@ -25,7 +25,10 @@ If any of those checks fail, use the [local conversion fallback](#fallback-local
 
 ## Hosted quick path
 
-The v0.2 CLI path introduced by the hosted-loader work in #82 accepts a Hugging Face repo id with `--weights-repo`. These flags are a v0.2 contract and are not executable on the current `main` CLI until that implementation lands. The concrete repo id below is an example of the expected shape; use only a repository that has actually been published and approved by the v0.2 publication checklist.
+The current CLI accepts a Hugging Face repo id with `--weights-repo`, or the
+same hosted-layout contract from disk with `--weights-dir`. The concrete repo
+ids below are examples of the expected shape; use only repositories that have
+actually been published and approved by the v0.2 publication checklist.
 
 ```bash
 python -m pip install -e ".[runtime]"

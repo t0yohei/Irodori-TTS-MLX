@@ -17,6 +17,7 @@ We now have both:
 - the reference-path memory mitigation follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md](benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md)
 - the local Apple Silicon `num_steps` preset sweep for v3 + VoiceDesign from [docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md)
 - the real hosted/pre-converted weights loading measurement from [docs/benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md](benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md)
+- persistent batch generation is now documented in [dacvae_bridge.md](dacvae_bridge.md); the old one-off persistent-batch report was removed because no current summary or test referenced it
 
 Current read:
 

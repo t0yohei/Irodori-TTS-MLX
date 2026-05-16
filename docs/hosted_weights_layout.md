@@ -200,7 +200,8 @@ irodori-tts-generate \
   --output /tmp/irodori-v3.wav
 ```
 
-Follow-up implementation may choose the final CLI flag names, but the contract is:
+The current CLI exposes this contract through `--weights-dir` and
+`--weights-repo`. The loader contract is:
 
 1. resolve a local directory or remote snapshot;
 2. read `irodori_mlx_manifest.json`;
@@ -223,8 +224,8 @@ irodori-tts-generate \
 | Family | Hosted eligibility for v0.2 | Required differences |
 | --- | --- | --- |
 | VoiceDesign v2 (`Aratako/Irodori-TTS-500M-v2-VoiceDesign`) | Recommended first candidate after redistribution and tokenizer/metadata review | `supports_caption: true`; caption-tokenizer metadata required; README must document `--caption` usage. |
-| v3 (`Aratako/Irodori-TTS-500M-v3`) | Conditional candidate after #81/#82 confirm hosted loading behavior | `supports_predicted_duration: true`; `use_duration_predictor: true`; no-reference smoke path should be documented. |
-| base v2 (`Aratako/Irodori-TTS-500M-v2`) | Lower priority because v0.1 generation remains experimental | Usually `requires_reference_audio: true`; no predicted duration; publish only after support status and license review are clear. |
+| v3 (`Aratako/Irodori-TTS-500M-v3`) | Eligible after manifest/license approval; validate the no-reference predicted-duration path before publication | `supports_predicted_duration: true`; `use_duration_predictor: true`; no-reference smoke path should be documented. |
+| base v2 (`Aratako/Irodori-TTS-500M-v2`) | Lower priority because generation remains reference-audio oriented and less ergonomic than VoiceDesign/v3 | Usually `requires_reference_audio: true`; no predicted duration; publish only after support status and license review are clear. |
 | Future families | Not eligible by default | Add converter/runtime validation and a new manifest family contract before hosting. |
 
 ## Versioning policy
