@@ -13,10 +13,11 @@ class DownstreamOpenClawSmokeDocTests(unittest.TestCase):
         required_terms = [
             "#146",
             "#123",
-            "toyon-tech/openclaw-workspace-redacted",
-            "apps/physical-client/clients/client-core/integrations/tts.js",
-            "skills/kouka-voice-playback/scripts/aivis_playback.py",
-            "tools/irodori-tts/openai-compatible-irodori-server-runtime.py",
+            "OpenClaw/local-assistant repository",
+            "POST /v1/audio/speech",
+            "audio/wav",
+            "OPENCLAW_CONSUMER_REPO",
+            "OPENCLAW_TTS_BASE_URL",
             "irodori-tts-generate",
         ]
         for term in required_terms:
@@ -30,6 +31,7 @@ class DownstreamOpenClawSmokeDocTests(unittest.TestCase):
             "IRODORI_SMOKE_DIR",
             "IRODORI_WEIGHTS",
             "IRODORI_MODEL_CONFIG",
+            "OPENCLAW_CONSUMER_REPO",
             "--metadata-json",
             "openclaw-smoke.wav",
             "openclaw-smoke.metadata.json",
@@ -64,6 +66,18 @@ class DownstreamOpenClawSmokeDocTests(unittest.TestCase):
         for term in required_terms:
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)
+
+    def test_doc_does_not_expose_private_environment_details(self):
+        forbidden_terms = [
+            "/Users/kouka",
+            "openclaw-workspace-redacted",
+            "kouka-voice-playback",
+            "KOUKA_VOICE_PLAYBACK",
+            "tools/irodori-tts/openai-compatible-irodori-server-runtime.py",
+        ]
+        for term in forbidden_terms:
+            with self.subTest(term=term):
+                self.assertNotIn(term, self.doc)
 
     def test_readmes_and_delivery_plan_link_smoke_doc(self):
         readme = (self.root / "README.md").read_text(encoding="utf-8")

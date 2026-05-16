@@ -11,15 +11,16 @@ metadata and clear fallback behavior.
 
 ## Downstream consumer and entry point
 
-- Consumer repository: toyon-tech/openclaw-workspace-redacted.
-- Local checkout used by the owner workspace:
-  /Users/kouka/.openclaw/workspace/repos/openclaw-workspace-redacted.
-- Local-assistant playback entry point:
-  apps/physical-client/clients/client-core/integrations/tts.js.
-- Current local TTS script contract:
-  skills/kouka-voice-playback/scripts/aivis_playback.py.
-- Existing Irodori OpenAI-compatible service prototype:
-  tools/irodori-tts/openai-compatible-irodori-server-runtime.py.
+Use this smoke path from the downstream OpenClaw/local-assistant repository or
+checkout that will consume Irodori-TTS-MLX. Keep the downstream repository URL,
+private checkout path, and host-specific service manager details in that
+downstream project; this public repository records only the portable contract.
+
+The downstream entry point should be one of:
+
+- a local-assistant TTS playback path that can consume a local WAV file; or
+- an OpenAI-compatible TTS endpoint that accepts `POST /v1/audio/speech` and
+  returns `audio/wav`.
 
 For TOY-5, the required Irodori-TTS-MLX smoke artifact is produced by this
 repository's irodori-tts-generate CLI, then handed to the OpenClaw/local-
@@ -38,6 +39,7 @@ Set these paths for the smoke run:
     export IRODORI_SMOKE_DIR=/tmp/irodori-openclaw-smoke
     export IRODORI_WEIGHTS=/models/irodori-tts-mlx/weights.npz
     export IRODORI_MODEL_CONFIG=/models/irodori-tts-mlx/model_config.json
+    export OPENCLAW_CONSUMER_REPO=/path/to/openclaw-local-assistant-consumer
 
 The recommended first downstream smoke uses v3 no-reference generation because
 it avoids committing or distributing a reference speaker WAV:
@@ -146,24 +148,50 @@ hold:
 ## OpenClaw playback boundary check
 
 The OpenClaw-side smoke should consume the generated WAV through the same local
-assistant playback boundary used for local TTS replies. If an OpenAI-compatible
-Irodori service is used, point the existing playback helper at that service:
+assistant playback boundary used for local TTS replies. If the downstream
+consumer exposes an OpenAI-compatible TTS adapter, validate it with a generic
+request like this:
 
-    cd /Users/kouka/.openclaw/workspace/repos/openclaw-workspace-redacted
+    cd "$OPENCLAW_CONSUMER_REPO"
 
-    export KOUKA_VOICE_PLAYBACK_BASE_URL=http://127.0.0.1:5058/v1
-    export KOUKA_VOICE_PLAYBACK_MODEL=gpt-4o-mini-tts
+    export OPENCLAW_TTS_BASE_URL=http://127.0.0.1:5058/v1
+    export OPENCLAW_TTS_MODEL=irodori-tts-mlx-smoke
 
-    python3 skills/kouka-voice-playback/scripts/aivis_playback.py \
-      --format wav \
-      --output "$IRODORI_SMOKE_DIR/openclaw-playback.wav" \
-      --no-play \
-      "$IRODORI_TEXT"
+    python - <<'PY'
+    import json
+    import os
+    import urllib.request
+    from pathlib import Path
 
-When local speaker playback is part of the smoke, drop --no-play and keep the
-same output path so the generated file is still inspectable. The local-assistant
-side passes when the helper emits JSON with ok: true, a non-empty path, and
-contentType equal to audio/wav.
+    root = Path(os.environ["IRODORI_SMOKE_DIR"])
+    payload = {
+        "model": os.environ["OPENCLAW_TTS_MODEL"],
+        "input": os.environ["IRODORI_TEXT"],
+        "response_format": "wav",
+    }
+    req = urllib.request.Request(
+        os.environ["OPENCLAW_TTS_BASE_URL"].rstrip("/") + "/audio/speech",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        audio = resp.read()
+        content_type = resp.headers.get_content_type()
+    if content_type != "audio/wav":
+        raise SystemExit(f"unexpected content type: {content_type}")
+    if not audio:
+        raise SystemExit("empty downstream audio response")
+    out = root / "openclaw-playback.wav"
+    out.write_bytes(audio)
+    print(json.dumps({"ok": True, "path": str(out), "contentType": content_type}))
+    PY
+
+If the downstream integration consumes local files instead of an HTTP endpoint,
+feed `$IRODORI_SMOKE_DIR/openclaw-smoke.wav` to that playback boundary and
+record the command in the downstream repository. The local-assistant side passes
+when it reports a successful playback or no-play validation with a non-empty WAV
+path and `audio/wav` content.
 
 ## Fallback behavior
 
