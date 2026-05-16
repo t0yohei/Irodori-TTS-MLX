@@ -18,6 +18,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEXT = "こんにちは。今日は良い天気です。"
+V3_REFERENCE_TEXT = "音声参照を使ったv3予測時間の確認です。短く自然に読み上げます。"
+V3_REFERENCE_WAV = "tests/fixtures/v3-reference.wav"
 DEFAULT_CAPTION = "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。"
 VOICEDESIGN_CONTRAST_TEXT = "新しい音声デザインの確認です。短い案内文をはっきり読み上げます。"
 VOICEDESIGN_CONTRAST_CAPTION = "低めの落ち着いた男性の声で、遠くから響くようにゆっくり読み上げてください。"
@@ -66,6 +68,18 @@ def _scenario_presets() -> dict[str, dict[str, Any]]:
             "duration_scale": 1.0,
             "num_steps": 8,
             "seed": 20260516,
+        },
+        "v3-reference-predicted": {
+            "checkpoint_family": "v3",
+            "checkpoint": "Aratako/Irodori-TTS-500M-v3",
+            "text": V3_REFERENCE_TEXT,
+            "no_reference": False,
+            "reference_wav": V3_REFERENCE_WAV,
+            "caption": None,
+            "seconds": None,
+            "duration_scale": 1.0,
+            "num_steps": 8,
+            "seed": 20260519,
         },
         "voicedesign-no-reference": {
             "checkpoint_family": "voicedesign",
@@ -141,6 +155,13 @@ def build_scenario(args: argparse.Namespace) -> Scenario:
     return Scenario(**payload)
 
 
+def _reference_wav_path(scenario: Scenario) -> Path | None:
+    if not scenario.reference_wav:
+        return None
+    path = Path(scenario.reference_wav).expanduser()
+    return path if path.is_absolute() else ROOT / path
+
+
 def _upstream_command(scenario: Scenario, output_wav: Path) -> list[str]:
     command = [
         "uv",
@@ -167,7 +188,8 @@ def _upstream_command(scenario: Scenario, output_wav: Path) -> list[str]:
         str(scenario.seed),
         "--show-timings",
     ]
-    command.extend(["--no-ref"] if scenario.no_reference else ["--ref-wav", str(scenario.reference_wav)])
+    reference_wav = _reference_wav_path(scenario)
+    command.extend(["--no-ref"] if scenario.no_reference else ["--ref-wav", str(reference_wav)])
     if scenario.caption:
         command.extend(["--caption", scenario.caption])
     return command
@@ -215,7 +237,8 @@ def _mlx_command(scenario: Scenario, args: argparse.Namespace, output_wav: Path,
     model_config = args.mlx_model_config_json or ("/path/to/model-config.json" if not args.mlx_weights else None)
     if model_config:
         command.extend(["--model-config-json", str(Path(model_config).expanduser()) if args.mlx_model_config_json else model_config])
-    command.extend(["--no-reference"] if scenario.no_reference else ["--reference-wav", str(scenario.reference_wav)])
+    reference_wav = _reference_wav_path(scenario)
+    command.extend(["--no-reference"] if scenario.no_reference else ["--reference-wav", str(reference_wav)])
     if scenario.caption:
         command.extend(["--caption", scenario.caption])
     if scenario.seconds is not None:
@@ -286,6 +309,15 @@ def _side_report(
 
 def _fixture_side(name: str, output_wav: Path, command: list[str], *, duration_mode: str, seed: int) -> dict[str, Any]:
     samples = 48000 if duration_mode == "manual" else 36000
+    result_metadata = {"duration_mode": duration_mode, "resolved_seconds": samples / 24000, "samples": samples, "seed": seed}
+    if duration_mode == "predicted":
+        result_metadata.update(
+            {
+                "requested_seconds": None,
+                "predicted_duration": {"source": "fixture", "predicted_seconds": samples / 24000, "duration_scale": 1.0},
+                "messages": ["predicted duration active (fixture)"],
+            }
+        )
     return {
         "name": name,
         "status": "fixture",
@@ -301,8 +333,19 @@ def _fixture_side(name: str, output_wav: Path, command: list[str], *, duration_m
             "sample_width_bytes": 2,
             "duration_seconds": samples / 24000,
         },
-        "metadata": {"result": {"duration_mode": duration_mode, "resolved_seconds": samples / 24000, "samples": samples, "seed": seed}},
+        "metadata": {"result": result_metadata},
     }
+
+
+def _missing_reference_report(name: str, command: list[str], output_wav: Path, reference_wav: Path) -> dict[str, Any]:
+    return _side_report(
+        name,
+        "unavailable",
+        command,
+        output_wav,
+        reason="missing_reference_wav",
+        detail=f"Reference WAV does not exist: {reference_wav}",
+    )
 
 
 def _metadata_axes(scenario: Scenario) -> dict[str, Any]:
@@ -381,6 +424,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     upstream_command = _upstream_command(scenario, upstream_wav)
     mlx_command = _mlx_command(scenario, args, mlx_wav, mlx_metadata)
     duration_mode = "manual" if scenario.seconds is not None else "predicted"
+    reference_wav = _reference_wav_path(scenario)
 
     if args.fixture:
         upstream = _fixture_side("upstream", upstream_wav, upstream_command, duration_mode=duration_mode, seed=scenario.seed)
@@ -389,7 +433,9 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         upstream = _side_report("upstream", "not_run", upstream_command, upstream_wav, reason="not_requested")
         mlx = _side_report("mlx", "not_run", mlx_command, mlx_wav, reason="not_requested")
         if args.run_upstream:
-            if not args.upstream_root:
+            if reference_wav and not reference_wav.exists():
+                upstream = _missing_reference_report("upstream", upstream_command, upstream_wav, reference_wav)
+            elif not args.upstream_root:
                 upstream = _side_report(
                     "upstream",
                     "unavailable",
@@ -403,7 +449,9 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 upstream["availability"] = {"state": upstream["status"], "reason": None, "detail": None}
                 upstream["audio"] = wav_properties(upstream_wav)
         if args.run_mlx:
-            if not args.mlx_weights:
+            if reference_wav and not reference_wav.exists():
+                mlx = _missing_reference_report("mlx", mlx_command, mlx_wav, reference_wav)
+            elif not args.mlx_weights:
                 mlx = _side_report(
                     "mlx",
                     "unavailable",

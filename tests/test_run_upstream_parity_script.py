@@ -111,6 +111,57 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertIn("--seconds", report["mlx"]["command"]["argv"])
         _assert_schema_subset(self, _REPORT_SCHEMA, report)
 
+    def test_v3_reference_predicted_fixture_is_discoverable_without_artifacts(self):
+        args = run_upstream_parity.parse_args(
+            ["--fixture", "--scenario", "v3-reference-predicted", "--output-dir", "unused"]
+        )
+
+        report = run_upstream_parity.build_report(args)
+
+        self.assertEqual(report["scenario"]["checkpoint_family"], "v3")
+        self.assertEqual(report["scenario"]["name"], "v3-reference-predicted")
+        self.assertFalse(report["scenario"]["no_reference"])
+        self.assertEqual(report["scenario"]["reference_wav"], "tests/fixtures/v3-reference.wav")
+        self.assertIsNone(report["scenario"]["seconds"])
+        self.assertEqual(report["metadata_axes"]["duration"]["expected_mode"], "predicted_or_upstream_default")
+        self.assertEqual(report["metadata_axes"]["codec"]["reference_wav"], "tests/fixtures/v3-reference.wav")
+        self.assertEqual(report["metadata_axes"]["sampling"]["seed"], 20260519)
+        self.assertIn("--ref-wav", report["upstream"]["command"]["argv"])
+        self.assertIn("--reference-wav", report["mlx"]["command"]["argv"])
+        self.assertNotIn("--seconds", report["mlx"]["command"]["argv"])
+        self.assertEqual(report["mlx"]["metadata"]["result"]["duration_mode"], "predicted")
+        self.assertIsNone(report["mlx"]["metadata"]["result"]["requested_seconds"])
+        self.assertEqual(report["mlx"]["metadata"]["result"]["predicted_duration"]["source"], "fixture")
+        self.assertIn("predicted duration active", "\n".join(report["mlx"]["metadata"]["result"]["messages"]))
+        self.assertEqual(report["mlx"]["audio"]["sample_rate"], 24000)
+        self.assertEqual(report["comparison"]["status"], "expected_drift")
+        _assert_schema_subset(self, _REPORT_SCHEMA, report)
+
+    def test_v3_reference_real_run_without_fixture_wav_is_clear_partial_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "v3-reference-predicted",
+                    "--run-upstream",
+                    "--run-mlx",
+                    "--output-dir",
+                    td,
+                    "--mlx-weights",
+                    "/tmp/irodori-v3.npz",
+                ]
+            )
+
+            report = run_upstream_parity.build_report(args)
+
+        self.assertEqual(report["report_status"], "partial")
+        self.assertEqual(report["upstream"]["status"], "unavailable")
+        self.assertEqual(report["upstream"]["availability"]["reason"], "missing_reference_wav")
+        self.assertEqual(report["mlx"]["status"], "unavailable")
+        self.assertEqual(report["mlx"]["availability"]["reason"], "missing_reference_wav")
+        self.assertEqual(report["comparison"]["status"], "not_comparable")
+        _assert_schema_subset(self, _REPORT_SCHEMA, report)
+
     def test_voicedesign_requested_real_sides_emit_clear_partial_report_without_artifacts(self):
         with tempfile.TemporaryDirectory() as td:
             args = run_upstream_parity.parse_args(
