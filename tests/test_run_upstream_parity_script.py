@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import tempfile
 import unittest
 import wave
@@ -70,6 +71,12 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertIn("tokenizer", report["metadata_axes"])
         self.assertIn("sampling", report["metadata_axes"])
         self.assertIn("codec", report["metadata_axes"])
+        self.assertIn("metrics", report["upstream"]["audio"])
+        self.assertIn("rms", report["upstream"]["audio"]["metrics"])
+        self.assertIn("tail_rms", report["mlx"]["audio"]["metrics"])
+        self.assertEqual(report["upstream"]["intermediates"]["duration"]["latent_steps"], 75)
+        self.assertTrue(report["comparison"]["intermediate_comparisons"]["sampling.latent_shape"]["match"])
+        self.assertIn("rms_ratio", report["comparison"]["audio_metric_deltas"])
 
     def test_checked_in_schema_matches_fixture_report_contract(self):
         with tempfile.TemporaryDirectory() as td:
@@ -233,7 +240,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                     fh.setnchannels(1)
                     fh.setsampwidth(2)
                     fh.setframerate(24000)
-                    fh.writeframes(b"\x00\x00" * 240)
+                    fh.writeframes(b"\x00\x00\x00@\x00\xc0\x00\x00" * 60)
                 return {"status": "passed", "returncode": 0, "elapsed_seconds": 0.0, "stdout_excerpt": "", "stderr_excerpt": ""}
 
             args = run_upstream_parity.parse_args(
@@ -254,6 +261,9 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertTrue(upstream_wav.is_absolute())
         self.assertEqual(report["upstream"]["audio"]["path"], str(upstream_wav))
         self.assertEqual(report["upstream"]["audio"]["sample_rate"], 24000)
+        self.assertAlmostEqual(report["upstream"]["audio"]["metrics"]["peak_abs"], 0.5)
+        self.assertGreater(report["upstream"]["audio"]["metrics"]["rms"], 0.0)
+        self.assertGreater(report["upstream"]["audio"]["metrics"]["zero_crossing_rate"], 0.0)
         self.assertEqual(report["upstream"]["availability"]["state"], "passed")
         self.assertEqual(report["report_status"], "partial")
 
@@ -277,7 +287,22 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                     fh.setsampwidth(2)
                     fh.setframerate(24000)
                     fh.writeframes(b"\x00\x00" * 240)
-                metadata_json.write_text(json.dumps({"result": {"duration_mode": "predicted"}}), encoding="utf-8")
+                metadata_json.write_text(
+                    json.dumps(
+                        {
+                            "result": {
+                                "duration_mode": "predicted",
+                                "resolved_seconds": 1.0,
+                                "latent_steps": 24,
+                                "patched_steps": 24,
+                                "seed": 20260516,
+                            },
+                            "request": {"text_max_length": 256, "caption_max_length": None, "caption": None},
+                            "boundaries": {"config": {"model_config": {"latent_dim": 32}}},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
                 return {"status": "passed", "returncode": 0, "elapsed_seconds": 0.0, "stdout_excerpt": "", "stderr_excerpt": ""}
 
             args = run_upstream_parity.parse_args(
@@ -298,8 +323,37 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertTrue(mlx_wav.is_absolute())
         self.assertEqual(report["mlx"]["audio"]["path"], str(mlx_wav))
         self.assertEqual(report["mlx"]["audio"]["sample_rate"], 24000)
+        self.assertEqual(report["mlx"]["intermediates"]["duration"]["latent_steps"], 24)
+        self.assertEqual(report["mlx"]["intermediates"]["sampling"]["latent_shape"], [1, 24, 32])
         self.assertEqual(report["mlx"]["availability"]["state"], "passed")
         self.assertEqual(report["report_status"], "partial")
+
+    def test_wav_properties_computes_metrics_for_ieee_float_wav(self):
+        with tempfile.TemporaryDirectory() as td:
+            wav_path = Path(td) / "float.wav"
+            samples = struct.pack("<ffff", 0.0, 0.5, -0.5, 0.0)
+            fmt = struct.pack("<HHIIHH", 3, 1, 24000, 24000 * 4, 4, 32)
+            with wav_path.open("wb") as fh:
+                fh.write(b"RIFF")
+                fh.write(struct.pack("<I", 4 + (8 + len(fmt)) + (8 + len(samples))))
+                fh.write(b"WAVE")
+                fh.write(b"fmt ")
+                fh.write(struct.pack("<I", len(fmt)))
+                fh.write(fmt)
+                fh.write(b"data")
+                fh.write(struct.pack("<I", len(samples)))
+                fh.write(samples)
+
+            props = run_upstream_parity.wav_properties(wav_path)
+
+        self.assertIsNotNone(props)
+        assert props is not None
+        self.assertTrue(props["readable"])
+        self.assertEqual(props["format"], "ieee_float")
+        self.assertEqual(props["metrics_status"], "computed")
+        self.assertEqual(props["sample_width_bytes"], 4)
+        self.assertAlmostEqual(props["metrics"]["peak_abs"], 0.5)
+        self.assertAlmostEqual(props["metrics"]["rms"], 0.3535533905932738)
 
     def test_missing_requested_upstream_is_partial_unavailable_instead_of_raising(self):
         with tempfile.TemporaryDirectory() as td:

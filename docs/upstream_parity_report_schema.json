@@ -80,6 +80,12 @@
       "properties": {
         "status": {
           "enum": ["expected_drift", "regression", "not_comparable"]
+        },
+        "audio_metric_deltas": {
+          "type": "object"
+        },
+        "intermediate_comparisons": {
+          "type": "object"
         }
       }
     },
@@ -136,6 +142,9 @@
           "type": ["object", "null"]
         },
         "metadata": {
+          "type": "object"
+        },
+        "intermediates": {
           "type": "object"
         }
       }
