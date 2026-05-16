@@ -63,6 +63,7 @@ CONFIG_KEYS = {
     "text_max_length",
     "caption_max_length",
     "codec_repo",
+    "codec_path",
     "codec_device",
     "codec_runtime_mode",
     "disable_codec_normalize",
@@ -118,6 +119,7 @@ OPTIONAL_STRING_KEYS = {
     "text_tokenizer_repo",
     "caption_tokenizer_repo",
     "codec_repo",
+    "codec_path",
     "codec_device",
     "metadata_json",
     "requests_json",
@@ -143,7 +145,7 @@ FLOAT_KEYS = {
 NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
     "preset": {"fast", "balanced", "quality"},
-    "codec_runtime_mode": {"persistent", "subprocess"},
+    "codec_runtime_mode": {"persistent", "subprocess", "mlx"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
 }
 

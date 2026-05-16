@@ -164,6 +164,26 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(runtime_config.codec.runtime_mode, "mlx")
         self.assertEqual(runtime_config.codec.codec_path, "codec.npz")
 
+    def test_parse_args_config_json_accepts_mlx_codec_artifact_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                json.dumps(
+                    {
+                        "weights": "weights.npz",
+                        "output": "out.wav",
+                        "text": "hello",
+                        "codec_runtime_mode": "mlx",
+                        "codec_path": "codec.npz",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+        self.assertEqual(args.codec_runtime_mode, "mlx")
+        self.assertEqual(args.codec_path, "codec.npz")
+
     def test_parse_args_config_json_supplies_defaults_and_cli_overrides(self):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
