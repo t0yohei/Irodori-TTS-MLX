@@ -213,6 +213,11 @@ conversion blockers for that real codec artifact are tracked in
 [dacvae_architecture.md](dacvae_architecture.md) and its machine-readable
 [dacvae_codec_contract.json](dacvae_codec_contract.json).
 
+Decode-only parity fixtures and the reproducible upstream PyTorch versus MLX
+comparison command are documented in
+[dacvae_decode_parity.md](dacvae_decode_parity.md). That check owns fixed-latent
+decode evidence for #113; encode parity remains separate follow-up scope.
+
 ## Duration semantics
 
 - `--seconds` is an explicit manual override.
