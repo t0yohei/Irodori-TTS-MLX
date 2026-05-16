@@ -44,6 +44,9 @@ class BenchmarkScriptTests(unittest.TestCase):
             caption_tokenizer_repo=None,
             upstream_root="/tmp/upstream",
             mlx_python="python3",
+            weights_dir=None,
+            weights_repo=None,
+            weights_revision=None,
         )
         argv, env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=5.0, num_steps=40)
         self.assertIn("--no-reference", argv)
@@ -71,6 +74,9 @@ class BenchmarkScriptTests(unittest.TestCase):
             caption_tokenizer_repo=None,
             upstream_root=None,
             mlx_python="python3",
+            weights_dir=None,
+            weights_repo=None,
+            weights_revision=None,
         )
         argv, _env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=None, num_steps=12)
         self.assertNotIn("--seconds", argv)
@@ -206,6 +212,9 @@ class BenchmarkScriptTests(unittest.TestCase):
             caption_tokenizer_repo=None,
             upstream_root=None,
             mlx_python="python3",
+            weights_dir=None,
+            weights_repo=None,
+            weights_revision=None,
             cache_state="auto",
         )
         results = benchmark.run_case(case, args, Path("/tmp/repo"), Path("/tmp/out"))
@@ -216,6 +225,58 @@ class BenchmarkScriptTests(unittest.TestCase):
         self.assertTrue(results[0].output_wav.endswith(".warmup.run-01.wav"))
         self.assertTrue(results[1].output_wav.endswith(".measured.run-01.wav"))
         self.assertEqual(results[0].status, "dry-run")
+
+    def test_build_mlx_command_supports_hosted_weights_repo_revision(self):
+        args = Namespace(
+            weights=None,
+            weights_dir=None,
+            weights_repo="owner/irodori-hosted",
+            weights_revision="abc123",
+            reference_wav=None,
+            text="hello",
+            caption=None,
+            seconds=5.0,
+            num_steps=40,
+            seed=123,
+            codec_repo="codec-repo",
+            codec_device="cpu",
+            codec_runtime_mode="persistent",
+            model_config_json=None,
+            text_tokenizer_repo=None,
+            caption_tokenizer_repo=None,
+            upstream_root=None,
+            mlx_python="python3",
+        )
+        argv, _env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=2.0, num_steps=12)
+        self.assertIn("--weights-repo", argv)
+        self.assertEqual(argv[argv.index("--weights-repo") + 1], "owner/irodori-hosted")
+        self.assertIn("--weights-revision", argv)
+        self.assertEqual(argv[argv.index("--weights-revision") + 1], "abc123")
+        self.assertNotIn("--model-config-json", argv)
+
+    def test_build_mlx_command_rejects_multiple_weights_sources(self):
+        args = Namespace(
+            weights="weights.npz",
+            weights_dir="/tmp/layout",
+            weights_repo=None,
+            weights_revision=None,
+            reference_wav=None,
+            text="hello",
+            caption=None,
+            seconds=5.0,
+            num_steps=40,
+            seed=123,
+            codec_repo="codec-repo",
+            codec_device="cpu",
+            codec_runtime_mode="persistent",
+            model_config_json=None,
+            text_tokenizer_repo=None,
+            caption_tokenizer_repo=None,
+            upstream_root=None,
+            mlx_python="python3",
+        )
+        with self.assertRaisesRegex(benchmark.BenchmarkError, "choose only one MLX weights source"):
+            benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=2.0, num_steps=12)
 
     def test_resolve_cache_state_auto_separates_cold_and_warm(self):
         args = Namespace(cache_state="auto", warmup_runs=0, repeat=3)
@@ -389,6 +450,10 @@ class BenchmarkScriptTests(unittest.TestCase):
             num_steps=40,
             num_steps_sweep=None,
             reference_wav=None,
+            weights="weights.npz",
+            weights_dir=None,
+            weights_repo=None,
+            weights_revision=None,
             codec_runtime_mode="persistent",
         )
         with tempfile.TemporaryDirectory() as td:

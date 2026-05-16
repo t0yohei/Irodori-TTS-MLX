@@ -118,6 +118,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--upstream-python", default="python3", help="Python executable for upstream benchmark.")
     parser.add_argument("--mlx-python", default="python3", help="Python executable for MLX benchmark.")
     parser.add_argument("--weights", help="Converted MLX .npz weights for MLX bridge benchmark.")
+    parser.add_argument(
+        "--weights-dir",
+        help="Local hosted/pre-converted weights layout directory for MLX bridge benchmark.",
+    )
+    parser.add_argument(
+        "--weights-repo",
+        "--model",
+        dest="weights_repo",
+        help="Hugging Face repo id with a hosted/pre-converted weights layout for MLX bridge benchmark.",
+    )
+    parser.add_argument("--weights-revision", help="Optional Hugging Face revision for --weights-repo/--model.")
     parser.add_argument("--codec-device", default="cpu", help="Codec device for MLX bridge benchmark.")
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument(
@@ -333,15 +344,25 @@ def build_upstream_command(args: argparse.Namespace, output_wav: Path, *, num_st
 
 
 def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Path, *, seconds: float | None, num_steps: int) -> tuple[list[str], dict[str, str]]:
-    if not args.weights:
-        raise BenchmarkError("--weights is required for MLX mode")
+    weight_sources = [
+        ("--weights", args.weights),
+        ("--weights-dir", getattr(args, "weights_dir", None)),
+        ("--weights-repo", getattr(args, "weights_repo", None)),
+    ]
+    selected_weight_sources = [(flag, value) for flag, value in weight_sources if value]
+    if not selected_weight_sources:
+        raise BenchmarkError("--weights, --weights-dir, or --weights-repo is required for MLX mode")
+    if len(selected_weight_sources) > 1:
+        selected = ", ".join(flag for flag, _value in selected_weight_sources)
+        raise BenchmarkError(f"choose only one MLX weights source, got: {selected}")
+    weight_flag, weight_value = selected_weight_sources[0]
     argv = [
         TIME_L_BIN,
         "-l",
         args.mlx_python,
         "scripts/generate_wav.py",
-        "--weights",
-        args.weights,
+        weight_flag,
+        str(weight_value),
         "--output",
         str(output_wav),
         "--text",
@@ -357,6 +378,8 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
         "--codec-runtime-mode",
         args.codec_runtime_mode,
     ]
+    if weight_flag == "--weights-repo" and getattr(args, "weights_revision", None):
+        argv.extend(["--weights-revision", args.weights_revision])
     if seconds is not None:
         argv.extend(["--seconds", str(seconds)])
     if args.reference_wav:
@@ -366,6 +389,8 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
     if args.caption:
         argv.extend(["--caption", args.caption])
     if args.model_config_json:
+        if weight_flag != "--weights":
+            raise BenchmarkError("--model-config-json is only valid with --weights; hosted layouts provide model_config.json")
         argv.extend(["--model-config-json", args.model_config_json])
     if args.text_tokenizer_repo:
         argv.extend(["--text-tokenizer-repo", args.text_tokenizer_repo])
@@ -749,6 +774,10 @@ def write_json_summary(results: list[BenchmarkResult], path: Path, *, args: argp
             "num_steps": args.num_steps,
             "num_steps_sweep": args.num_steps_sweep,
             "reference_wav": args.reference_wav,
+            "weights": args.weights,
+            "weights_dir": args.weights_dir,
+            "weights_repo": args.weights_repo,
+            "weights_revision": args.weights_revision,
             "codec_runtime_mode": args.codec_runtime_mode,
         },
         "results": [asdict(result) for result in results],
