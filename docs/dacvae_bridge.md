@@ -218,6 +218,9 @@ The upstream architecture, runtime constants, logical tensor groups, and known
 conversion blockers for that real codec artifact are tracked in
 [dacvae_architecture.md](dacvae_architecture.md) and its machine-readable
 [dacvae_codec_contract.json](dacvae_codec_contract.json).
+The hosted/local artifact layout, manifest pointer shape, runtime capability
+checks, and checkpoint-family fallback policy are defined in
+[codec_artifact_layout.md](codec_artifact_layout.md).
 
 Decode-only parity fixtures and the reproducible upstream PyTorch versus MLX
 comparison command are documented in
@@ -236,8 +239,9 @@ and the reproducible fixed-audio command for #115 are documented in
 - Hosted v3 validation (`scripts/run_v3_generation_ci.py` / `.github/workflows/v3-hosted-generation.yml`) intentionally omits `--seconds` and asserts `duration_mode="predicted"` in the JSON payload so the first-class v3 semantics stay exercised.
 
 JSON output now includes `duration_mode`, `requested_seconds`,
-`resolved_seconds`, `codec_encode_backend`, and `codec_decode_backend` so
-automation can tell which duration rule and codec path were used.
+`resolved_seconds`, `codec_encode_backend`, `codec_decode_backend`, and
+`boundaries.codec.capabilities` so automation can tell which duration rule,
+codec path, MLX artifact availability, and PyTorch fallback policy were used.
 
 ## Python API
 
