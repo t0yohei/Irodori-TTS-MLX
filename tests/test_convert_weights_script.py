@@ -66,6 +66,21 @@ class ConvertWeightsScriptTests(unittest.TestCase):
             convert_weights.SUPPORTED_CHECKPOINTS[convert_weights.CHECKPOINT_FAMILY_BASE],
         )
 
+    def test_validate_records_accepts_unquantized_fp16_checkpoint(self):
+        records = {
+            key: convert_weights.TensorRecord(name=key, shape=shape, dtype="F16")
+            for key, shape in convert_weights.EXPECTED_SHAPES_BY_FAMILY[
+                convert_weights.CHECKPOINT_FAMILY_BASE
+            ].items()
+        }
+        validation = convert_weights.validate_records(
+            records,
+            self._config(family=convert_weights.CHECKPOINT_FAMILY_BASE),
+        )
+
+        self.assertTrue(validation["ok"])
+        self.assertEqual(validation["dtype_mismatches"], [])
+
     def test_validate_records_accepts_voicedesign_checkpoint(self):
         validation = convert_weights.validate_records(
             self._records(family=convert_weights.CHECKPOINT_FAMILY_VOICEDESIGN),
