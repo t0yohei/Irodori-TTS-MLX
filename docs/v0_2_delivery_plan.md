@@ -51,6 +51,11 @@ Validation:
 
 Primary issues: [#106](https://github.com/t0yohei/Irodori-TTS-MLX/issues/106), [#110](https://github.com/t0yohei/Irodori-TTS-MLX/issues/110), [#111](https://github.com/t0yohei/Irodori-TTS-MLX/issues/111), [#112](https://github.com/t0yohei/Irodori-TTS-MLX/issues/112), [#113](https://github.com/t0yohei/Irodori-TTS-MLX/issues/113), [#114](https://github.com/t0yohei/Irodori-TTS-MLX/issues/114), [#115](https://github.com/t0yohei/Irodori-TTS-MLX/issues/115), [#116](https://github.com/t0yohei/Irodori-TTS-MLX/issues/116)
 
+Research handoff: [dacvae_architecture.md](dacvae_architecture.md) and
+[dacvae_codec_contract.json](dacvae_codec_contract.json) pin the upstream codec
+constants, logical tensor groups, shared family assumptions, and open blockers
+that #112-#115 must consume.
+
 Sequence decode before encode. Generation can use MLX decode without reference-audio encode, while reference-conditioned paths need encode later.
 
 Required work:
