@@ -1,6 +1,6 @@
 # Apple Silicon persistent batch generation smoke benchmark
 
-Related issue: [#66](https://github.com/t0yohei/irodori-tts-mlx/issues/66)
+Related issue: [#66](https://github.com/t0yohei/Irodori-TTS-MLX/issues/66)
 
 ## Question
 

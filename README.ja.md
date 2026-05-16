@@ -1,4 +1,4 @@
-# irodori-tts-mlx
+# Irodori-TTS-MLX
 
 [English README](README.md)
 
@@ -93,7 +93,7 @@ v0.2 では、承認済みの hosted converted weights repository を `--weights
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo t0yohei/irodori-tts-mlx-voicedesign-v2-500m \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
   --no-reference \

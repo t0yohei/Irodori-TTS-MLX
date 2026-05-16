@@ -2,7 +2,7 @@
 
 Date:
 Reporter:
-Related issue: [#2](https://github.com/t0yohei/irodori-tts-mlx/issues/2)
+Related issue: [#2](https://github.com/t0yohei/Irodori-TTS-MLX/issues/2)
 
 ## Summary
 

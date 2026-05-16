@@ -1,7 +1,7 @@
 # v0.2 pre-converted MLX weights redistribution audit
 
-Issue: [#80 v0.2 redistribution/licensing audit](https://github.com/t0yohei/irodori-tts-mlx/issues/80)  
-Parent: [#78 v0.2 hosted pre-converted MLX weights](https://github.com/t0yohei/irodori-tts-mlx/issues/78)  
+Issue: [#80 v0.2 redistribution/licensing audit](https://github.com/t0yohei/Irodori-TTS-MLX/issues/80)  
+Parent: [#78 v0.2 hosted pre-converted MLX weights](https://github.com/t0yohei/Irodori-TTS-MLX/issues/78)  
 Audit date: 2026-05-15
 
 This is an engineering due-diligence artifact for deciding whether #81-#85 may rely on hosted pre-converted MLX weights. It is **not legal advice** and it does not approve publishing artifacts whose upstream terms change after this audit.
@@ -26,13 +26,13 @@ This is an engineering due-diligence artifact for deciding whether #81-#85 may r
 
 Any hosted MLX weights README should include a short notice equivalent to:
 
-> These MLX `.npz` weights were converted from the upstream Irodori-TTS checkpoint `<UPSTREAM_REPO_ID>` by the unofficial `t0yohei/irodori-tts-mlx` converter. The upstream model card lists the source checkpoint under the MIT license and includes ethical-use restrictions, including no impersonation and no misleading synthetic speech. This repository republishes only converted RF-DiT/text/condition/duration-predictor weights needed by the MLX runtime; it does not bundle Semantic-DACVAE codec weights, reference audio, generated samples, Hugging Face cache snapshots, or upstream source code. Users remain responsible for following the upstream model card, applicable law, and any rights attached to prompts, reference audio, and generated audio.
+> These MLX `.npz` weights were converted from the upstream Irodori-TTS checkpoint `<UPSTREAM_REPO_ID>` by the unofficial `t0yohei/Irodori-TTS-MLX` converter. The upstream model card lists the source checkpoint under the MIT license and includes ethical-use restrictions, including no impersonation and no misleading synthetic speech. This repository republishes only converted RF-DiT/text/condition/duration-predictor weights needed by the MLX runtime; it does not bundle Semantic-DACVAE codec weights, reference audio, generated samples, Hugging Face cache snapshots, or upstream source code. Users remain responsible for following the upstream model card, applicable law, and any rights attached to prompts, reference audio, and generated audio.
 
 Also include these machine-checkable fields where practical:
 
 - `upstream_repo_id`: one of the audited Hugging Face repository IDs above.
 - `upstream_revision`: the exact Hugging Face commit used for conversion.
-- `converted_with`: `t0yohei/irodori-tts-mlx` commit SHA and `scripts/convert_weights.py` invocation.
+- `converted_with`: `t0yohei/Irodori-TTS-MLX` commit SHA and `scripts/convert_weights.py` invocation.
 - `source_license`: `MIT`, with a link to the upstream model card.
 - `derived_artifact`: `true`.
 - `bundled_artifacts`: explicitly list the files present; do not include codec weights or samples.

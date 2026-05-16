@@ -18,9 +18,9 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
 
     def test_hosted_quick_path_and_local_layout_are_documented(self):
         required_terms = [
-            "--weights-repo t0yohei/irodori-tts-mlx-voicedesign-v2-500m",
-            "--weights-repo t0yohei/irodori-tts-mlx-v3-500m",
-            "--weights-dir /models/irodori-tts-mlx-voicedesign-v2-500m",
+            "--weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign",
+            "--weights-repo t0yohei/Irodori-TTS-MLX-500M-v3",
+            "--weights-dir /models/Irodori-TTS-MLX-500M-v2-VoiceDesign",
             "license_review.status: \"approved\"",
             "irodori_mlx_manifest.json",
             "model_config.json",
@@ -54,7 +54,7 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
         for text in (readme, readme_ja):
             with self.subTest(document=text[:40]):
                 self.assertIn("docs/hosted_weights_usage.md", text)
-                self.assertIn("--weights-repo t0yohei/irodori-tts-mlx-voicedesign-v2-500m", text)
+                self.assertIn("--weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign", text)
                 self.assertIn("upstream PyTorch DACVAE bridge", text)
 
         self.assertIn("local conversion fallback", readme)

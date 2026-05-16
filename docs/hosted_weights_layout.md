@@ -1,7 +1,7 @@
 # Hosted MLX weights repository layout
 
-Issue: [#79 Define the hosted MLX weights repository layout](https://github.com/t0yohei/irodori-tts-mlx/issues/79)
-Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/irodori-tts-mlx/issues/78)
+Issue: [#79 Define the hosted MLX weights repository layout](https://github.com/t0yohei/Irodori-TTS-MLX/issues/79)
+Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/Irodori-TTS-MLX/issues/78)
 
 This page is the v0.2 contract for a repository that hosts **pre-converted MLX RF-DiT weights** for `irodori-tts-mlx`.
 It defines the file names, metadata, provenance notes, and path conventions that follow-up loader work can rely on.
@@ -24,8 +24,8 @@ Recommended Hugging Face repository name pattern:
 
 Examples, subject to license approval before publication:
 
-- `t0yohei/irodori-tts-mlx-v3-500m`
-- `t0yohei/irodori-tts-mlx-voicedesign-v2-500m`
+- `t0yohei/Irodori-TTS-MLX-500M-v3`
+- `t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign`
 
 The repository name identifies the converted checkpoint family, but loaders must treat `irodori_mlx_manifest.json` as the source of truth.
 Do not infer compatibility from the repo name alone.
@@ -96,7 +96,7 @@ A JSON object with conversion provenance. Required fields:
 {
   "schema_version": 1,
   "converter": {
-    "repository": "https://github.com/t0yohei/irodori-tts-mlx",
+    "repository": "https://github.com/t0yohei/Irodori-TTS-MLX",
     "version": "git:<commit-sha-or-tag>",
     "command": "irodori-tts-convert /path/to/model.safetensors weights.npz"
   },
@@ -178,14 +178,14 @@ The loader should accept both forms and normalize them to the same resolved dire
 ```bash
 # Local converted layout, useful for private conversion or redistribution-not-approved families.
 irodori-tts-generate \
-  --weights-dir /models/irodori-tts-mlx-v3-500m \
+  --weights-dir /models/Irodori-TTS-MLX-500M-v3 \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3.wav
 
 # Hosted layout after license approval and publication.
 irodori-tts-generate \
-  --weights-repo t0yohei/irodori-tts-mlx-v3-500m \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3.wav

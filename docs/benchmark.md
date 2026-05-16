@@ -1,6 +1,6 @@
 # Apple Silicon benchmark workflow and report
 
-Issue: [#13 Add benchmark script and baseline report](https://github.com/t0yohei/irodori-tts-mlx/issues/13)
+Issue: [#13 Add benchmark script and baseline report](https://github.com/t0yohei/Irodori-TTS-MLX/issues/13)
 
 This document has two jobs:
 

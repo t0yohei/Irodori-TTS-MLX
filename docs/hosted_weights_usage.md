@@ -1,7 +1,7 @@
 # Hosted converted weights usage
 
-Issue: [#85 Document hosted converted weights usage and fallback local conversion](https://github.com/t0yohei/irodori-tts-mlx/issues/85)  
-Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/irodori-tts-mlx/issues/78)
+Issue: [#85 Document hosted converted weights usage and fallback local conversion](https://github.com/t0yohei/Irodori-TTS-MLX/issues/85)  
+Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/Irodori-TTS-MLX/issues/78)
 
 This page explains the user-facing v0.2 flow for **hosted pre-converted MLX RF-DiT weights** and the supported fallback when no approved hosted artifact is available.
 
@@ -33,7 +33,7 @@ python -m pip install huggingface_hub  # required for Hugging Face repo resoluti
 
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo t0yohei/irodori-tts-mlx-voicedesign-v2-500m \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
   --no-reference \
@@ -55,7 +55,7 @@ For a v3 hosted artifact, use a v3-approved repo id and omit `--caption`. If the
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo t0yohei/irodori-tts-mlx-v3-500m \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3-hosted.wav \
@@ -69,7 +69,7 @@ Use `--weights-dir` when you have the same v0.2 layout on disk, for example duri
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-dir /models/irodori-tts-mlx-voicedesign-v2-500m \
+  --weights-dir /models/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
   --no-reference \
@@ -127,7 +127,7 @@ Every hosted converted weights README/model card should make these points clear:
 
 - the upstream checkpoint repo id and exact revision used for conversion;
 - that the artifact is a converted MLX `.npz`, not the original upstream checkpoint;
-- the `t0yohei/irodori-tts-mlx` converter version or commit SHA and conversion command;
+- the `t0yohei/Irodori-TTS-MLX` converter version or commit SHA and conversion command;
 - the upstream model-card license and ethical-use restrictions, including no impersonation or misleading synthetic speech where applicable;
 - that Semantic-DACVAE codec weights, upstream source code, reference audio, generated audio, and Hugging Face cache snapshots are not bundled;
 - the runtime still requires the upstream PyTorch DACVAE bridge unless a future full-MLX codec is implemented;

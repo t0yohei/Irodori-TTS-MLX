@@ -1,6 +1,6 @@
 # Apple Silicon MLX benchmark follow-up: warm-cache, codec-device comparison, and reference-path memory notes
 
-Related issue: [#13](https://github.com/t0yohei/irodori-tts-mlx/issues/13)
+Related issue: [#13](https://github.com/t0yohei/Irodori-TTS-MLX/issues/13)
 
 This report follows up on the first measured MLX bridge benchmark in [2026-05-12 Apple Silicon MLX bridge benchmark](2026-05-12-apple-silicon-mlx-bridge.md).
 

@@ -1,6 +1,6 @@
 # v0.1 release gate
 
-Parent: [#68 v0.1 release scope](https://github.com/t0yohei/irodori-tts-mlx/issues/68)
+Parent: [#68 v0.1 release scope](https://github.com/t0yohei/Irodori-TTS-MLX/issues/68)
 
 The v0.1 release gate proves that a fresh Apple Silicon environment can reproduce WAV generation through the documented path without checked-in model weights or audio artifacts.
 

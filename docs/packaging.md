@@ -1,6 +1,6 @@
 # Packaging and reproducible environments
 
-Issue: [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/irodori-tts-mlx/issues/31)
+Issue: [#31 Package the project for reproducible runtime and benchmark environments](https://github.com/t0yohei/Irodori-TTS-MLX/issues/31)
 
 The repository now exposes a project-level `pyproject.toml` so contributors can install dependencies by use case instead of guessing from ad hoc notes.
 
