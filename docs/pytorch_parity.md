@@ -21,7 +21,7 @@ IRODORI_TTS_UPSTREAM_PATH=/path/to/Irodori-TTS \
 If `IRODORI_TTS_UPSTREAM_PATH` is omitted, the test walks upward from the repository checkout and uses the first existing `_scratch/Irodori-TTS-upstream` directory it finds. A typical local layout resolves to:
 
 ```text
-/path/to/Irodori-TTS
+/path/to/_scratch/Irodori-TTS-upstream
 ```
 
 When PyTorch, MLX, or the upstream checkout is unavailable, the parity tests are skipped rather than failing the regular test suite.
