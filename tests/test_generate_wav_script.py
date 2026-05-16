@@ -226,7 +226,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "from-config.npz", "model_config_json": "legacy-model.json", "text_tokenizer_repo": "legacy/text", "caption_tokenizer_repo": "legacy/caption", "output": "from-config.wav", "text": "hello"}',
+                '{"weights": "from-config.npz", "model_config_json": "config-model.json", "text_tokenizer_repo": "current/text", "caption_tokenizer_repo": "current/caption", "output": "from-config.wav", "text": "hello"}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(["--config-json", str(cfg_path), "--weights-dir", "converted-layout"])
@@ -563,16 +563,19 @@ class GenerateWavScriptTests(unittest.TestCase):
                 generate_wav.parse_args(["--config-json", str(cfg_path)])
 
 
-    def test_parse_args_accepts_weights_repo_alias_and_help_mentions_fallback(self):
+    def test_parse_args_uses_weights_repo_without_model_alias(self):
         help_text = generate_wav.build_parser().format_help()
         self.assertIn("--weights-repo", help_text)
-        self.assertIn("--model", help_text)
-        self.assertIn("locally converted .npz fallback", help_text)
+        self.assertNotIn("--model ", help_text)
+        self.assertIn("converted .npz fallback", help_text)
 
-        args = generate_wav.parse_args(["--model", "org/repo", "--output", "out.wav", "--text", "hello"])
+        args = generate_wav.parse_args(["--weights-repo", "org/repo", "--output", "out.wav", "--text", "hello"])
 
         self.assertIsNone(args.weights)
         self.assertEqual(args.weights_repo, "org/repo")
+
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(["--model", "org/repo", "--output", "out.wav", "--text", "hello"])
 
     def test_resolve_preconverted_weights_dir_supplies_weights_and_model_config(self):
         with tempfile.TemporaryDirectory() as td:

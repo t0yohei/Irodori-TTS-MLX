@@ -171,7 +171,7 @@ irodori-tts-adapt-mlx-audio --help
 python scripts/benchmark.py --self-test
 ```
 
-checkout からの `python scripts/*.py` も引き続き使えますが、通常は console script を使うのが入口です。
+通常の操作は installed console script を使います。`python scripts/*.py` の直接実行は repository development と benchmark maintenance 用です。
 
 ## 主なドキュメント
 

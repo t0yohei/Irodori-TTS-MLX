@@ -78,11 +78,11 @@ The v0 interface should be CLI-first while keeping the implementation reusable f
 Planned CLI shape, subject to change:
 
 ```bash
-irodori-tts-mlx generate \
-  --checkpoint path/or/hf-repo \
+irodori-tts-generate \
+  --weights path/to/weights.npz \
   --text "今日はいい天気ですね。" \
-  --ref-wav reference.wav \
-  --output-wav output.wav
+  --reference-wav reference.wav \
+  --output output.wav
 ```
 
 Planned Python shape, subject to change:

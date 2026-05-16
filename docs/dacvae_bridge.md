@@ -114,7 +114,7 @@ python3 scripts/generate_wav.py \
   --metadata-json /tmp/irodori-batch.json
 ```
 
-The request objects support `text`, `output`/`output_wav`, `reference_wav`,
+The request objects support `text`, `output`, `reference_wav`,
 `no_reference`, `caption`, `seconds`, `duration_scale`, `preset`, `num_steps`,
 the CFG knobs, `seed`, `max_reference_seconds`, and `no_context_kv_cache`. Use
 one-shot mode for isolated commands and shell pipelines; use batch mode when you

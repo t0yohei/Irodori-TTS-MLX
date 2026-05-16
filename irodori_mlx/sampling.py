@@ -134,7 +134,6 @@ def sample_euler_rf_cfg(
     cfg_min_t: float = 0.5,
     cfg_max_t: float = 1.0,
     seed: int = 0,
-    cfg_scale: float | None = None,
     truncation_factor: float | None = None,
     use_context_kv_cache: bool = True,
 ) -> mx.array:
@@ -147,10 +146,6 @@ def sample_euler_rf_cfg(
     if int(sequence_length) <= 0:
         raise ValueError(f"sequence_length must be positive, got {sequence_length!r}")
     mode = _as_mode(cfg_guidance_mode)
-    if cfg_scale is not None:
-        cfg_scale_text = float(cfg_scale)
-        cfg_scale_caption = float(cfg_scale)
-        cfg_scale_speaker = float(cfg_scale)
     if not model.cfg.use_speaker_condition:
         cfg_scale_speaker = 0.0
 
@@ -217,7 +212,7 @@ def sample_euler_rf_cfg(
             if max(scales) - min(scales) > 1e-6:
                 raise ValueError(
                     "cfg_guidance_mode='joint' expects equal enabled guidance scales; "
-                    "set matching text/speaker/caption scales or use cfg_scale."
+                    "set matching text/speaker/caption scales."
                 )
         joint_uncond = _uncond_bundle(cond, text=has_text_cfg, speaker=has_speaker_cfg, caption=has_caption_cfg)
         joint_cache = _build_cache(model, joint_uncond, use_context_kv_cache=use_context_kv_cache)

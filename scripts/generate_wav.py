@@ -51,7 +51,6 @@ CONFIG_KEYS = {
     "weights_repo",
     "weights_revision",
     "output",
-    "output_wav",
     "text",
     "preset",
     "reference_wav",
@@ -88,7 +87,6 @@ CONFIG_KEYS = {
 
 REQUEST_KEYS = {
     "output",
-    "output_wav",
     "text",
     "preset",
     "reference_wav",
@@ -222,8 +220,6 @@ def _validate_generation_config(payload: dict[str, Any]) -> dict[str, Any]:
 
 def load_generation_config_json(value: str | None) -> dict[str, Any]:
     payload = _load_json_object(value, label="generation config")
-    if "output_wav" in payload and "output" not in payload:
-        payload["output"] = payload.pop("output_wav")
     unexpected = sorted(set(payload) - CONFIG_KEYS)
     if unexpected:
         raise ValueError("Unsupported generation config keys: " + ", ".join(unexpected))
@@ -241,8 +237,6 @@ def load_generation_requests_json(value: str | None) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             raise ValueError(f"generation request #{index} must be a JSON object")
         request = dict(item)
-        if "output_wav" in request and "output" not in request:
-            request["output"] = request.pop("output_wav")
         unexpected = sorted(set(request) - REQUEST_KEYS)
         if unexpected:
             raise ValueError(f"Unsupported generation request #{index} keys: " + ", ".join(unexpected))
@@ -316,17 +310,16 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     )
     weights_group.add_argument(
         "--weights-repo",
-        "--model",
         dest="weights_repo",
         default=config.get("weights_repo"),
         help=(
             "Hugging Face repo id with a pre-converted MLX weights layout, for example "
-            "t0yohei/Irodori-TTS-MLX-500M-v3. Alias: --model. If resolution fails, "
-            "use --weights with a locally converted .npz fallback."
+            "t0yohei/Irodori-TTS-MLX-500M-v3. If resolution fails, use --weights "
+            "with a locally converted .npz fallback."
         ),
     )
-    parser.add_argument("--weights-revision", default=config.get("weights_revision"), help="Optional Hugging Face revision for --weights-repo/--model.")
-    parser.add_argument("--output", "--output-wav", dest="output", default=config.get("output"), help="Output WAV path for one-shot mode, or a default for batch requests.")
+    parser.add_argument("--weights-revision", default=config.get("weights_revision"), help="Optional Hugging Face revision for --weights-repo.")
+    parser.add_argument("--output", dest="output", default=config.get("output"), help="Output WAV path for one-shot mode, or a default for batch requests.")
     parser.add_argument("--text", default=config.get("text"), help="Text prompt for one-shot mode, or a default for batch requests.")
     parser.add_argument(
         "--preset",
@@ -455,7 +448,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             ("--weights", "weights"),
             ("--weights-dir", "weights_dir"),
             ("--weights-repo", "weights_repo"),
-            ("--model", "weights_repo"),
         )
         if _has_cli_override(argv, option)
     }
@@ -481,11 +473,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("choose either --reference-wav or --no-reference, not both")
     selected_weights = [value for value in (args.weights, args.weights_dir, args.weights_repo) if value is not None and str(value).strip()]
     if not selected_weights:
-        parser.error("choose one of --weights, --weights-dir, or --weights-repo/--model")
+        parser.error("choose one of --weights, --weights-dir, or --weights-repo")
     if len(selected_weights) > 1:
-        parser.error("choose only one of --weights, --weights-dir, or --weights-repo/--model")
+        parser.error("choose only one of --weights, --weights-dir, or --weights-repo")
     if args.weights_revision and not args.weights_repo:
-        parser.error("--weights-revision requires --weights-repo/--model")
+        parser.error("--weights-revision requires --weights-repo")
     args.model_config_json_cli_override = _has_cli_override(argv, "--model-config-json")
     if (args.weights_dir or args.weights_repo) and args.model_config_json:
         parser.error("--model-config-json is loaded from --weights-dir/--weights-repo layouts; use --weights for explicit .npz fallback")

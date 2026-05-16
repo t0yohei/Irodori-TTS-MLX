@@ -124,11 +124,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--weights-repo",
-        "--model",
         dest="weights_repo",
         help="Hugging Face repo id with a hosted/pre-converted weights layout for MLX bridge benchmark.",
     )
-    parser.add_argument("--weights-revision", help="Optional Hugging Face revision for --weights-repo/--model.")
+    parser.add_argument("--weights-revision", help="Optional Hugging Face revision for --weights-repo.")
     parser.add_argument("--codec-device", default="cpu", help="Codec device for MLX bridge benchmark.")
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument(
