@@ -22,12 +22,12 @@ Related issue: [#13](https://github.com/t0yohei/Irodori-TTS-MLX/issues/13)
 
 ### Upstream checkout
 
-- Path: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/external/Irodori-TTS`
+- Path: `/path/to/Irodori-TTS-MLX/external/Irodori-TTS`
 
 ### Model checkpoint
 
 - Source checkpoint: `Aratako/Irodori-TTS-500M-v2`
-- Local source path: `/Users/kouka/.cache/huggingface/hub/models--Aratako--Irodori-TTS-500M-v2/snapshots/8fd631cafb911dde466bc30dd558a0dc55e8ccae/model.safetensors`
+- Local source path: `/path/to/huggingface-cache/hub/models--Aratako--Irodori-TTS-500M-v2/snapshots/8fd631cafb911dde466bc30dd558a0dc55e8ccae/model.safetensors`
 - Converted MLX weights: `benchmark-runs/irodori-tts-500m-v2.npz`
 
 ### Codec checkpoint
@@ -36,7 +36,7 @@ Related issue: [#13](https://github.com/t0yohei/Irodori-TTS-MLX/issues/13)
 
 ### Reference audio
 
-- Path: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/baseline-runs/base-no-ref-seed-20260511.wav`
+- Path: `/path/to/Irodori-TTS-MLX/baseline-runs/base-no-ref-seed-20260511.wav`
 - Origin: local no-reference upstream baseline artifact from the previous measured baseline report
 - Sharing status: local-only, not committed
 
@@ -47,7 +47,7 @@ Related issue: [#13](https://github.com/t0yohei/Irodori-TTS-MLX/issues/13)
 ```bash
 . .venv-bench311/bin/activate
 python scripts/convert_weights.py \
-  /Users/kouka/.cache/huggingface/hub/models--Aratako--Irodori-TTS-500M-v2/snapshots/8fd631cafb911dde466bc30dd558a0dc55e8ccae/model.safetensors \
+  /path/to/huggingface-cache/hub/models--Aratako--Irodori-TTS-500M-v2/snapshots/8fd631cafb911dde466bc30dd558a0dc55e8ccae/model.safetensors \
   benchmark-runs/irodori-tts-500m-v2.npz
 ```
 
@@ -57,9 +57,9 @@ python scripts/convert_weights.py \
 . .venv-bench311/bin/activate
 python scripts/benchmark.py \
   --mode mlx \
-  --mlx-python /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/.venv-bench311/bin/python \
-  --weights /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/benchmark-runs/irodori-tts-500m-v2.npz \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/external/Irodori-TTS \
+  --mlx-python /path/to/Irodori-TTS-MLX/.venv-bench311/bin/python \
+  --weights /path/to/Irodori-TTS-MLX/benchmark-runs/irodori-tts-500m-v2.npz \
+  --upstream-root /path/to/Irodori-TTS-MLX/external/Irodori-TTS \
   --codec-device mps \
   --output-dir benchmark-runs/mlx-no-ref
 ```
@@ -70,10 +70,10 @@ python scripts/benchmark.py \
 . .venv-bench311/bin/activate
 python scripts/benchmark.py \
   --mode mlx \
-  --mlx-python /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/.venv-bench311/bin/python \
-  --weights /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/benchmark-runs/irodori-tts-500m-v2.npz \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/external/Irodori-TTS \
-  --reference-wav /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/baseline-runs/base-no-ref-seed-20260511.wav \
+  --mlx-python /path/to/Irodori-TTS-MLX/.venv-bench311/bin/python \
+  --weights /path/to/Irodori-TTS-MLX/benchmark-runs/irodori-tts-500m-v2.npz \
+  --upstream-root /path/to/Irodori-TTS-MLX/external/Irodori-TTS \
+  --reference-wav /path/to/Irodori-TTS-MLX/baseline-runs/base-no-ref-seed-20260511.wav \
   --codec-device mps \
   --output-dir benchmark-runs/mlx-ref
 ```

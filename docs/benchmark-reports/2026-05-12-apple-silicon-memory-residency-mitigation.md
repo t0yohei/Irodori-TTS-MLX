@@ -45,13 +45,13 @@ From the earlier report in [`2026-05-12-apple-silicon-mlx-followup.md`](2026-05-
 Command:
 
 ```bash
-/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/.venv-bench311/bin/python \
+/path/to/Irodori-TTS-MLX/.venv-bench311/bin/python \
   scripts/benchmark.py \
   --mode mlx \
-  --mlx-python /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/.venv-bench311/bin/python \
-  --weights /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/benchmark-runs/irodori-tts-500m-v2.npz \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/external/Irodori-TTS \
-  --reference-wav /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/baseline-runs/base-no-ref-seed-20260511.wav \
+  --mlx-python /path/to/Irodori-TTS-MLX/.venv-bench311/bin/python \
+  --weights /path/to/Irodori-TTS-MLX/benchmark-runs/irodori-tts-500m-v2.npz \
+  --upstream-root /path/to/Irodori-TTS-MLX/external/Irodori-TTS \
+  --reference-wav /path/to/Irodori-TTS-MLX/baseline-runs/base-no-ref-seed-20260511.wav \
   --codec-device mps \
   --codec-runtime-mode persistent \
   --output-dir benchmark-runs/issue-29-persistent
@@ -77,13 +77,13 @@ Delta vs the earlier warm-cache persistent run:
 Command:
 
 ```bash
-/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/.venv-bench311/bin/python \
+/path/to/Irodori-TTS-MLX/.venv-bench311/bin/python \
   scripts/benchmark.py \
   --mode mlx \
-  --mlx-python /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/.venv-bench311/bin/python \
-  --weights /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-13-benchmark/benchmark-runs/irodori-tts-500m-v2.npz \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/external/Irodori-TTS \
-  --reference-wav /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-2-measured-baseline/baseline-runs/base-no-ref-seed-20260511.wav \
+  --mlx-python /path/to/Irodori-TTS-MLX/.venv-bench311/bin/python \
+  --weights /path/to/Irodori-TTS-MLX/benchmark-runs/irodori-tts-500m-v2.npz \
+  --upstream-root /path/to/Irodori-TTS-MLX/external/Irodori-TTS \
+  --reference-wav /path/to/Irodori-TTS-MLX/baseline-runs/base-no-ref-seed-20260511.wav \
   --codec-device mps \
   --codec-runtime-mode subprocess \
   --output-dir benchmark-runs/issue-29-subprocess

@@ -18,7 +18,7 @@ The harness is intentionally small for the first #109 slice:
 
 Full v3 baseline matrices and heavyweight perceptual audio metrics are deferred to the follow-up issues linked from #109.
 
-Current baseline summary for the TOY-5 v0.2 delivery is recorded in
+Current baseline summary for the v0.2 delivery is recorded in
 [baseline-reports/2026-05-16-upstream-mlx-parity-baseline.md](baseline-reports/2026-05-16-upstream-mlx-parity-baseline.md).
 That report is the source of truth for the checked-in harness baseline: fixture
 reports pass for the supported v3 and VoiceDesign scenarios, while real

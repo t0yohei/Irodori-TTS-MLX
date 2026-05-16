@@ -190,7 +190,7 @@ checkout からの `python scripts/*.py` も引き続き使えますが、通常
 - Benchmark: [docs/benchmark.md](docs/benchmark.md)
 - Packaging: [docs/packaging.md](docs/packaging.md)
 - License / distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
-- TOY-5 v0.2 cross-repository delivery plan: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
+- v0.2 cross-repository delivery plan / downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 
 ## 対象外
 

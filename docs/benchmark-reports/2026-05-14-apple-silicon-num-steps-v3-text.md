@@ -49,17 +49,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-12-measured-run-01 | passed | 1010.7 ms | 1194.5 ms | 2243.4 ms | 6.93 s | 4934828032 bytes (4.60 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-12-measured-run-01 | passed | 1010.7 ms | 1194.5 ms | 2243.4 ms | 6.93 s | 4934828032 bytes (4.60 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-12-measured-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 12 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 12 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-12 · warmup · cold
@@ -88,17 +88,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-12-warmup-run-01 | passed | 1001.0 ms | 1070.5 ms | 2111.6 ms | 6.74 s | 4930142208 bytes (4.59 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-12-warmup-run-01 | passed | 1001.0 ms | 1070.5 ms | 2111.6 ms | 6.74 s | 4930142208 bytes (4.59 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-12-warmup-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 12 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-12.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 12 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-16 · measured · warm
@@ -127,17 +127,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-16-measured-run-01 | passed | 1316.0 ms | 1140.3 ms | 2491.6 ms | 7.14 s | 4941660160 bytes (4.60 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-16-measured-run-01 | passed | 1316.0 ms | 1140.3 ms | 2491.6 ms | 7.14 s | 4941660160 bytes (4.60 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-16-measured-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 16 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 16 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-16 · warmup · cold
@@ -166,17 +166,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-16-warmup-run-01 | passed | 1370.0 ms | 1204.3 ms | 2613.0 ms | 7.58 s | 4928847872 bytes (4.59 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-16-warmup-run-01 | passed | 1370.0 ms | 1204.3 ms | 2613.0 ms | 7.58 s | 4928847872 bytes (4.59 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-16-warmup-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 16 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-16.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 16 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-24 · measured · warm
@@ -205,17 +205,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-24-measured-run-01 | passed | 1885.3 ms | 971.6 ms | 2901.6 ms | 7.36 s | 4918493184 bytes (4.58 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-24-measured-run-01 | passed | 1885.3 ms | 971.6 ms | 2901.6 ms | 7.36 s | 4918493184 bytes (4.58 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-24-measured-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 24 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 24 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-24 · warmup · cold
@@ -244,17 +244,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-24-warmup-run-01 | passed | 1900.5 ms | 1037.8 ms | 2976.5 ms | 7.58 s | 4955848704 bytes (4.62 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-24-warmup-run-01 | passed | 1900.5 ms | 1037.8 ms | 2976.5 ms | 7.58 s | 4955848704 bytes (4.62 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-24-warmup-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 24 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-24.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 24 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-40 · measured · warm
@@ -283,17 +283,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-40-measured-run-01 | passed | 3156.2 ms | 1033.7 ms | 4229.6 ms | 8.83 s | 4988059648 bytes (4.65 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-40-measured-run-01 | passed | 3156.2 ms | 1033.7 ms | 4229.6 ms | 8.83 s | 4988059648 bytes (4.65 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-40-measured-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 40 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 40 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-40 · warmup · cold
@@ -322,17 +322,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-40-warmup-run-01 | passed | 3136.4 ms | 1036.7 ms | 4213.4 ms | 8.73 s | 4951949312 bytes (4.61 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-40-warmup-run-01 | passed | 3136.4 ms | 1036.7 ms | 4213.4 ms | 8.73 s | 4951949312 bytes (4.61 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-40-warmup-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 40 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-40.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 40 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-8 · measured · warm
@@ -361,17 +361,17 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-8-measured-run-01 | passed | 678.6 ms | 1099.3 ms | 1818.5 ms | 6.37 s | 4926013440 bytes (4.59 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-8-measured-run-01 | passed | 678.6 ms | 1099.3 ms | 1818.5 ms | 6.37 s | 4926013440 bytes (4.59 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-8-measured-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 8 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.measured.run-01.wav --text '今日はいい天気ですね。' --num-steps 8 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```
 
 ## mlx-bridge-v3-no-reference-predicted-steps-8 · warmup · cold
@@ -400,15 +400,15 @@ Raw runs:
 
 | Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| mlx-bridge-v3-no-reference-predicted-steps-8-warmup-run-01 | passed | 685.3 ms | 1168.0 ms | 1897.1 ms | 7.68 s | 4928667648 bytes (4.59 GiB) | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.stdout.log` | `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.stderr.log` |
+| mlx-bridge-v3-no-reference-predicted-steps-8-warmup-run-01 | passed | 685.3 ms | 1168.0 ms | 1897.1 ms | 7.68 s | 4928667648 bytes (4.59 GiB) | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.stdout.log` | `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.stderr.log` |
 
 ### mlx-bridge-v3-no-reference-predicted-steps-8-warmup-run-01
 
-- Output WAV: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.run-01.wav`
-- CWD: `/Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets`
+- Output WAV: `/path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.run-01.wav`
+- CWD: `/path/to/Irodori-TTS-MLX`
 
 Command:
 
 ```bash
-/usr/bin/time -l /Users/kouka/.openclaw/workspace/repos/irodori-tts-mlx/.venv/bin/python scripts/generate_wav.py --weights /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/irodori-v3.npz --output /Users/kouka/.openclaw/workspace/repos/_worktrees/irodori-tts-mlx/issue-64-num-steps-presets/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 8 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/v3-model-config.json
+/usr/bin/time -l /path/to/Irodori-TTS-MLX/.venv/bin/python scripts/generate_wav.py --weights /path/to/irodori-v3-artifacts/irodori-v3.npz --output /path/to/Irodori-TTS-MLX/benchmark-runs/issue-64-v3-text/mlx-bridge-v3-no-reference-predicted-steps-8.warmup.run-01.wav --text '今日はいい天気ですね。' --num-steps 8 --seed 20260512 --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim --codec-device cpu --codec-runtime-mode persistent --no-reference --model-config-json /path/to/irodori-v3-artifacts/v3-model-config.json
 ```

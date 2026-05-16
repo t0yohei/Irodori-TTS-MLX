@@ -190,7 +190,7 @@ The legacy `python scripts/*.py` entry points still work from a checkout, but in
 - Benchmarking: [docs/benchmark.md](docs/benchmark.md)
 - Packaging: [docs/packaging.md](docs/packaging.md)
 - License and distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
-- TOY-5 v0.2 cross-repository delivery plan: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
+- v0.2 cross-repository delivery plan and downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 
 ## Non-goals
 

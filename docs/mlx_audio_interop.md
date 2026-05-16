@@ -1,7 +1,7 @@
 # mlx-audio interoperability evaluation
 
 Issue: [#110 Evaluate mlx-audio artifact and runtime interoperability](https://github.com/t0yohei/Irodori-TTS-MLX/issues/110)  
-Parent: [#123 TOY-5: Irodori-TTS-MLX v0.2 cross-repo delivery](https://github.com/t0yohei/Irodori-TTS-MLX/issues/123)
+Parent: [#123 Irodori-TTS-MLX v0.2 cross-repo delivery](https://github.com/t0yohei/Irodori-TTS-MLX/issues/123)
 
 This report evaluates [Blaizzy/mlx-audio](https://github.com/Blaizzy/mlx-audio) as a reference implementation and interoperability target for Irodori-TTS-MLX v0.2 work. The checked source revision used for this evaluation was `Blaizzy/mlx-audio` main as of 2026-05-16, and the public hosted model metadata was read from Hugging Face on the same date.
 
@@ -63,7 +63,7 @@ irodori-tts-adapt-mlx-audio /path/to/mlx-community/Irodori-TTS-500M-v2-fp16-snap
 
 The source directory must contain mlx-audio's `config.json` and `model.safetensors`. The adapter writes a normal Irodori-TTS-MLX hosted layout and validates it with `validate_weights_layout(...)`; use that output rather than passing `mlx-community/...` directly to `--weights-repo`.
 
-The reverse direction is also possible for unquantized RF-DiT weights, but it is lower priority because mlx-audio already publishes its own artifacts and because Irodori-TTS-MLX's v0.2 delivery goal is downstream local-assistant/OpenClaw consumption, not acting as a general mlx-audio artifact publisher.
+The reverse direction is also possible for unquantized RF-DiT weights, but it is lower priority because mlx-audio already publishes its own artifacts and because Irodori-TTS-MLX's v0.2 delivery goal is downstream consumer usage, not acting as a general mlx-audio artifact publisher.
 
 ## DACVAE implications
 
