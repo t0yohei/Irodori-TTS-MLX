@@ -467,6 +467,100 @@ def _load_npz_scalar_int(archive, name: str) -> int:
     raise ValueError(f"codec metadata field {name!r} must be a scalar integer")
 
 
+def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
+    """Inspect the local MLX DACVAE codec artifact without importing PyTorch."""
+
+    codec_path = Path(path).expanduser()
+    try:
+        import numpy as np
+
+        with np.load(codec_path, allow_pickle=False) as archive:
+            metadata_json = _load_npz_scalar_string(archive, "metadata_json")
+            metadata = json.loads(metadata_json) if metadata_json else {}
+            sample_rate = int(metadata.get("sample_rate", _load_npz_scalar_int(archive, "sample_rate")))
+            hop_length = int(metadata.get("hop_length", _load_npz_scalar_int(archive, "hop_length")))
+            latent_dim = int(metadata.get("latent_dim", _load_npz_scalar_int(archive, "latent_dim")))
+            files = set(archive.files)
+            has_decode = {"decode_basis", "decode_bias"}.issubset(files)
+            has_encode = {"encode_basis", "encode_bias"}.issubset(files)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"MLX DACVAE codec artifact was not found: {codec_path}") from exc
+    except KeyError as exc:
+        raise ValueError(f"MLX DACVAE codec artifact {codec_path} is missing metadata field {exc}.") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"MLX DACVAE codec artifact {codec_path} has invalid metadata_json: {exc}") from exc
+
+    return {
+        "codec_path": str(codec_path),
+        "sample_rate": sample_rate,
+        "hop_length": hop_length,
+        "latent_dim": latent_dim,
+        "has_mlx_decode": has_decode,
+        "has_mlx_encode": has_encode,
+        "metadata": metadata,
+    }
+
+
+def describe_codec_capabilities(
+    codec: DACVAEBridgeConfig,
+    *,
+    model_config: ModelConfig | None = None,
+) -> dict[str, object]:
+    """Return user-facing codec availability and fallback policy for a runtime config."""
+
+    mode = codec.runtime_mode
+    family = model_config.checkpoint_family if model_config is not None else None
+    uses_speaker = bool(model_config.use_speaker_condition) if model_config is not None else None
+    report: dict[str, object] = {
+        "runtime_mode": mode,
+        "checkpoint_family": family,
+        "codec_path": codec.codec_path,
+        "mlx_decode_available": False,
+        "mlx_encode_available": False,
+        "requires_codec_artifact": mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"},
+        "requires_pytorch_decode": mode in {"persistent", "subprocess"},
+        "requires_pytorch_encode": mode in {"persistent", "subprocess", "mlx-decode", "mlx-decode-subprocess"},
+        "reference_encode_policy": "pytorch-bridge" if mode != "mlx" else "mlx-artifact",
+        "decode_policy": "mlx-artifact" if mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"} else "pytorch-bridge",
+        "messages": [],
+    }
+    messages: list[str] = []
+    if mode in {"persistent", "subprocess"}:
+        messages.append("PyTorch bridge required for both DACVAE encode and decode.")
+    elif mode in {"mlx-decode", "mlx-decode-subprocess"}:
+        messages.append("MLX codec artifact is used for decode; reference-audio encode falls back to the PyTorch bridge.")
+        if uses_speaker:
+            messages.append("Use --no-reference to avoid PyTorch encode, or install upstream Irodori-TTS for reference-audio requests.")
+    elif mode == "mlx":
+        messages.append("MLX codec artifact is used for both encode and decode; artifact must include encode tensors.")
+        report["requires_pytorch_encode"] = False
+    else:
+        messages.append(f"Unsupported codec runtime mode: {mode!r}.")
+
+    if report["requires_codec_artifact"]:
+        if codec.codec_path:
+            try:
+                artifact = inspect_mlx_codec_artifact(codec.codec_path)
+            except (OSError, ValueError) as exc:
+                report["artifact_error"] = str(exc)
+                messages.append(str(exc))
+            else:
+                report["artifact"] = artifact
+                report["mlx_decode_available"] = bool(artifact["has_mlx_decode"])
+                report["mlx_encode_available"] = bool(artifact["has_mlx_encode"]) and mode == "mlx"
+                if not artifact["has_mlx_decode"]:
+                    messages.append("Codec artifact is missing decode_basis/decode_bias, so MLX decode is unavailable.")
+                if mode == "mlx" and not artifact["has_mlx_encode"]:
+                    messages.append("Codec artifact is missing encode_basis/encode_bias; use mlx-decode for decode-only artifacts.")
+        else:
+            messages.append(
+                "MLX codec modes require --codec-path pointing to a local DACVAE codec .npz; "
+                "use --codec-runtime-mode persistent to fall back to the PyTorch bridge."
+            )
+    report["messages"] = tuple(messages)
+    return report
+
+
 class MLXDACVAEBridge:
     """MLX-native DACVAE artifact contract for encode/decode experiments.
 
@@ -480,7 +574,11 @@ class MLXDACVAEBridge:
 
     def __init__(self, *, config: DACVAEBridgeConfig, require_encode: bool = True) -> None:
         if not config.codec_path:
-            raise ValueError("codec_runtime_mode='mlx' requires --codec-path pointing to a converted codec .npz")
+            raise ValueError(
+                f"codec_runtime_mode={config.runtime_mode!r} requires --codec-path pointing to a local MLX "
+                "DACVAE codec artifact .npz. Use --codec-runtime-mode persistent or subprocess for the "
+                "PyTorch bridge fallback, or use mlx-decode for decode-only artifacts."
+            )
         self.config = config
         self.codec_path = Path(config.codec_path).expanduser()
         try:
@@ -520,7 +618,8 @@ class MLXDACVAEBridge:
         if require_encode and (self.encode_basis is None or self.encode_bias is None):
             raise ValueError(
                 f"Converted MLX DACVAE codec artifact {self.codec_path} is missing encode_basis/encode_bias; "
-                "use codec_runtime_mode='mlx-decode' for decode-only artifacts."
+                "use codec_runtime_mode='mlx-decode' for decode-only artifacts, or use persistent/subprocess "
+                "when you need the PyTorch bridge fallback for both encode and decode."
             )
         if self.encode_basis is not None and tuple(self.encode_basis.shape) != (self.hop_length, self.latent_dim):
             raise ValueError(
@@ -593,10 +692,19 @@ class MLXDACVAEDecodeOnlyBridge:
         if self._encode_bridge is None:
             mode = "subprocess" if self.config.runtime_mode == "mlx-decode-subprocess" else "persistent"
             py_config = replace(self.config, runtime_mode=mode, codec_path=None)
-            if mode == "subprocess":
-                self._encode_bridge = SubprocessDACVAEBridge(config=py_config)
-            else:
-                self._encode_bridge = PyTorchDACVAEBridge(config=py_config)
+            try:
+                if mode == "subprocess":
+                    self._encode_bridge = SubprocessDACVAEBridge(config=py_config)
+                else:
+                    self._encode_bridge = PyTorchDACVAEBridge(config=py_config)
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    "codec_runtime_mode='mlx-decode' can decode with the local MLX codec artifact, but "
+                    "reference-audio encode still requires the upstream PyTorch DACVAE bridge. Use "
+                    "--no-reference when the checkpoint family supports it, switch to "
+                    "--codec-runtime-mode mlx with an encode-capable codec artifact, or install upstream "
+                    f"Irodori-TTS. {exc}"
+                ) from exc
             if int(self._encode_bridge.latent_dim) != int(self.latent_dim):
                 raise ValueError(
                     "PyTorch DACVAE encode fallback latent_dim does not match MLX decode artifact: "
@@ -1015,6 +1123,7 @@ class MLXDACVAERuntime:
                 "decode_imports_pytorch": isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge)),
                 "encode_backend": getattr(self.bridge, "encode_backend", self.config.codec.runtime_mode),
                 "decode_backend": getattr(self.bridge, "decode_backend", self.config.codec.runtime_mode),
+                "capabilities": describe_codec_capabilities(self.config.codec, model_config=self.config.model_config),
             },
             "conversion": (
                 "PyTorch tensor -> CPU NumPy -> MLX array, and reverse for DACVAE decode"

@@ -1,0 +1,136 @@
+# Hosted/local DACVAE codec artifact layout and bridge fallback policy
+
+Issue: [#116](https://github.com/t0yohei/Irodori-TTS-MLX/issues/116)
+Parent epic: [#123](https://github.com/t0yohei/Irodori-TTS-MLX/issues/123)
+
+This page defines the v0.2 artifact story for DACVAE codec weights. It is a
+layout and runtime-policy contract only; acoustic parity, real codec conversion,
+and full encode/decode validation remain owned by the dedicated DACVAE issues.
+
+## Relationship to hosted RF-DiT weights
+
+Hosted RF-DiT repositories described in
+[hosted_weights_layout.md](hosted_weights_layout.md) continue to contain model
+weights, model config, tokenizer metadata, conversion provenance, and checksums.
+They do not bundle Semantic-DACVAE weights by default.
+
+Codec artifacts are separate because they have a different upstream source,
+different conversion tooling, and different redistribution review. A hosted
+RF-DiT manifest may point to an optional companion codec artifact, but the
+runtime must still work when that pointer is absent by using the documented
+PyTorch bridge fallback.
+
+## Local codec artifact file
+
+The local runtime contract is one `.npz` file:
+
+```text
+dacvae-codec.npz
+|-- sample_rate              # scalar int, expected 48000 for the public codec
+|-- hop_length               # scalar int, expected 512 for the public codec
+|-- latent_dim               # scalar int, expected 32 for Irodori families
+|-- decode_basis             # required by current MLX decode fixture path
+|-- decode_bias              # required by current MLX decode fixture path
+|-- encode_basis             # required only for experimental full mlx mode
+|-- encode_bias              # required only for experimental full mlx mode
+`-- metadata_json            # optional scalar JSON string with provenance
+```
+
+The current checked-in MLX artifact format is intentionally a small fixture
+contract. It proves runtime selection, local artifact loading, encode/decode
+routing, and metadata reporting without claiming Semantic-DACVAE acoustic
+parity. A real converted codec artifact must replace the fixture tensors with
+the full DACVAE encoder, quantizer projections, decoder, and watermark-bypass
+metadata described in [dacvae_architecture.md](dacvae_architecture.md).
+
+## Hosted companion metadata
+
+If a hosted RF-DiT repo references a companion codec, add the pointer under the
+manifest `codec` key instead of copying codec weights into `weights.npz`:
+
+```json
+{
+  "codec": {
+    "source_repo": "Aratako/Semantic-DACVAE-Japanese-32dim",
+    "source_revision": "<hf-revision-or-commit>",
+    "source_file": "weights.pth",
+    "artifact_kind": "separate-local-or-hosted-dacvae-codec",
+    "artifact_format": "irodori-tts-mlx-dacvae-codec",
+    "artifact_format_version": "0.2",
+    "sample_rate": 48000,
+    "hop_length": 512,
+    "latent_dim": 32,
+    "runtime_modes": ["mlx-decode", "mlx"],
+    "provenance": {
+      "converter_repository": "https://github.com/t0yohei/Irodori-TTS-MLX",
+      "converter_version": "git:<commit-sha-or-tag>",
+      "dacvae_package_revision": "<dacvae-revision>",
+      "license_review": "pending|approved|rejected"
+    }
+  }
+}
+```
+
+Public hosted codec artifacts require approved license review for the upstream
+codec weights and the converted derivative. Local/private codec artifacts may
+use pending provenance for development, but they must not be published or used
+as a supported hosted model until review is approved.
+
+## Runtime capability checks
+
+`irodori_mlx.runtime.describe_codec_capabilities()` reports the selected codec
+mode, whether an MLX codec artifact is required, whether local MLX decode/encode
+is available, and whether PyTorch encode/decode fallback is still required. It
+inspects a local `.npz` path without importing PyTorch.
+
+The CLI boundary JSON returned by `--json`, `--metadata-json`, or
+`--print-boundaries` includes the same capability report under
+`boundaries.codec.capabilities`.
+
+## Bridge fallback policy by mode
+
+| `--codec-runtime-mode` | Decode backend | Reference encode backend | Codec artifact required | Main use |
+| --- | --- | --- | --- | --- |
+| `persistent` | PyTorch bridge | PyTorch bridge | No | Default production-like local generation. |
+| `subprocess` | PyTorch bridge in helper process | PyTorch bridge in helper process | No | Memory/lifecycle experiments. |
+| `mlx-decode` | Local MLX codec artifact | PyTorch bridge when reference audio is used | Yes | Decode-port validation and no-reference generation smoke tests. |
+| `mlx-decode-subprocess` | Local MLX codec artifact | PyTorch helper process when reference audio is used | Yes | Decode-port validation with isolated fallback encode. |
+| `mlx` | Local MLX codec artifact | Local MLX codec artifact | Yes | Full local codec artifact experiments; requires encode tensors. |
+
+When an MLX codec artifact is missing or decode-only, the error message should
+tell users which artifact is required and how to fall back: use
+`--codec-runtime-mode persistent` or `subprocess` for the upstream PyTorch
+bridge, use `mlx-decode` for decode-only artifacts, or use `--no-reference`
+when the checkpoint family and generation request do not need reference encode.
+
+## Checkpoint-family UX
+
+- `base_v2`: speaker/reference conditioning is normally enabled. Reference-audio
+  requests need codec encode. `mlx-decode` can avoid PyTorch decode, but
+  reference encode still uses the PyTorch bridge unless the artifact supports
+  full `mlx` encode.
+- `voicedesign`: caption conditioning disables the speaker/reference branch for
+  the supported family. `mlx-decode` can exercise MLX decode without importing
+  PyTorch when the request uses `--no-reference`.
+- `v3`: duration prediction is independent from the codec. No-reference v3 smoke
+  runs can use `mlx-decode`; reference-audio v3 runs follow the same encode
+  fallback rule as base v2.
+
+Unsupported or unaudited checkpoint families remain local-conversion-only and do
+not change the codec fallback contract.
+
+## Provenance requirements
+
+Every real codec artifact, local or hosted, must record:
+
+- upstream codec repo id, source file, and exact revision;
+- `dacvae` package revision and converter commit/tag;
+- runtime constants (`sample_rate`, `hop_length`, `latent_dim`);
+- whether encode, decode, or both are present;
+- parity evidence location for decode and encode when available;
+- license-review status and review reference;
+- a statement that the artifact is a converted derivative, not the original
+  upstream `weights.pth`.
+
+Do not commit codec weights, converted codec artifacts, reference audio,
+generated WAVs, or Hugging Face cache snapshots to this repository.

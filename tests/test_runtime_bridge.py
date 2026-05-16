@@ -29,6 +29,8 @@ try:
         PretrainedTextTokenizer,
         PyTorchDACVAEBridge,
         SubprocessDACVAEBridge,
+        describe_codec_capabilities,
+        inspect_mlx_codec_artifact,
         load_mlx_model,
         load_model_config_json,
         mlx_to_torch_latents,
@@ -176,6 +178,59 @@ def tiny_config() -> ModelConfig:
 
 
 class RuntimeBridgeTests(unittest.TestCase):
+    @require_mlx
+    def test_codec_capability_report_distinguishes_mlx_decode_and_encode_artifacts(self):
+        with tempfile.TemporaryDirectory() as td:
+            decode_only = Path(td) / "decode-only.npz"
+            encode_decode = Path(td) / "encode-decode.npz"
+            common = {
+                "sample_rate": np.array(8000),
+                "hop_length": np.array(2),
+                "latent_dim": np.array(4),
+                "decode_basis": np.zeros((4, 2), dtype=np.float32),
+                "decode_bias": np.zeros((2,), dtype=np.float32),
+            }
+            np.savez(decode_only, **common)
+            np.savez(
+                encode_decode,
+                **common,
+                encode_basis=np.zeros((2, 4), dtype=np.float32),
+                encode_bias=np.zeros((4,), dtype=np.float32),
+            )
+
+            decoded = inspect_mlx_codec_artifact(decode_only)
+            self.assertTrue(decoded["has_mlx_decode"])
+            self.assertFalse(decoded["has_mlx_encode"])
+
+            decode_report = describe_codec_capabilities(
+                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(decode_only)),
+                model_config=ModelConfig(),
+            )
+            self.assertTrue(decode_report["mlx_decode_available"])
+            self.assertFalse(decode_report["mlx_encode_available"])
+            self.assertTrue(decode_report["requires_pytorch_encode"])
+            self.assertIn("reference-audio encode falls back", "\n".join(decode_report["messages"]))
+
+            full_report = describe_codec_capabilities(
+                DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(encode_decode)),
+                model_config=ModelConfig(),
+            )
+            self.assertTrue(full_report["mlx_decode_available"])
+            self.assertTrue(full_report["mlx_encode_available"])
+            self.assertFalse(full_report["requires_pytorch_encode"])
+
+    @require_mlx
+    def test_codec_capability_report_explains_missing_artifact_fallback(self):
+        report = describe_codec_capabilities(
+            DACVAEBridgeConfig(runtime_mode="mlx-decode"),
+            model_config=ModelConfig(use_duration_predictor=True),
+        )
+
+        self.assertTrue(report["requires_codec_artifact"])
+        self.assertFalse(report["mlx_decode_available"])
+        self.assertIn("--codec-path", "\n".join(report["messages"]))
+        self.assertIn("PyTorch bridge", "\n".join(report["messages"]))
+
     @require_mlx
     def test_mlx_dacvae_bridge_decodes_without_importing_torch_or_upstream_codec(self):
         with tempfile.TemporaryDirectory() as td:
