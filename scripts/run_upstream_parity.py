@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEXT = "こんにちは。今日は良い天気です。"
 DEFAULT_CAPTION = "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。"
 DEFAULT_CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
+SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -249,12 +250,33 @@ def _run(command: list[str], *, cwd: Path, timeout_seconds: int) -> dict[str, An
     }
 
 
+def _side_report(
+    name: str,
+    status: str,
+    command: list[str],
+    output_wav: Path,
+    *,
+    reason: str | None = None,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    availability = {"state": status, "reason": reason, "detail": detail}
+    return {
+        "name": name,
+        "status": status,
+        "command": {"argv": command, "shell": shlex.join(command)},
+        "availability": availability,
+        "audio": wav_properties(output_wav),
+        "metadata": {},
+    }
+
+
 def _fixture_side(name: str, output_wav: Path, command: list[str], *, duration_mode: str, seed: int) -> dict[str, Any]:
     samples = 48000 if duration_mode == "manual" else 36000
     return {
         "name": name,
         "status": "fixture",
         "command": {"argv": command, "shell": shlex.join(command)},
+        "availability": {"state": "fixture", "reason": None, "detail": "deterministic fixture; no external artifacts required"},
         "audio": {
             "path": str(output_wav),
             "bytes": 96044,
@@ -324,10 +346,17 @@ def _classify(upstream: dict[str, Any], mlx: dict[str, Any]) -> dict[str, Any]:
     return {"status": status, "sample_rate_match": sample_rate_match, "duration_delta_seconds": duration_delta, "reasons": reasons}
 
 
+def _report_status(upstream: dict[str, Any], mlx: dict[str, Any]) -> str:
+    statuses = {upstream["status"], mlx["status"]}
+    if statuses <= {"passed", "fixture"}:
+        return "complete"
+    if "failed" in statuses:
+        return "failed"
+    return "partial"
+
+
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     scenario = build_scenario(args)
-    if args.run_mlx and not args.mlx_weights:
-        raise ValueError("--mlx-weights is required when --run-mlx is set")
     output_dir = Path(args.output_dir).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
     if args.run_upstream or args.run_mlx:
@@ -343,23 +372,44 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         upstream = _fixture_side("upstream", upstream_wav, upstream_command, duration_mode=duration_mode, seed=scenario.seed)
         mlx = _fixture_side("mlx", mlx_wav, mlx_command, duration_mode=duration_mode, seed=scenario.seed)
     else:
-        upstream = {"name": "upstream", "status": "not_run", "command": {"argv": upstream_command, "shell": shlex.join(upstream_command)}, "audio": wav_properties(upstream_wav), "metadata": {}}
-        mlx = {"name": "mlx", "status": "not_run", "command": {"argv": mlx_command, "shell": shlex.join(mlx_command)}, "audio": wav_properties(mlx_wav), "metadata": {}}
+        upstream = _side_report("upstream", "not_run", upstream_command, upstream_wav, reason="not_requested")
+        mlx = _side_report("mlx", "not_run", mlx_command, mlx_wav, reason="not_requested")
         if args.run_upstream:
             if not args.upstream_root:
-                raise ValueError("--upstream-root is required when --run-upstream is set")
-            upstream.update(_run(upstream_command, cwd=Path(args.upstream_root).expanduser().resolve(), timeout_seconds=args.timeout_seconds))
-            upstream["audio"] = wav_properties(upstream_wav)
+                upstream = _side_report(
+                    "upstream",
+                    "unavailable",
+                    upstream_command,
+                    upstream_wav,
+                    reason="missing_upstream_root",
+                    detail="Pass --upstream-root pointing at an Irodori-TTS checkout to execute the upstream side.",
+                )
+            else:
+                upstream.update(_run(upstream_command, cwd=Path(args.upstream_root).expanduser().resolve(), timeout_seconds=args.timeout_seconds))
+                upstream["availability"] = {"state": upstream["status"], "reason": None, "detail": None}
+                upstream["audio"] = wav_properties(upstream_wav)
         if args.run_mlx:
-            mlx.update(_run(mlx_command, cwd=ROOT, timeout_seconds=args.timeout_seconds))
-            mlx["audio"] = wav_properties(mlx_wav)
-            if mlx_metadata.exists():
-                mlx["metadata"] = json.loads(mlx_metadata.read_text(encoding="utf-8"))
+            if not args.mlx_weights:
+                mlx = _side_report(
+                    "mlx",
+                    "unavailable",
+                    mlx_command,
+                    mlx_wav,
+                    reason="missing_mlx_weights",
+                    detail="Pass --mlx-weights, and usually --mlx-model-config-json, to execute the MLX side.",
+                )
+            else:
+                mlx.update(_run(mlx_command, cwd=ROOT, timeout_seconds=args.timeout_seconds))
+                mlx["availability"] = {"state": mlx["status"], "reason": None, "detail": None}
+                mlx["audio"] = wav_properties(mlx_wav)
+                if mlx_metadata.exists():
+                    mlx["metadata"] = json.loads(mlx_metadata.read_text(encoding="utf-8"))
 
     return {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "created_by": "scripts/run_upstream_parity.py",
         "environment": {"platform": platform.platform(), "python": sys.version, "cwd": os.getcwd()},
+        "report_status": _report_status(upstream, mlx),
         "scenario": asdict(scenario),
         "metadata_axes": _metadata_axes(scenario),
         "artifacts": {"output_dir": str(output_dir), "commit_note": "Generated WAVs, upstream checkouts, and checkpoint caches must stay outside git."},

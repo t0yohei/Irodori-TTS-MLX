@@ -11,6 +11,9 @@ from unittest import mock
 import scripts.run_upstream_parity as run_upstream_parity
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 class RunUpstreamParityScriptTests(unittest.TestCase):
     def test_fixture_report_contains_contract_axes_and_expected_drift(self):
         with tempfile.TemporaryDirectory() as td:
@@ -18,14 +21,29 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
             report = run_upstream_parity.build_report(args)
 
         self.assertEqual(report["schema_version"], 1)
+        self.assertEqual(report["report_status"], "complete")
         self.assertEqual(report["scenario"]["checkpoint_family"], "v3")
         self.assertEqual(report["upstream"]["status"], "fixture")
+        self.assertEqual(report["upstream"]["availability"]["state"], "fixture")
         self.assertEqual(report["mlx"]["status"], "fixture")
         self.assertEqual(report["comparison"]["status"], "expected_drift")
         self.assertEqual(report["metadata_axes"]["duration"]["expected_mode"], "predicted_or_upstream_default")
         self.assertIn("tokenizer", report["metadata_axes"])
         self.assertIn("sampling", report["metadata_axes"])
         self.assertIn("codec", report["metadata_axes"])
+
+    def test_checked_in_schema_matches_fixture_report_contract(self):
+        schema = json.loads((REPO_ROOT / "docs" / "upstream_parity_report_schema.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as td:
+            args = run_upstream_parity.parse_args(["--fixture", "--scenario", "v3-no-reference", "--output-dir", td])
+            report = run_upstream_parity.build_report(args)
+
+        self.assertEqual(schema["properties"]["schema_version"]["const"], report["schema_version"])
+        for key in schema["required"]:
+            self.assertIn(key, report)
+        for side in ("upstream", "mlx"):
+            for key in schema["$defs"]["side"]["required"]:
+                self.assertIn(key, report[side])
 
     def test_voicedesign_fixture_records_caption_and_manual_duration(self):
         args = run_upstream_parity.parse_args(
@@ -71,6 +89,9 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
 
         self.assertEqual(report["upstream"]["status"], "not_run")
         self.assertEqual(report["mlx"]["status"], "not_run")
+        self.assertEqual(report["report_status"], "partial")
+        self.assertEqual(report["upstream"]["availability"]["reason"], "not_requested")
+        self.assertEqual(report["mlx"]["availability"]["reason"], "not_requested")
         self.assertEqual(report["comparison"]["status"], "not_comparable")
         self.assertIn("infer.py", report["upstream"]["command"]["argv"])
         self.assertIn("generate_wav.py", " ".join(report["mlx"]["command"]["argv"]))
@@ -116,6 +137,8 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertTrue(upstream_wav.is_absolute())
         self.assertEqual(report["upstream"]["audio"]["path"], str(upstream_wav))
         self.assertEqual(report["upstream"]["audio"]["sample_rate"], 24000)
+        self.assertEqual(report["upstream"]["availability"]["state"], "passed")
+        self.assertEqual(report["report_status"], "partial")
 
     def test_run_mlx_resolves_relative_output_dir_before_running_from_repo_root(self):
         with tempfile.TemporaryDirectory() as td:
@@ -158,6 +181,46 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertTrue(mlx_wav.is_absolute())
         self.assertEqual(report["mlx"]["audio"]["path"], str(mlx_wav))
         self.assertEqual(report["mlx"]["audio"]["sample_rate"], 24000)
+        self.assertEqual(report["mlx"]["availability"]["state"], "passed")
+        self.assertEqual(report["report_status"], "partial")
+
+    def test_missing_requested_upstream_is_partial_unavailable_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as td:
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "v3-no-reference",
+                    "--output-dir",
+                    td,
+                    "--run-upstream",
+                    "--mlx-weights",
+                    "/tmp/irodori-v3.npz",
+                ]
+            )
+            report = run_upstream_parity.build_report(args)
+
+        self.assertEqual(report["report_status"], "partial")
+        self.assertEqual(report["upstream"]["status"], "unavailable")
+        self.assertEqual(report["upstream"]["availability"]["reason"], "missing_upstream_root")
+        self.assertEqual(report["comparison"]["status"], "not_comparable")
+
+    def test_missing_requested_mlx_weights_is_partial_unavailable_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as td:
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "v3-no-reference",
+                    "--output-dir",
+                    td,
+                    "--run-mlx",
+                ]
+            )
+            report = run_upstream_parity.build_report(args)
+
+        self.assertEqual(report["report_status"], "partial")
+        self.assertEqual(report["mlx"]["status"], "unavailable")
+        self.assertEqual(report["mlx"]["availability"]["reason"], "missing_mlx_weights")
+        self.assertEqual(report["comparison"]["status"], "not_comparable")
 
     def test_default_report_path_expands_output_dir(self):
         with tempfile.TemporaryDirectory() as td:
