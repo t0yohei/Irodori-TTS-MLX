@@ -15,7 +15,7 @@ The harness is intentionally small for the first #109 slice:
 - it records `unavailable` side states with a machine-readable reason when optional upstream checkouts or MLX weights are absent
 - it supports deterministic fixture mode for CI and schema coverage without checkpoints
 
-Full VoiceDesign/v3 baseline matrices, intermediate tensor comparisons, and richer audio metrics are deferred to the follow-up issues linked from #109.
+Full v3 baseline matrices, intermediate tensor comparisons, and richer audio metrics are deferred to the follow-up issues linked from #109.
 
 ## Contract / Fixture Command
 
@@ -83,12 +83,26 @@ The report records the exact upstream `uv run python infer.py ...` command and t
 
 ## Real VoiceDesign Command
 
-VoiceDesign uses the same harness but requires caption conditioning and currently uses manual duration:
+Issue [#118](https://github.com/t0yohei/Irodori-TTS-MLX/issues/118) adds the fixed `voicedesign-contrastive-caption` scenario. It uses a short Japanese text prompt with a deliberately contrasting caption, fixed seed `20260518`, manual `--seconds 2.0`, `--num-steps 12`, and the shared CFG defaults including `cfg_scale_caption: 3.0`.
+
+Use fixture mode for a schema-covered smoke run that does not need checkpoints:
+
+```bash
+python scripts/run_upstream_parity.py \
+  --fixture \
+  --scenario voicedesign-contrastive-caption \
+  --output-dir parity-runs/fixture-voicedesign \
+  --json
+```
+
+The report records the caption, caption tokenizer settings, `cfg_scale_caption`, manual duration mode, and fixture WAV properties for both sides. This is the contract evidence to use on machines without an upstream checkout or converted MLX weights.
+
+For a real run, VoiceDesign uses the same harness but requires caption conditioning and currently uses manual duration:
 
 ```bash
 PYTHONPATH="$(pwd)/external/Irodori-TTS:${PYTHONPATH:-}" \
 python scripts/run_upstream_parity.py \
-  --scenario voicedesign-no-reference \
+  --scenario voicedesign-contrastive-caption \
   --run-upstream \
   --run-mlx \
   --upstream-root external/Irodori-TTS \
@@ -97,10 +111,12 @@ python scripts/run_upstream_parity.py \
   --output-dir parity-runs/voicedesign-real \
   --codec-device cpu \
   --seconds 2.0 \
-  --num-steps 8 \
-  --seed 20260516 \
+  --num-steps 12 \
+  --seed 20260518 \
   --json
 ```
+
+If either `external/Irodori-TTS` or the converted MLX artifacts are unavailable, run the same command without those artifacts to produce a partial report. The upstream and MLX sides will be marked `unavailable` with machine-readable reasons such as `missing_upstream_root` or `missing_mlx_weights`, while the scenario metadata remains complete.
 
 ## Report Schema
 

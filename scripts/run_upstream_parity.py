@@ -19,6 +19,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEXT = "こんにちは。今日は良い天気です。"
 DEFAULT_CAPTION = "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。"
+VOICEDESIGN_CONTRAST_TEXT = "新しい音声デザインの確認です。短い案内文をはっきり読み上げます。"
+VOICEDESIGN_CONTRAST_CAPTION = "低めの落ち着いた男性の声で、遠くから響くようにゆっくり読み上げてください。"
 DEFAULT_CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
 SCHEMA_VERSION = 1
 
@@ -76,6 +78,18 @@ def _scenario_presets() -> dict[str, dict[str, Any]]:
             "duration_scale": 1.0,
             "num_steps": 8,
             "seed": 20260516,
+        },
+        "voicedesign-contrastive-caption": {
+            "checkpoint_family": "voicedesign",
+            "checkpoint": "Aratako/Irodori-TTS-500M-v2-VoiceDesign",
+            "text": VOICEDESIGN_CONTRAST_TEXT,
+            "no_reference": True,
+            "reference_wav": None,
+            "caption": VOICEDESIGN_CONTRAST_CAPTION,
+            "seconds": 2.0,
+            "duration_scale": 1.0,
+            "num_steps": 12,
+            "seed": 20260518,
         },
     }
 

@@ -14,6 +14,45 @@ import scripts.run_upstream_parity as run_upstream_parity
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _assert_schema_subset(testcase: unittest.TestCase, schema: dict[str, object], value: object, path: str = "$") -> None:
+    if "const" in schema:
+        testcase.assertEqual(value, schema["const"], path)
+    if "enum" in schema:
+        testcase.assertIn(value, schema["enum"], path)
+    if "$ref" in schema:
+        ref = str(schema["$ref"])
+        testcase.assertTrue(ref.startswith("#/$defs/"), ref)
+        name = ref.removeprefix("#/$defs/")
+        _assert_schema_subset(testcase, _REPORT_SCHEMA["$defs"][name], value, path)
+        return
+    if "type" in schema:
+        expected = schema["type"]
+        expected_types = expected if isinstance(expected, list) else [expected]
+        if value is None:
+            testcase.assertIn("null", expected_types, path)
+        elif "object" in expected_types and isinstance(value, dict):
+            pass
+        elif "array" in expected_types and isinstance(value, list):
+            pass
+        elif "string" in expected_types and isinstance(value, str):
+            pass
+        else:
+            testcase.fail(f"{path} has unsupported schema type {expected!r} for value {value!r}")
+    if isinstance(value, dict):
+        for key in schema.get("required", []):
+            testcase.assertIn(key, value, f"{path}.{key}")
+        properties = schema.get("properties", {})
+        for key, child_schema in properties.items():
+            if key in value:
+                _assert_schema_subset(testcase, child_schema, value[key], f"{path}.{key}")
+    if isinstance(value, list) and "items" in schema:
+        for index, item in enumerate(value):
+            _assert_schema_subset(testcase, schema["items"], item, f"{path}[{index}]")
+
+
+_REPORT_SCHEMA = json.loads((REPO_ROOT / "docs" / "upstream_parity_report_schema.json").read_text(encoding="utf-8"))
+
+
 class RunUpstreamParityScriptTests(unittest.TestCase):
     def test_fixture_report_contains_contract_axes_and_expected_drift(self):
         with tempfile.TemporaryDirectory() as td:
@@ -33,24 +72,18 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertIn("codec", report["metadata_axes"])
 
     def test_checked_in_schema_matches_fixture_report_contract(self):
-        schema = json.loads((REPO_ROOT / "docs" / "upstream_parity_report_schema.json").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as td:
             args = run_upstream_parity.parse_args(["--fixture", "--scenario", "v3-no-reference", "--output-dir", td])
             report = run_upstream_parity.build_report(args)
 
-        self.assertEqual(schema["properties"]["schema_version"]["const"], report["schema_version"])
-        for key in schema["required"]:
-            self.assertIn(key, report)
-        for side in ("upstream", "mlx"):
-            for key in schema["$defs"]["side"]["required"]:
-                self.assertIn(key, report[side])
+        _assert_schema_subset(self, _REPORT_SCHEMA, report)
 
     def test_voicedesign_fixture_records_caption_and_manual_duration(self):
         args = run_upstream_parity.parse_args(
             [
                 "--fixture",
                 "--scenario",
-                "voicedesign-no-reference",
+                "voicedesign-contrastive-caption",
                 "--output-dir",
                 "unused",
                 "--caption-tokenizer-repo",
@@ -63,11 +96,44 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         report = run_upstream_parity.build_report(args)
 
         self.assertEqual(report["scenario"]["checkpoint_family"], "voicedesign")
+        self.assertEqual(report["scenario"]["name"], "voicedesign-contrastive-caption")
+        self.assertEqual(report["scenario"]["seed"], 20260518)
+        self.assertEqual(report["scenario"]["num_steps"], 12)
+        self.assertEqual(report["scenario"]["seconds"], 2.0)
+        self.assertIn("低めの落ち着いた男性の声", report["scenario"]["caption"])
         self.assertTrue(report["metadata_axes"]["tokenizer"]["caption_enabled"])
         self.assertEqual(report["metadata_axes"]["tokenizer"]["caption_tokenizer_repo"], "caption/repo")
         self.assertEqual(report["metadata_axes"]["duration"]["expected_mode"], "manual")
+        self.assertEqual(report["metadata_axes"]["sampling"]["cfg_scale_caption"], 3.0)
+        self.assertEqual(report["upstream"]["audio"]["sample_rate"], 24000)
+        self.assertEqual(report["mlx"]["audio"]["duration_seconds"], 2.0)
         self.assertIn("--caption", report["upstream"]["command"]["argv"])
         self.assertIn("--seconds", report["mlx"]["command"]["argv"])
+        _assert_schema_subset(self, _REPORT_SCHEMA, report)
+
+    def test_voicedesign_requested_real_sides_emit_clear_partial_report_without_artifacts(self):
+        with tempfile.TemporaryDirectory() as td:
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "voicedesign-contrastive-caption",
+                    "--run-upstream",
+                    "--run-mlx",
+                    "--output-dir",
+                    td,
+                ]
+            )
+            report = run_upstream_parity.build_report(args)
+
+        self.assertEqual(report["report_status"], "partial")
+        self.assertEqual(report["upstream"]["status"], "unavailable")
+        self.assertEqual(report["upstream"]["availability"]["reason"], "missing_upstream_root")
+        self.assertEqual(report["mlx"]["status"], "unavailable")
+        self.assertEqual(report["mlx"]["availability"]["reason"], "missing_mlx_weights")
+        self.assertEqual(report["comparison"]["status"], "not_comparable")
+        self.assertEqual(report["metadata_axes"]["duration"]["expected_mode"], "manual")
+        self.assertEqual(report["scenario"]["cfg_scale_caption"], 3.0)
+        _assert_schema_subset(self, _REPORT_SCHEMA, report)
 
     def test_real_mode_without_execution_writes_rerunnable_commands(self):
         with tempfile.TemporaryDirectory() as td:
