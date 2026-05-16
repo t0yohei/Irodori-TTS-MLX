@@ -85,9 +85,19 @@ A local directory may be useful even when `license_review.status` is `pending`, 
 Local conversion remains the supported fallback for:
 
 - unaudited, third-party, fine-tuned, quantized, LoRA, renamed, or otherwise modified checkpoints;
+- unquantized mlx-audio Irodori v2/VoiceDesign artifacts that first need the supported `irodori-tts-adapt-mlx-audio` interop path;
 - hosted repos with missing files, incompatible manifest/runtime metadata, or unapproved redistribution status;
 - offline or private workflows where Hugging Face resolution is unavailable;
 - users who prefer to keep all model artifacts local.
+
+For mlx-audio artifacts such as `mlx-community/Irodori-TTS-500M-v2-fp16`, do not pass the mlx-community repo directly to `--weights-repo`; those repos contain `config.json` and `model.safetensors`, not this project's `irodori_mlx_manifest.json` contract. Download or point at the snapshot directory, adapt it, then use the emitted hosted layout:
+
+```bash
+irodori-tts-adapt-mlx-audio /path/to/mlx-audio-snapshot /tmp/irodori-mlx-audio-hosted --source-repo mlx-community/Irodori-TTS-500M-v2-fp16 --source-revision <commit-sha>
+irodori-tts-generate --weights-dir /tmp/irodori-mlx-audio-hosted --text "こんにちは。今日は良い天気です。" --reference-wav /path/to/reference.wav --output /tmp/irodori-local.wav
+```
+
+The adapter rejects 4-bit/8-bit mlx-audio repos with an explicit quantization error. Quantized artifacts remain local-conversion-only or unsupported until this runtime has a designed quantized MLX loading path.
 
 ```bash
 python -m pip install -e ".[runtime]" safetensors

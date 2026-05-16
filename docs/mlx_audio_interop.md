@@ -44,16 +44,24 @@ mlx-audio is a useful runtime reference for these areas:
 - It exposes VoiceDesign as `instruct`/`caption`, while this repository's CLI uses `--caption`.
 - It currently covers v2 and VoiceDesign v2 artifacts; this repository also treats v3 predicted-duration checkpoints as first-class.
 
-The strongest interoperability target is not direct loader compatibility. The useful target is a repeatable adapter/conversion path:
+The supported interoperability target is not direct loader compatibility. Use the adapter/conversion path, then load the emitted hosted layout with `--weights-dir` or publish it as an approved hosted repo:
 
 ```text
 mlx-audio model.safetensors + config.json
         |
         +-- compare/remap RF-DiT keys against irodori_mlx converter keys
         +-- translate nested config.dit fields into flat ModelConfig fields
-        +-- preserve quantization metadata as unsupported-or-explicit adapter metadata
+        +-- reject quantization metadata until quantized MLX runtime support exists
         +-- emit Irodori-TTS-MLX hosted layout: manifest + model_config.json + tokenizer_config.json + conversion_metadata.json + weights.npz
 ```
+
+The local adapter entry point is:
+
+```bash
+irodori-tts-adapt-mlx-audio /path/to/mlx-community/Irodori-TTS-500M-v2-fp16-snapshot /tmp/irodori-mlx-audio-hosted --source-repo mlx-community/Irodori-TTS-500M-v2-fp16 --source-revision <commit-sha>
+```
+
+The source directory must contain mlx-audio's `config.json` and `model.safetensors`. The adapter writes a normal Irodori-TTS-MLX hosted layout and validates it with `validate_weights_layout(...)`; use that output rather than passing `mlx-community/...` directly to `--weights-repo`.
 
 The reverse direction is also possible for unquantized RF-DiT weights, but it is lower priority because mlx-audio already publishes its own artifacts and because Irodori-TTS-MLX's v0.2 delivery goal is downstream local-assistant/OpenClaw consumption, not acting as a general mlx-audio artifact publisher.
 
@@ -73,7 +81,7 @@ Recommendation: use mlx-audio's DACVAE implementation as an implementation refer
 
 ## Recommended follow-up work
 
-1. [#131](https://github.com/t0yohei/Irodori-TTS-MLX/issues/131): add an adapter for importing unquantized mlx-audio Irodori v2/VoiceDesign artifacts into the Irodori-TTS-MLX hosted layout. The adapter should reject 4-bit/8-bit quantized repos until this runtime has an explicit quantization story. It should not add direct runtime loading for bundled `dacvae/config.json` + `dacvae/model.safetensors`; preserve DACVAE provenance and convert to the existing hosted/local codec companion contract only after the parity gate exists.
+1. [#131](https://github.com/t0yohei/Irodori-TTS-MLX/issues/131): the adapter imports unquantized mlx-audio Irodori v2/VoiceDesign artifacts into the Irodori-TTS-MLX hosted layout; reject 4-bit/8-bit quantized repos until this runtime has an explicit quantization story. It does not add direct runtime loading for bundled `dacvae/config.json` + `dacvae/model.safetensors`; it preserves DACVAE provenance and leaves codec conversion to the existing hosted/local codec companion contract after the parity gate exists.
 2. [#130](https://github.com/t0yohei/Irodori-TTS-MLX/issues/130): compare mlx-audio's MLX DACVAE output against the current PyTorch `DACVAECodec` bridge and the local `.npz` codec artifact contract.
 3. Keep direct `--weights-repo mlx-community/...` loading out of scope for v0.2 unless a manifest sidecar or adapter layer is added. Silent fallback from mlx-audio's `config.json` shape would be too easy to misconfigure.
 
@@ -84,4 +92,5 @@ The contract test `tests/test_mlx_audio_interop_doc.py` captures the evaluated c
 - it asserts the documented mlx-audio repo set and artifact file names;
 - it proves a mlx-audio-like directory is rejected by `validate_weights_layout` because the Irodori-TTS-MLX manifest is missing;
 - it proves mlx-audio's nested `config.json` shape is rejected when used as `model_config.json` in an otherwise valid hosted layout;
-- it documents the intended adapter boundary rather than treating direct loader compatibility as supported.
+- `tests/test_mlx_audio_adapter.py` proves a mlx-audio-like unquantized layout can be adapted into a valid `validate_weights_layout(...)` output and that quantized metadata is rejected with a targeted error;
+- it documents the adapter boundary rather than treating direct loader compatibility as supported.
