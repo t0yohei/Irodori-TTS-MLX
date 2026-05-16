@@ -88,6 +88,50 @@ class GenerateWavScriptTests(unittest.TestCase):
             lines.append(f"{digest}  {name}")
         (root / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    def _write_codec_artifact_layout(self, root: Path, *, license_status: str = "approved") -> None:
+        manifest = {
+            "schema_version": 1,
+            "artifact_format": "irodori-tts-mlx-dacvae-codec",
+            "artifact_format_version": "0.2",
+            "files": {
+                "codec": "dacvae-codec.npz",
+                "metadata": "codec_metadata.json",
+                "checksums": "checksums.sha256",
+            },
+            "codec": {
+                "source_repo": "Aratako/Semantic-DACVAE-Japanese-32dim",
+                "source_revision": "test",
+                "source_file": "weights.pth",
+                "artifact_kind": "semantic-dacvae",
+                "sample_rate": 48000,
+                "hop_length": 512,
+                "latent_dim": 32,
+            },
+            "runtime": {
+                "minimum_irodori_tts_mlx_version": "0.2.0",
+                "supports_mlx_decode": True,
+                "supports_mlx_encode": False,
+                "requires_pytorch_fallback": True,
+            },
+            "license_review": {"status": license_status, "review_reference": "test"},
+        }
+        (root / "irodori_dacvae_codec_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        metadata = {
+            "schema_version": 1,
+            "artifact_format": "irodori-tts-mlx-dacvae-codec",
+            "artifact_format_version": "0.2",
+            "provenance": {"source_repo": "Aratako/Semantic-DACVAE-Japanese-32dim"},
+            "validation": {"contract": "fixture"},
+        }
+        (root / "codec_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+        (root / "dacvae-codec.npz").write_bytes(b"fake codec")
+        listed = ["irodori_dacvae_codec_manifest.json", "dacvae-codec.npz", "codec_metadata.json"]
+        lines = []
+        for name in listed:
+            digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
+            lines.append(f"{digest}  {name}")
+        (root / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
     def _args(self, output_wav: str) -> Namespace:
         return Namespace(
             weights="weights.npz",
@@ -107,6 +151,9 @@ class GenerateWavScriptTests(unittest.TestCase):
             caption_max_length=None,
             codec_repo="Aratako/Semantic-DACVAE-Japanese-32dim",
             codec_path=None,
+            codec_artifact_dir=None,
+            codec_artifact_repo=None,
+            codec_artifact_revision=None,
             codec_device="cpu",
             codec_runtime_mode="subprocess",
             disable_codec_normalize=False,
@@ -183,6 +230,90 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         self.assertEqual(args.codec_runtime_mode, "mlx")
         self.assertEqual(args.codec_path, "codec.npz")
+
+    def test_parse_args_accepts_hosted_codec_artifact_repo(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--codec-runtime-mode",
+                "mlx-decode",
+                "--codec-artifact-repo",
+                "t0yohei/Irodori-DACVAE-Codec-MLX",
+                "--codec-artifact-revision",
+                "abc123",
+            ]
+        )
+
+        self.assertEqual(args.codec_artifact_repo, "t0yohei/Irodori-DACVAE-Codec-MLX")
+        self.assertEqual(args.codec_artifact_revision, "abc123")
+
+    def test_parse_args_rejects_conflicting_codec_sources(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--codec-path",
+                    "codec.npz",
+                    "--codec-artifact-dir",
+                    "codec-layout",
+                ]
+            )
+
+    def test_resolve_codec_artifact_dir_supplies_codec_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_codec_artifact_layout(root, license_status="pending")
+            args = generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--codec-runtime-mode",
+                    "mlx-decode",
+                    "--codec-artifact-dir",
+                    str(root),
+                ]
+            )
+
+            generate_wav.resolve_codec_artifact_args(args)
+
+        self.assertTrue(args.codec_path.endswith("dacvae-codec.npz"))
+
+    def test_resolve_codec_artifact_repo_uses_snapshot_download_and_requires_approved_license(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write_codec_artifact_layout(root, license_status="approved")
+            args = generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--codec-runtime-mode",
+                    "mlx-decode",
+                    "--codec-artifact-repo",
+                    "org/codec",
+                ]
+            )
+            with patch.object(generate_wav, "_download_codec_repo_snapshot", return_value=root):
+                generate_wav.resolve_codec_artifact_args(args)
+
+        self.assertTrue(args.codec_path.endswith("dacvae-codec.npz"))
 
     def test_parse_args_config_json_supplies_defaults_and_cli_overrides(self):
         with tempfile.TemporaryDirectory() as td:

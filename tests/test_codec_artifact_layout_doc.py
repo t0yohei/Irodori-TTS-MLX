@@ -26,6 +26,11 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "dacvae_decoder/<state-dict-key>",
             "upstream codec repo id, source file, and exact revision",
             "license-review status",
+            "irodori_dacvae_codec_manifest.json",
+            "codec_metadata.json",
+            "--codec-artifact-repo",
+            "--codec-artifact-dir",
+            "Irodori-DACVAE-Codec-MLX",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)
@@ -38,6 +43,8 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             '"runtime_modes": ["mlx-decode", "mlx"]',
             "They do not bundle Semantic-DACVAE weights by default.",
             "PyTorch bridge fallback",
+            "RF-DiT weights repository",
+            "dedicated Hugging Face model repository",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)

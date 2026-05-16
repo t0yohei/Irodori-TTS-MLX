@@ -63,6 +63,9 @@ CONFIG_KEYS = {
     "caption_max_length",
     "codec_repo",
     "codec_path",
+    "codec_artifact_dir",
+    "codec_artifact_repo",
+    "codec_artifact_revision",
     "codec_device",
     "codec_runtime_mode",
     "disable_codec_normalize",
@@ -118,6 +121,9 @@ OPTIONAL_STRING_KEYS = {
     "caption_tokenizer_repo",
     "codec_repo",
     "codec_path",
+    "codec_artifact_dir",
+    "codec_artifact_repo",
+    "codec_artifact_revision",
     "codec_device",
     "metadata_json",
     "requests_json",
@@ -349,8 +355,25 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument(
         "--codec-path",
         default=config.get("codec_path"),
-        help="Converted local MLX DACVAE codec .npz. Required when --codec-runtime-mode mlx.",
+        help="Converted local MLX DACVAE codec .npz. Required when --codec-runtime-mode uses an MLX codec unless a codec artifact layout is provided.",
     )
+    parser.add_argument(
+        "--codec-artifact-dir",
+        default=config.get("codec_artifact_dir"),
+        help=(
+            "Local directory or archive using the hosted DACVAE codec artifact layout "
+            "(irodori_dacvae_codec_manifest.json, dacvae-codec.npz, codec_metadata.json, checksums)."
+        ),
+    )
+    parser.add_argument(
+        "--codec-artifact-repo",
+        default=config.get("codec_artifact_repo"),
+        help=(
+            "Hugging Face repo id with an approved hosted DACVAE codec artifact layout. "
+            "RF-DiT --weights-repo and DACVAE --codec-artifact-repo stay separate."
+        ),
+    )
+    parser.add_argument("--codec-artifact-revision", default=config.get("codec_artifact_revision"), help="Optional Hugging Face revision for --codec-artifact-repo.")
     parser.add_argument("--codec-device", default=_default(config, "codec_device", "cpu"), help="PyTorch codec device: cpu, mps, or cuda.")
     parser.add_argument(
         "--codec-runtime-mode",
@@ -478,6 +501,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("choose only one of --weights, --weights-dir, or --weights-repo")
     if args.weights_revision and not args.weights_repo:
         parser.error("--weights-revision requires --weights-repo")
+    selected_codec_artifacts = [
+        value
+        for value in (args.codec_path, args.codec_artifact_dir, args.codec_artifact_repo)
+        if value is not None and str(value).strip()
+    ]
+    if len(selected_codec_artifacts) > 1:
+        parser.error("choose only one of --codec-path, --codec-artifact-dir, or --codec-artifact-repo")
+    if args.codec_artifact_revision and not args.codec_artifact_repo:
+        parser.error("--codec-artifact-revision requires --codec-artifact-repo")
     args.model_config_json_cli_override = _has_cli_override(argv, "--model-config-json")
     if (args.weights_dir or args.weights_repo) and args.model_config_json:
         parser.error("--model-config-json is loaded from --weights-dir/--weights-repo layouts; use --weights for explicit .npz fallback")
@@ -540,6 +572,47 @@ def resolve_preconverted_weights_args(args: argparse.Namespace) -> argparse.Name
     args.weights = str(layout.weights_path)
     if not getattr(args, "model_config_json_cli_override", False):
         args.model_config_json = str(layout.model_config_path)
+    return args
+
+
+def _download_codec_repo_snapshot(repo_id: str, *, revision: str | None = None):
+    from irodori_mlx.hosted_codec import snapshot_codec_repo
+
+    return snapshot_codec_repo(repo_id, revision=revision)
+
+
+def resolve_codec_artifact_source(
+    *,
+    codec_artifact_dir: str | Path | None = None,
+    codec_artifact_repo: str | None = None,
+    revision: str | None = None,
+):
+    from irodori_mlx.hosted_codec import validate_codec_artifact_layout
+
+    if codec_artifact_dir and codec_artifact_repo:
+        raise ValueError("choose either codec_artifact_dir or codec_artifact_repo, not both")
+    if codec_artifact_dir:
+        return validate_codec_artifact_layout(codec_artifact_dir, source=str(codec_artifact_dir), source_kind="local")
+    if codec_artifact_repo:
+        snapshot = _download_codec_repo_snapshot(str(codec_artifact_repo), revision=revision)
+        source = str(codec_artifact_repo) if revision is None else f"{codec_artifact_repo}@{revision}"
+        try:
+            return validate_codec_artifact_layout(snapshot, source=source, source_kind="repo")
+        except ValueError as exc:
+            raise ValueError(f"{exc}. Use --codec-path or --codec-artifact-dir for a local DACVAE codec fallback instead.") from exc
+    return None
+
+
+def resolve_codec_artifact_args(args: argparse.Namespace) -> argparse.Namespace:
+    layout = resolve_codec_artifact_source(
+        codec_artifact_dir=args.codec_artifact_dir,
+        codec_artifact_repo=args.codec_artifact_repo,
+        revision=getattr(args, "codec_artifact_revision", None),
+    )
+    if layout is None:
+        return args
+    args._resolved_codec_artifact = layout
+    args.codec_path = str(layout.codec_path)
     return args
 
 
@@ -722,6 +795,7 @@ def main() -> int:
         layout_runtime = dict(layout.manifest.get("runtime", {}))
     else:
         model_config = load_model_config_json(args.model_config_json)
+    resolve_codec_artifact_args(args)
     request_overrides = load_generation_requests_json(args.requests_json) if args.requests_json else [{}]
     for index, item in enumerate(request_overrides, start=1):
         request_reference = item.get("reference_wav", args.reference_wav)
