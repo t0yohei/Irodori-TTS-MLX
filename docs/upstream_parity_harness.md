@@ -17,12 +17,33 @@ The harness is intentionally small for the first #109 slice:
 
 Full v3 baseline matrices, intermediate tensor comparisons, and richer audio metrics are deferred to the follow-up issues linked from #109.
 
+Current baseline summary for the TOY-5 v0.2 delivery is recorded in
+[baseline-reports/2026-05-16-upstream-mlx-parity-baseline.md](baseline-reports/2026-05-16-upstream-mlx-parity-baseline.md).
+That report is the source of truth for the checked-in harness baseline: fixture
+reports pass for the supported v3 and VoiceDesign scenarios, while real
+upstream-vs-MLX audio execution remains partial on machines without an upstream
+checkout and converted MLX checkpoint artifacts.
+
+## Setup Matrix
+
+The harness has three useful setup levels:
+
+| Setup | Required local assets | Expected report status |
+| --- | --- | --- |
+| Fixture contract | repository checkout only | `complete`, both sides `fixture` |
+| Partial setup audit | repository checkout only, with `--run-upstream --run-mlx` but no artifacts | `partial`, unavailable reasons recorded |
+| Real upstream-vs-MLX run | upstream `Aratako/Irodori-TTS` checkout, upstream dependencies, converted MLX `.npz`, model config JSON, codec dependencies/cache | `complete` when both commands pass |
+
+The repository does not commit upstream checkouts, generated WAVs, Hugging Face
+caches, converted `.npz` weights, model snapshots, or reference audio. Keep
+those under `parity-runs/`, `/tmp`, or another ignored local path.
+
 ## Contract / Fixture Command
 
 Use fixture mode when upstream dependencies or real checkpoints are unavailable:
 
 ```bash
-python scripts/run_upstream_parity.py \
+uv run python scripts/run_upstream_parity.py \
   --fixture \
   --scenario v3-no-reference \
   --output-dir parity-runs/fixture-v3 \
@@ -31,12 +52,19 @@ python scripts/run_upstream_parity.py \
 
 This writes `parity-runs/fixture-v3/v3-no-reference.parity.json` with deterministic evidence. It does not download weights, import upstream `irodori_tts`, or generate audio.
 
+The current v3 fixture baseline is:
+
+- `report_status: "complete"`
+- upstream side: `status: "fixture"`, sample rate 24000 Hz, duration 1.5 s
+- MLX side: `status: "fixture"`, sample rate 24000 Hz, duration 1.5 s
+- comparison: `status: "expected_drift"` because PyTorch and MLX generation are not expected to be bit-identical
+
 ## Partial Report Command
 
 The runner can intentionally record only one side, or record why a requested side could not run. For example, this command asks for both sides but omits the external artifacts:
 
 ```bash
-python scripts/run_upstream_parity.py \
+uv run python scripts/run_upstream_parity.py \
   --scenario v3-no-reference \
   --run-upstream \
   --run-mlx \
@@ -45,6 +73,10 @@ python scripts/run_upstream_parity.py \
 ```
 
 The JSON is still written with `report_status: "partial"`. The upstream side is marked `status: "unavailable"` with `availability.reason: "missing_upstream_root"`, and the MLX side is marked `status: "unavailable"` with `availability.reason: "missing_mlx_weights"`. This is the expected representation for CI or developer machines that do not have heavyweight checkpoints, caches, or an upstream checkout.
+
+This partial report is not a failed harness run. It is the reproducible setup
+audit used to prove that missing optional dependencies are represented
+explicitly instead of causing ad hoc script errors.
 
 ## Real v3 Command
 
@@ -65,7 +97,7 @@ Then run both sides and write one report:
 
 ```bash
 PYTHONPATH="$(pwd)/external/Irodori-TTS:${PYTHONPATH:-}" \
-python scripts/run_upstream_parity.py \
+uv run python scripts/run_upstream_parity.py \
   --scenario v3-no-reference \
   --run-upstream \
   --run-mlx \
@@ -88,7 +120,7 @@ Issue [#118](https://github.com/t0yohei/Irodori-TTS-MLX/issues/118) adds the fix
 Use fixture mode for a schema-covered smoke run that does not need checkpoints:
 
 ```bash
-python scripts/run_upstream_parity.py \
+uv run python scripts/run_upstream_parity.py \
   --fixture \
   --scenario voicedesign-contrastive-caption \
   --output-dir parity-runs/fixture-voicedesign \
@@ -97,11 +129,19 @@ python scripts/run_upstream_parity.py \
 
 The report records the caption, caption tokenizer settings, `cfg_scale_caption`, manual duration mode, and fixture WAV properties for both sides. This is the contract evidence to use on machines without an upstream checkout or converted MLX weights.
 
+The current VoiceDesign fixture baseline is:
+
+- `scenario.name: "voicedesign-contrastive-caption"`
+- `duration.expected_mode: "manual"` with `seconds: 2.0`
+- `sampling.cfg_scale_caption: 3.0`
+- upstream and MLX fixture WAV properties use 24000 Hz mono audio and 2.0 s duration
+- comparison: `status: "expected_drift"`
+
 For a real run, VoiceDesign uses the same harness but requires caption conditioning and currently uses manual duration:
 
 ```bash
 PYTHONPATH="$(pwd)/external/Irodori-TTS:${PYTHONPATH:-}" \
-python scripts/run_upstream_parity.py \
+uv run python scripts/run_upstream_parity.py \
   --scenario voicedesign-contrastive-caption \
   --run-upstream \
   --run-mlx \
@@ -117,6 +157,21 @@ python scripts/run_upstream_parity.py \
 ```
 
 If either `external/Irodori-TTS` or the converted MLX artifacts are unavailable, run the same command without those artifacts to produce a partial report. The upstream and MLX sides will be marked `unavailable` with machine-readable reasons such as `missing_upstream_root` or `missing_mlx_weights`, while the scenario metadata remains complete.
+
+## When to Rerun
+
+Rerun the fixture and partial commands when any of these change:
+
+- `scripts/run_upstream_parity.py`
+- [upstream_parity_report_schema.json](upstream_parity_report_schema.json)
+- scenario defaults for v3 or VoiceDesign
+- tokenizer, duration, sampling, CFG, or codec command-line behavior
+- generated report interpretation in this document or the v0.2 delivery plan
+
+Rerun the real commands before claiming real audio parity for a release, after
+refreshing upstream checkpoints, after changing converted MLX weight layout, or
+after changing the codec runtime. If real upstream dependencies are unavailable,
+publish the partial report and keep the unavailable reasons in the report body.
 
 ## Report Schema
 
