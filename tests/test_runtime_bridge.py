@@ -547,6 +547,97 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertTrue(output_path.exists())
 
     @require_mlx
+    def test_mlx_dacvae_bridge_loads_executable_semantic_encoder_artifact(self):
+        from irodori_mlx.dacvae import (
+            EXECUTABLE_DECODER_PREFIX,
+            EXECUTABLE_ENCODER_PREFIX,
+            SemanticDACVAEDecoder,
+            SemanticDACVAEDecoderConfig,
+            SemanticDACVAEEncoder,
+            SemanticDACVAEEncoderConfig,
+            semantic_dacvae_decoder_required_keys,
+            semantic_dacvae_encoder_required_keys,
+        )
+        from irodori_mlx.weights import _resolve_parent
+
+        decoder_config = SemanticDACVAEDecoderConfig(
+            latent_dim=8,
+            decoder_dim=16,
+            decoder_rates=(2,),
+            wm_rates=(2,),
+            codebook_dim=4,
+            output_channels=1,
+        )
+        encoder_config = SemanticDACVAEEncoderConfig(
+            input_channels=1,
+            encoder_dim=4,
+            encoder_rates=(2,),
+            latent_dim=8,
+            codebook_dim=4,
+        )
+        decoder = SemanticDACVAEDecoder(decoder_config)
+        encoder = SemanticDACVAEEncoder(encoder_config)
+        executable_arrays = {}
+        for model, prefix, required in (
+            (decoder, EXECUTABLE_DECODER_PREFIX, semantic_dacvae_decoder_required_keys(decoder_config)),
+            (encoder, EXECUTABLE_ENCODER_PREFIX, semantic_dacvae_encoder_required_keys(encoder_config)),
+        ):
+            for name in required:
+                resolved = _resolve_parent(model, name)
+                self.assertIsNotNone(resolved, name)
+                parent, attr = resolved
+                executable_arrays[prefix + name] = np.array(getattr(parent, attr), dtype=np.float32)
+
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "semantic-codec.npz"
+            ref_path = Path(td) / "ref.wav"
+            metadata = {
+                "artifact_kind": "real_semantic_dacvae_decoder",
+                "sample_rate": 8000,
+                "hop_length": 2,
+                "latent_dim": 4,
+                "semantic_dacvae_decoder_config": {
+                    "latent_dim": 8,
+                    "decoder_dim": 16,
+                    "decoder_rates": [2],
+                    "wm_rates": [2],
+                    "codebook_dim": 4,
+                    "output_channels": 1,
+                },
+                "semantic_dacvae_encoder_config": {
+                    "input_channels": 1,
+                    "encoder_dim": 4,
+                    "encoder_rates": [2],
+                    "latent_dim": 8,
+                    "codebook_dim": 4,
+                },
+            }
+            np.savez(
+                codec_path,
+                sample_rate=np.array(8000),
+                hop_length=np.array(2),
+                latent_dim=np.array(4),
+                metadata_json=np.array(json.dumps(metadata)),
+                **executable_arrays,
+            )
+            import wave
+
+            pcm = (np.array([0.25, -0.5, 0.5, -0.25], dtype=np.float32) * 32767.0).astype("<i2")
+            with wave.open(str(ref_path), "wb") as fh:
+                fh.setnchannels(1)
+                fh.setsampwidth(2)
+                fh.setframerate(8000)
+                fh.writeframes(pcm.tobytes())
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+            self.assertTrue(artifact["has_mlx_encode"])
+            self.assertTrue(artifact["has_executable_mlx_encode"])
+
+            bridge = MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
+            latents = bridge.encode_reference(ref_path, max_seconds=None, normalize_db=None, ensure_max=False)
+            self.assertEqual(tuple(latents.shape), (1, 2, 4))
+
+    @require_mlx
     def test_mlx_dacvae_bridge_rejects_executable_decoder_latent_dim_mismatch(self):
         from irodori_mlx.dacvae import (
             EXECUTABLE_DECODER_PREFIX,

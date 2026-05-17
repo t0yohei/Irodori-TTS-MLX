@@ -24,10 +24,10 @@ Implementation consumers:
 
 The public codec artifact is a PyTorch `.pth` file, not a safetensors file. The
 contract below is therefore a runtime and logical state-dict contract.
-`scripts/convert_dacvae_codec.py` now performs the local `weights.pth`
-state-dict inspection step and writes a blocker report, but it deliberately does
-not emit a real `dacvae-codec.npz` until the MLX runtime has matching
-DACVAE conv/residual/VAEBottleneck modules.
+`scripts/convert_dacvae_decoder.py` now emits runtime-ready MLX tensors for the
+decoder path and the encoder mean path. The executable contract is still
+separate from parity: local encode/decode parity gates must pass before the
+converted codec is described as parity-backed.
 
 ## Runtime constants
 

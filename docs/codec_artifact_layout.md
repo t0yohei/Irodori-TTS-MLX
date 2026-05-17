@@ -35,6 +35,8 @@ dacvae-codec.npz
 |-- decode_bias              # required by current MLX decode fixture path
 |-- encode_basis             # required only for experimental full mlx mode
 |-- encode_bias              # required only for experimental full mlx mode
+|-- dacvae_encoder_exec/...  # runtime-ready MLX Semantic-DACVAE encoder tensors
+|-- dacvae_decoder_exec/...  # runtime-ready MLX Semantic-DACVAE decoder tensors
 |-- semantic_encoder_manifest_json  # required by a future real Semantic-DACVAE encoder artifact
 `-- metadata_json            # optional scalar JSON string with provenance
 ```
@@ -58,22 +60,26 @@ when real codec evidence is required.
 
 ## Semantic-DACVAE encoder conversion status
 
-Issue [#154](https://github.com/t0yohei/Irodori-TTS-MLX/issues/154) adds the
-explicit conversion entrypoint for the real encoder path:
+Issue [#173](https://github.com/t0yohei/Irodori-TTS-MLX/issues/173) extends the
+real-weight converter and runtime with the executable MLX encoder path for
+`Aratako/Semantic-DACVAE-Japanese-32dim`. The same converter now writes:
 
-```bash
-irodori-tts-convert-dacvae-codec /path/to/weights.pth /path/to/dacvae-codec.npz \
-  --inspect-only \
-  --report-json /tmp/dacvae-codec-conversion-blocker.json \
-  --json
-```
+- source encoder tensors under `dacvae_encoder/<state-dict-key>`;
+- runtime-ready encoder tensors under `dacvae_encoder_exec/<module-key>`;
+- `semantic_dacvae_encoder_config` in `metadata_json`;
+- `runtime_status.mlx_encoder_execution=available_unvalidated`.
 
-The command loads and inspects the local `weights.pth` state_dict, verifies
-whether the expected encoder and `quantizer.in_proj` logical groups are present,
-and writes a machine-readable blocker report. It intentionally does not write a
-`dacvae-codec.npz` while the runtime lacks MLX implementations of the real
-DACVAE conv/residual/VAEBottleneck modules. Running without `--inspect-only`
-returns a blocked conversion status instead of emitting a misleading artifact.
+The MLX runtime uses `dacvae_encoder_exec/` for `codec_runtime_mode="mlx"` when
+the full executable encoder contract is present. Reference audio is loaded as
+mono, resampled to the codec sample rate, optionally loudness-normalized or
+peak-limited, and right-padded to a hop-length multiple before entering the
+encoder. The encoder returns the deterministic VAE mean path, shaped `(B,T,32)`;
+the scale half of `quantizer.in_proj` is intentionally ignored to match
+Irodori's deterministic reference-audio path.
+
+This makes reference-audio encode executable without importing PyTorch, but it
+does not by itself mark encode as parity-backed. Encode parity remains owned by
+the follow-up parity gate.
 
 ## Real Semantic-DACVAE decoder artifact
 
@@ -97,10 +103,13 @@ python scripts/convert_dacvae_decoder.py \
 ```
 
 The converter writes the scalar runtime constants, `metadata_json`, every
-decoder-side source tensor under `dacvae_decoder/<state-dict-key>`, and the
-runtime-ready MLX decoder tensors under `dacvae_decoder_exec/<module-key>`. The
-required source groups are:
+decoder-side source tensor under `dacvae_decoder/<state-dict-key>`, every
+encoder-side source tensor under `dacvae_encoder/<state-dict-key>`, and the
+runtime-ready MLX tensors under `dacvae_decoder_exec/<module-key>` and
+`dacvae_encoder_exec/<module-key>`. The required source groups are:
 
+- `encoder.*`, including stem/downsample/final projection tensors;
+- `quantizer.in_proj.*`, including the 64-channel mean/scale encode projection;
 - `quantizer.out_proj.*`, including a 32-channel latent decode projection;
 - `decoder.*`, including the mono waveform projection;
 - provenance fields for source repo, source revision, source file, converter
@@ -115,12 +124,13 @@ final non-watermarked output activation/projection is sourced from
 `decoder.wm_model.encoder_block.pre`, matching the upstream Irodori watermark
 bypass path where `decoder.alpha == 0`.
 
-This real decoder artifact is deterministic and executable for decode-only MLX
-runtime modes, but executable is not the same as parity-backed. Runtime
+This real codec artifact is deterministic and executable for MLX runtime modes,
+but executable is not the same as parity-backed. Runtime
 capability inspection reports
 `has_real_dacvae_decode=true`, `has_executable_mlx_decode=true`, and
-`has_mlx_decode=true` when the executable tensor layout is present. Acoustic
-parity remains a separate pass/fail gate owned by
+`has_mlx_decode=true` when the executable decoder tensor layout is present, and
+`has_executable_mlx_encode=true` / `has_mlx_encode=true` when the executable
+encoder tensor layout is present. Acoustic parity remains a separate pass/fail gate owned by
 `scripts/check_dacvae_decode_parity.py`; keep `persistent`/`subprocess` PyTorch
 bridge modes available as a fallback until a local report for issue #172 passes
 against real converted weights.
@@ -141,7 +151,9 @@ python scripts/convert_dacvae_decoder.py \
 
 Expected evidence is `artifact_kind=real_semantic_dacvae_decoder`,
 `has_real_dacvae_decode=true`, `has_executable_mlx_decode=true`,
-`has_mlx_decode=true`, `runtime_status.mlx_decoder_execution=available_unvalidated`,
+`has_executable_mlx_encode=true`, `has_mlx_decode=true`, `has_mlx_encode=true`,
+`runtime_status.mlx_decoder_execution=available_unvalidated`,
+`runtime_status.mlx_encoder_execution=available_unvalidated`,
 and a capability message that acoustic parity remains gated by local validation.
 Run `scripts/check_dacvae_decode_parity.py` with a fixed `(1,T,32)` latent
 fixture and the converted artifact next; only a passing `dacvae-decode-parity.json`
