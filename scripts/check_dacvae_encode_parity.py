@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 SCHEMA_VERSION = 2
-SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/174"
+SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/185"
 PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169"
 DEFAULT_EXPECTED_LATENT_DIM = 32
 
