@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
 from dataclasses import asdict, dataclass
@@ -16,15 +17,74 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from irodori_mlx.runtime import (  # noqa: E402
-    DACVAEBridgeConfig,
-    MLXDACVAEBridge,
-    PyTorchDACVAEBridge,
-    _load_audio_numpy,
-)
+SCHEMA_VERSION = 2
+SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/174"
+PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169"
+DEFAULT_EXPECTED_LATENT_DIM = 32
 
-SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/155"
-PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160"
+DACVAEBridgeConfig: Any = None
+MLXDACVAEBridge: Any = None
+PyTorchDACVAEBridge: Any = None
+_load_audio_numpy: Any = None
+
+
+class PartialPreconditionError(RuntimeError):
+    """Raised only for preflight misses that are allowed to produce partial reports."""
+
+
+def _load_runtime_encode_dependencies() -> None:
+    global DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy
+    if all(
+        dependency is not None
+        for dependency in (DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy)
+    ):
+        return
+    from irodori_mlx.runtime import (  # noqa: E402
+        DACVAEBridgeConfig as runtime_config,
+        MLXDACVAEBridge as mlx_bridge,
+        PyTorchDACVAEBridge as pytorch_bridge,
+        _load_audio_numpy as runtime_load_audio_numpy,
+    )
+
+    DACVAEBridgeConfig = runtime_config
+    MLXDACVAEBridge = mlx_bridge
+    PyTorchDACVAEBridge = pytorch_bridge
+    _load_audio_numpy = runtime_load_audio_numpy
+
+
+def _require_existing_path(path: str | Path, label: str) -> None:
+    resolved = Path(path).expanduser()
+    if not resolved.exists():
+        raise PartialPreconditionError(f"{label} was not found: {resolved}")
+
+
+def _require_module(module_name: str, detail: str) -> None:
+    try:
+        importlib.import_module(module_name)
+    except (ImportError, ModuleNotFoundError, ValueError) as exc:
+        raise PartialPreconditionError(detail) from exc
+
+
+def _preflight_encode_pair(args: argparse.Namespace) -> None:
+    _require_existing_path(args.audio_wav, "Fixed DACVAE encode reference WAV fixture")
+    _require_existing_path(args.codec_path, "Converted MLX DACVAE codec artifact")
+    _require_module("mlx", "MLX runtime dependency is required for DACVAE encode parity.")
+    _require_module(
+        "irodori_tts.codec",
+        "Upstream irodori_tts.codec dependency is required for DACVAE encode parity.",
+    )
+    _require_module("torch", "PyTorch runtime dependency is required for DACVAE encode parity.")
+
+
+def _path_metadata(path: str | Path | None) -> dict[str, Any]:
+    if path is None:
+        return {"path": None, "exists": False}
+    resolved = Path(path).expanduser()
+    return {"path": str(resolved), "exists": resolved.exists()}
+
+
+def _is_partial_exception(exc: Exception) -> bool:
+    return isinstance(exc, PartialPreconditionError)
 
 
 @dataclass(frozen=True)
@@ -49,6 +109,8 @@ def _latent_stats(latents: np.ndarray) -> dict[str, Any]:
 
 
 def _audio_stats(path: str | Path) -> dict[str, Any]:
+    if _load_audio_numpy is None:
+        _load_runtime_encode_dependencies()
     samples, sample_rate = _load_audio_numpy(path)
     return {
         "path": str(Path(path).expanduser()),
@@ -125,6 +187,7 @@ def compare_latents(
 
 
 def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
+    _load_runtime_encode_dependencies()
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     audio_path = Path(args.audio_wav).expanduser()
@@ -158,6 +221,11 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(f"hop_length mismatch: upstream={upstream_bridge.hop_length}, mlx={mlx_bridge.hop_length}")
     if int(upstream_bridge.latent_dim) != int(mlx_bridge.latent_dim):
         raise ValueError(f"latent_dim mismatch: upstream={upstream_bridge.latent_dim}, mlx={mlx_bridge.latent_dim}")
+    if int(upstream_bridge.latent_dim) != int(args.expected_latent_dim):
+        raise ValueError(
+            "Encode parity expected Semantic-DACVAE runtime-layout latents shaped "
+            f"(1,T,{int(args.expected_latent_dim)}), got latent_dim={upstream_bridge.latent_dim}"
+        )
 
     upstream_latents = upstream_bridge.encode_reference(
         audio_path,
@@ -190,10 +258,13 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
         tolerances=tolerances,
     )
     return {
-        "schema_version": 1,
-        "status": "complete" if comparison["status"] == "passed" else "failed",
+        "schema_version": SCHEMA_VERSION,
         "source_issue": SOURCE_ISSUE,
         "parent_epic": PARENT_EPIC,
+        "run": {
+            "status": "complete",
+            "complete": True,
+        },
         "audio": _audio_stats(audio_path),
         "codec": {
             "repo": args.codec_repo,
@@ -202,6 +273,12 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "sample_rate": int(upstream_bridge.sample_rate),
             "hop_length": int(upstream_bridge.hop_length),
             "latent_dim": int(upstream_bridge.latent_dim),
+            "expected_latent_dim": int(args.expected_latent_dim),
+            "metadata_checks": {
+                "sample_rate": True,
+                "hop_length": True,
+                "latent_dim": True,
+            },
             "watermark": "disabled",
             "normalize_db": normalize_db,
             "ensure_max": ensure_max,
@@ -215,32 +292,26 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def partial_report(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
-    codec_path = Path(args.codec_path).expanduser()
-    audio_path = Path(args.audio_wav).expanduser()
+def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
+    status = "partial" if _is_partial_exception(exc) else "failed"
     return {
-        "schema_version": 1,
-        "status": "partial",
+        "schema_version": SCHEMA_VERSION,
         "source_issue": SOURCE_ISSUE,
         "parent_epic": PARENT_EPIC,
-        "blocker": {
-            "stage": "setup-or-encode",
-            "type": type(exc).__name__,
-            "message": str(exc),
-            "notes": [
-                "The parity gate reached setup or encode but could not complete the upstream-vs-MLX comparison.",
-                "This is expected while real Semantic-DACVAE encoder conversion is blocked; keep the report with the PR or issue evidence.",
-            ],
+        "run": {
+            "status": status,
+            "reason": str(exc),
+            "complete": False,
         },
         "audio": {
-            "path": str(audio_path),
-            "stats_available": bool(audio_path.exists()),
+            **_path_metadata(args.audio_wav),
+            "stats_available": Path(args.audio_wav).expanduser().exists(),
         },
         "codec": {
             "repo": args.codec_repo,
             "device": args.codec_device,
-            "mlx_codec_path": str(codec_path),
-            "mlx_codec_path_exists": bool(codec_path.exists()),
+            "mlx_codec": _path_metadata(args.codec_path),
+            "expected_latent_dim": int(args.expected_latent_dim),
             "watermark": "disabled",
             "normalize_db": None if args.normalize_db is None else float(args.normalize_db),
             "ensure_max": bool(args.ensure_max),
@@ -250,7 +321,12 @@ def partial_report(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
             "upstream_latents_npy": None,
             "mlx_latents_npy": None,
         },
-        "comparison": None,
+        "comparison": {
+            "status": status,
+            "reason": str(exc),
+            "checks": {},
+            "metrics": {},
+        },
     }
 
 
@@ -265,20 +341,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-seconds", type=float)
     parser.add_argument("--normalize-db", type=float, default=None)
     parser.add_argument("--ensure-max", action="store_true")
+    parser.add_argument(
+        "--expected-latent-dim",
+        type=int,
+        default=DEFAULT_EXPECTED_LATENT_DIM,
+        help="Expected runtime latent channel count for the fixed fixture. Defaults to 32 for Semantic-DACVAE.",
+    )
     parser.add_argument("--max-abs-tolerance", type=float, default=EncodeParityTolerances.max_abs)
     parser.add_argument("--mean-abs-tolerance", type=float, default=EncodeParityTolerances.mean_abs)
     parser.add_argument("--rmse-tolerance", type=float, default=EncodeParityTolerances.rmse)
     parser.add_argument("--min-cosine", type=float, default=EncodeParityTolerances.min_cosine)
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="Write a partial report and exit 0 when preflight detects absent local artifacts or runtime dependencies.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        _preflight_encode_pair(args)
         report = encode_pair(args)
     except Exception as exc:
-        print(f"DACVAE encode parity failed before comparison: {exc}", file=sys.stderr)
-        report = partial_report(args, exc)
+        report = build_incomplete_report(args, exc)
     report_path = (
         Path(args.report_json).expanduser()
         if args.report_json
@@ -286,12 +373,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"status": report["status"], "report": str(report_path)}, sort_keys=True))
-    if report["status"] == "complete":
+    status = report["comparison"]["status"]
+    print(json.dumps({"status": status, "report": str(report_path)}, sort_keys=True))
+    if status == "passed":
         return 0
-    if report["status"] == "failed":
-        return 1
-    return 2
+    if status == "partial":
+        return 0 if args.allow_partial else 2
+    return 1
 
 
 if __name__ == "__main__":  # pragma: no cover

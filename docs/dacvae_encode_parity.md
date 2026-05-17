@@ -1,7 +1,7 @@
 # DACVAE encode parity fixtures
 
-Issue #155 tracks encode parity evidence for the v0.2 MLX DACVAE work under
-parent epic #160. The fixture is intentionally a fixed reference
+Issue #174 tracks encode parity evidence for the Semantic-DACVAE MLX codec port
+under parent epic #169. The fixture is intentionally a fixed reference
 WAV plus a locally produced MLX codec `.npz`; this repository does not commit
 upstream codec weights, converted codec weights, generated latents, reference
 audio, Hugging Face cache contents, or other heavyweight derived assets.
@@ -63,7 +63,8 @@ PY
 ```
 
 Run the parity check after installing upstream Irodori-TTS and producing a
-local MLX DACVAE artifact that includes `encode_basis` and `encode_bias`:
+local MLX DACVAE artifact that includes the executable
+`dacvae_encoder_exec/` Semantic-DACVAE encoder tensors:
 
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
@@ -72,8 +73,14 @@ python scripts/check_dacvae_encode_parity.py \
   --codec-path /path/to/dacvae-codec.npz \
   --output-dir /tmp/irodori-dacvae-encode-fixtures/parity \
   --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim \
-  --codec-device cpu
+  --codec-device cpu \
+  --expected-latent-dim 32
 ```
+
+When a local checkpoint, converted codec artifact, or optional runtime
+dependency is unavailable, add `--allow-partial` to write the same JSON report
+shape with `comparison.status = "partial"` and exit successfully for evidence
+collection without claiming parity passed.
 
 The command writes:
 
@@ -88,15 +95,15 @@ reviewed for redistribution.
 
 The report uses a portable status contract:
 
-- `complete`: upstream and MLX encode both ran, the comparison completed, and all
+- `passed`: upstream and MLX encode both ran, the comparison completed, and all
   configured checks passed.
 - `failed`: upstream and MLX encode both ran, but shape, finite, or tolerance
   checks failed. Keep this report as measured parity evidence before changing
   thresholds.
-- `partial`: setup or encode could not reach comparison. This is the expected
-  documented blocker state while real Semantic-DACVAE encoder conversion remains
-  unavailable; the JSON report records the blocker stage and codec/audio inputs
-  without writing fake parity artifacts.
+- `partial`: preflight could not reach comparison because local artifacts or
+  optional runtime dependencies are absent. The JSON report records the missing
+  codec/audio/dependency inputs without writing fake parity artifacts or
+  treating runtime metric failures as partial.
 
 ## Preprocessing caveats
 
@@ -122,7 +129,7 @@ python -m pytest tests/test_check_dacvae_encode_parity_script.py tests/test_dacv
 ```
 
 `tests/test_dacvae_mlx_parity_fixtures.py` remains available for real fixture
-validation through environment variables. For issue #155 encode evidence, the
+validation through environment variables. For issue #174 encode evidence, the
 required variables are the codec artifact, reference WAV fixture, and upstream
 encoded latent fixture:
 
