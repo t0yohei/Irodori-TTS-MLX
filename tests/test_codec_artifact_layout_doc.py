@@ -32,7 +32,7 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "codec_metadata.json",
             "--codec-artifact-repo",
             "--codec-artifact-dir",
-            "Irodori-DACVAE-Codec-MLX",
+            "Irodori-TTS-MLX-DACVAE-Codec",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)

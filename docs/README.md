@@ -22,6 +22,7 @@ The current user-facing entry points are:
 
 - [hosted_weights_layout.md](hosted_weights_layout.md): hosted/pre-converted RF-DiT weights repository contract.
 - [hosted_weights_usage.md](hosted_weights_usage.md): hosted weights usage and local fallback.
+- [hosted_dacvae_codec_artifacts.md](hosted_dacvae_codec_artifacts.md): hosted DACVAE codec artifact publication status.
 - [preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md): engineering due-diligence notes for reviewed checkpoint families.
 - [license_and_distribution.md](license_and_distribution.md): repository license and non-redistribution boundary.
 - [mlx_audio_interop.md](mlx_audio_interop.md): mlx-audio artifact interop and adapter boundary.
@@ -31,6 +32,7 @@ The current user-facing entry points are:
 - [upstream_dependency.md](upstream_dependency.md): upstream PyTorch DACVAE bridge dependency boundary.
 - [dacvae_bridge.md](dacvae_bridge.md): runtime bridge details and codec mode choices.
 - [codec_artifact_layout.md](codec_artifact_layout.md): local/hosted DACVAE codec artifact contract, including `irodori_dacvae_codec_manifest.json` and the separate hosted codec repo path.
+- [hosted_dacvae_codec_artifacts.md](hosted_dacvae_codec_artifacts.md): prepared hosted DACVAE codec artifact PR and validation evidence.
 - [dacvae_architecture.md](dacvae_architecture.md): DACVAE architecture and checkpoint research notes.
 - [dacvae_decode_parity.md](dacvae_decode_parity.md): decode-only parity evidence.
 - [dacvae_encode_parity.md](dacvae_encode_parity.md): encode parity evidence.

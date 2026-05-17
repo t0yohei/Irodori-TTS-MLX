@@ -38,7 +38,7 @@ This repository does **not** redistribute:
 Converted `.npz` files and generated audio can be derived artifacts from upstream models, DACVAE weights, prompts, and reference audio. Keep them local unless you have confirmed that every relevant upstream license and rights holder permits redistribution.
 
 The v0.2 hosted/pre-converted MLX weights repository layout is documented in [hosted_weights_layout.md](hosted_weights_layout.md), but that layout is a packaging contract only. It does not approve publishing converted weights; any public hosted repository still needs an explicit license review and provenance record before upload.
-For v0.2 hosted pre-converted MLX weights, see the focused audit in [docs/preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md). That audit currently allows only explicitly reviewed Irodori-TTS checkpoint families to proceed, with attribution/provenance requirements and without bundling codec weights, generated samples, reference audio, or Hugging Face cache contents.
+For v0.2 hosted pre-converted MLX weights, see the focused audit in [docs/preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md). That audit currently allows only explicitly reviewed Irodori-TTS checkpoint families to proceed, with attribution/provenance requirements and without bundling codec weights, generated samples, reference audio, or Hugging Face cache contents. The Semantic-DACVAE codec derivative is handled separately in [hosted_dacvae_codec_artifacts.md](hosted_dacvae_codec_artifacts.md) and must not be bundled into RF-DiT repositories.
 
 ## Contributor guidance
 

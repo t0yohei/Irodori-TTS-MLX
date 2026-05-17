@@ -171,7 +171,7 @@ dedicated Hugging Face model repository, not an RF-DiT weights repository
 subdirectory. The recommended name is:
 
 ```text
-<t0yohei-or-approved-org>/Irodori-DACVAE-Codec-MLX
+<t0yohei-or-approved-org>/Irodori-TTS-MLX-DACVAE-Codec
 ```
 
 Equivalent local staging directories and public hosted repos use this layout:
@@ -242,7 +242,7 @@ Resolve a local staged codec artifact with:
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --codec-runtime-mode mlx-decode \
-  --codec-artifact-dir /models/Irodori-DACVAE-Codec-MLX \
+  --codec-artifact-dir /models/Irodori-TTS-MLX-DACVAE-Codec \
   --text "こんにちは。" \
   --no-reference \
   --output /tmp/irodori-v3-mlx-codec.wav
@@ -254,7 +254,7 @@ Resolve a public hosted codec artifact with:
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --codec-runtime-mode mlx-decode \
-  --codec-artifact-repo t0yohei/Irodori-DACVAE-Codec-MLX \
+  --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision <approved-hf-commit> \
   --text "こんにちは。" \
   --no-reference \

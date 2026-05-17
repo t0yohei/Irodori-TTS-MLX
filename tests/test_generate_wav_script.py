@@ -256,13 +256,13 @@ class GenerateWavScriptTests(unittest.TestCase):
                 "--codec-runtime-mode",
                 "mlx-decode",
                 "--codec-artifact-repo",
-                "t0yohei/Irodori-DACVAE-Codec-MLX",
+                "t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
                 "--codec-artifact-revision",
                 "abc123",
             ]
         )
 
-        self.assertEqual(args.codec_artifact_repo, "t0yohei/Irodori-DACVAE-Codec-MLX")
+        self.assertEqual(args.codec_artifact_repo, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec")
         self.assertEqual(args.codec_artifact_revision, "abc123")
 
     def test_parse_args_rejects_conflicting_codec_sources(self):

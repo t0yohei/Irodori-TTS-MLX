@@ -8,6 +8,7 @@ from irodori_mlx.config import CHECKPOINT_FAMILY_V3, CHECKPOINT_FAMILY_VOICEDESI
 from irodori_mlx.hosted_artifacts import (
     approved_hosted_rf_dit_artifacts,
     approved_hosted_rf_dit_repo,
+    hosted_dacvae_codec_artifact,
     hosted_rf_dit_artifacts,
 )
 
@@ -59,6 +60,23 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
                 with self.subTest(value=value):
                     self.assertNotRegex(value, forbidden)
 
+    def test_dacvae_codec_artifact_pr_is_recorded_but_not_approved_public_yet(self):
+        artifact = hosted_dacvae_codec_artifact()
+
+        self.assertFalse(artifact.is_approved_public)
+        self.assertEqual(artifact.repo_id, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec")
+        self.assertIsNone(artifact.revision)
+        self.assertEqual(artifact.publication_status, "hf-pr-open")
+        self.assertEqual(artifact.license_review_status, "approved")
+        self.assertEqual(
+            artifact.hf_pr_url,
+            "https://huggingface.co/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/discussions/1",
+        )
+        self.assertTrue(artifact.supports_mlx_decode)
+        self.assertTrue(artifact.supports_mlx_encode)
+        self.assertFalse(artifact.requires_pytorch_fallback)
+        self.assertIn("must be merged", artifact.blocker or "")
+
     def test_doc_records_public_status_and_smoke_commands(self):
         required_terms = [
             "#187",
@@ -80,6 +98,25 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
         for term in required_terms:
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)
+
+    def test_dacvae_codec_status_doc_records_hf_pr_and_validation_evidence(self):
+        doc = (self.root / "docs" / "hosted_dacvae_codec_artifacts.md").read_text(encoding="utf-8")
+        required_terms = [
+            "#188",
+            "t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
+            "https://huggingface.co/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/discussions/1",
+            "16d64e0978afe79c46b971405bba4f464cc743f8",
+            "publication status: `hf-pr-open`",
+            "supports_mlx_decode: true",
+            "supports_mlx_encode: true",
+            "requires_pytorch_fallback: false",
+            "license_review.status: \"approved\"",
+            "3.0517578125e-05",
+            "1.33514404296875e-05",
+        ]
+        for term in required_terms:
+            with self.subTest(term=term):
+                self.assertIn(term, doc)
 
     def test_readme_v3_smoke_uses_explicit_converted_paths(self):
         readme = (self.root / "README.md").read_text(encoding="utf-8")

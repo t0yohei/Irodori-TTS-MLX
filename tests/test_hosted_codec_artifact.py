@@ -159,11 +159,11 @@ class HostedCodecArtifactTests(unittest.TestCase):
             _write_codec_layout(root, license_status="approved")
 
             with patch("irodori_mlx.hosted_codec.snapshot_codec_repo", return_value=root) as snapshot:
-                resolved = resolve_codec_artifact_source(codec_artifact_repo="t0yohei/Irodori-DACVAE-Codec-MLX", revision="abc123")
+                resolved = resolve_codec_artifact_source(codec_artifact_repo="t0yohei/Irodori-TTS-MLX-DACVAE-Codec", revision="abc123")
 
-        snapshot.assert_called_once_with("t0yohei/Irodori-DACVAE-Codec-MLX", revision="abc123")
+        snapshot.assert_called_once_with("t0yohei/Irodori-TTS-MLX-DACVAE-Codec", revision="abc123")
         self.assertEqual(resolved.source_kind, "repo")
-        self.assertEqual(resolved.source, "t0yohei/Irodori-DACVAE-Codec-MLX@abc123")
+        self.assertEqual(resolved.source, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec@abc123")
 
     def test_hosted_repo_resolution_rejects_pending_license_review(self):
         with tempfile.TemporaryDirectory() as td:
