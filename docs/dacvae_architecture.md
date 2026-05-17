@@ -36,12 +36,12 @@ DACVAE conv/residual/VAEBottleneck modules.
 | Codec repo | `Aratako/Semantic-DACVAE-Japanese-32dim` | Default codec for base v2, VoiceDesign v2, and v3 paths. |
 | Artifact | `weights.pth` | Converter needs PyTorch checkpoint loading, not safetensors header parsing. |
 | Sample rate | `48000` | Reference audio is resampled before encode; decoded WAVs are emitted at 48 kHz. |
-| Hop length | `512` | One latent frame covers 512 samples, about 93.75 frames/sec. |
+| Hop length | `1920` | One latent frame covers 1920 samples, exactly 25 frames/sec. |
 | Runtime latent dim | `32` | RF-DiT checkpoints use `ModelConfig.latent_dim=32`. |
 | Runtime latent layout | `(batch, latent_steps, 32)` | Irodori transposes the DACVAE layout before/after codec calls. |
 | DACVAE latent layout | `(batch, 32, latent_steps)` | Native `dacvae.DACVAE.encode/decode` layout. |
 
-`hop_length` is the product of the encoder rates `[2, 4, 8, 8]`. Manual duration
+`hop_length` is the product of the encoder rates `[2, 8, 10, 12]`. Manual duration
 resolution in Irodori computes `ceil(seconds * sample_rate / hop_length)`.
 
 ## Architecture summary
@@ -85,10 +85,10 @@ the required logical tensors and accept the corresponding PyTorch
 
 | Group | Logical key pattern | Required for | Shape contract |
 | --- | --- | --- | --- |
-| Encoder stem/stages | `encoder.block.*` | encode | 1-D conv weights from mono audio through downsample rates `[2,4,8,8]`; final encoder channel count feeds `quantizer.in_proj`. |
+| Encoder stem/stages | `encoder.block.*` | encode | 1-D conv weights from mono audio through downsample rates `[2,8,10,12]`; final encoder channel count feeds `quantizer.in_proj`. |
 | VAE mean/scale projection | `quantizer.in_proj.*` | encode | Logical Conv1d to 64 channels; split into `mean` and `scale`, each 32 channels. Deterministic Irodori encode uses `mean`. |
 | VAE decoder projection | `quantizer.out_proj.*` | decode | Logical Conv1d from 32 latent channels back to the decoder channel space. |
-| Decoder upsample/residual stack | `decoder.*` | decode | Transposed-conv/residual stack using decoder rates `[8,8,4,2]`; output is mono waveform. |
+| Decoder upsample/residual stack | `decoder.*` | decode | Transposed-conv/residual stack using decoder rates `[12,10,8,2]`; output is mono waveform. |
 | Watermark modules | `decoder.wm_model.*` when present | decode setup | Present in the watermarked base architecture, but bypassed for Irodori by the wrapper. |
 
 For parametrized Conv1d/ConvTranspose1d modules, expect state-dict storage like:
@@ -103,7 +103,7 @@ The converter should validate the loaded model rather than guessing all nested
 module widths from filenames. Minimum acceptance for the first real converter:
 
 - `model.sample_rate == 48000`
-- `model.hop_length == 512`
+- `model.hop_length == 1920`
 - deterministic encode returns `(B, 32, T)` before Irodori transposes to `(B,T,32)`
 - decode accepts `(B, 32, T)` and returns mono `(B,1,S)`
 - `quantizer.in_proj` output channel count is `64`

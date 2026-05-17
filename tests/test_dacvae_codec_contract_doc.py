@@ -18,15 +18,15 @@ class DACVAECodecContractDocTests(unittest.TestCase):
         self.assertEqual(codec["repo_id"], "Aratako/Semantic-DACVAE-Japanese-32dim")
         self.assertEqual(codec["filename"], "weights.pth")
         self.assertEqual(codec["sample_rate"], 48000)
-        self.assertEqual(codec["hop_length"], 512)
+        self.assertEqual(codec["hop_length"], 1920)
         self.assertEqual(codec["latent_dim"], 32)
         self.assertEqual(codec["latent_layout_runtime"], "B,T,D")
         self.assertEqual(codec["latent_layout_dacvae"], "B,D,T")
 
     def test_doc_lists_architecture_and_preprocessing_contract(self):
         required_terms = [
-            "encoder rates `[2, 4, 8, 8]`",
-            "decoder rates `[8,8,4,2]`",
+            "encoder rates `[2, 8, 10, 12]`",
+            "decoder rates `[12,10,8,2]`",
             "VAEBottleneck.in_proj",
             "mean[32] + scale[32]",
             "decoder.alpha = 0.0",

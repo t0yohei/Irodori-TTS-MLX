@@ -394,7 +394,7 @@ class DACVAEQuantizerOutProj(DACVAEWNConv1d):
 class SemanticDACVAEDecoderConfig:
     latent_dim: int = 1024
     decoder_dim: int = 1536
-    decoder_rates: tuple[int, ...] = (8, 8, 4, 2)
+    decoder_rates: tuple[int, ...] = (12, 10, 8, 2)
     wm_rates: tuple[int, ...] = (8, 5, 4, 2)
     codebook_dim: int = 32
     output_channels: int = 1

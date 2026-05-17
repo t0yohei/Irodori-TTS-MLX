@@ -8,7 +8,7 @@
     "upstream_class": "dacvae.DACVAE",
     "wrapper": "irodori_tts.codec.DACVAECodec",
     "sample_rate": 48000,
-    "hop_length": 512,
+    "hop_length": 1920,
     "latent_dim": 32,
     "latent_layout_runtime": "B,T,D",
     "latent_layout_dacvae": "B,D,T"
@@ -16,8 +16,8 @@
   "architecture": {
     "base": "facebook/dacvae-watermarked",
     "semantic_distillation": "WavLM semantic distillation, Japanese fine-tune",
-    "encoder_rates": [2, 4, 8, 8],
-    "decoder_rates": [8, 8, 4, 2],
+    "encoder_rates": [2, 8, 10, 12],
+    "decoder_rates": [12, 10, 8, 2],
     "hop_length_formula": "product(encoder_rates)",
     "encoder_stages": "NormConv1d stem, four EncoderBlock stages, Snake1d, final NormConv1d",
     "bottleneck": "VAEBottleneck with in_proj mean/scale and out_proj back to decoder channels",
@@ -37,7 +37,7 @@
       "group": "encoder",
       "pattern": "encoder.block.*",
       "required_for": ["encode"],
-      "shape_notes": "1-D convolutional weights; stem maps 1 channel to encoder_dim, downsample stages follow encoder_rates [2,4,8,8], final channel count feeds quantizer.in_proj"
+      "shape_notes": "1-D convolutional weights; stem maps 1 channel to encoder_dim, downsample stages follow encoder_rates [2,8,10,12], final channel count feeds quantizer.in_proj"
     },
     {
       "group": "quantizer_in_proj",
@@ -55,7 +55,7 @@
       "group": "decoder",
       "pattern": "decoder.*",
       "required_for": ["decode"],
-      "shape_notes": "transposed-convolution/residual stack following decoder_rates [8,8,4,2], with watermark submodules present but bypassed for Irodori"
+      "shape_notes": "transposed-convolution/residual stack following decoder_rates [12,10,8,2], with watermark submodules present but bypassed for Irodori"
     }
   ],
   "shared_checkpoint_families": {

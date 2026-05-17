@@ -29,7 +29,7 @@ The local runtime contract is one `.npz` file:
 ```text
 dacvae-codec.npz
 |-- sample_rate              # scalar int, expected 48000 for the public codec
-|-- hop_length               # scalar int, expected 512 for the public codec
+|-- hop_length               # scalar int, expected 1920 for the public codec
 |-- latent_dim               # scalar int, expected 32 for Irodori families
 |-- decode_basis             # required by current MLX decode fixture path
 |-- decode_bias              # required by current MLX decode fixture path
@@ -187,7 +187,7 @@ repo-or-local-dir/
     "source_file": "weights.pth",
     "artifact_kind": "semantic-dacvae",
     "sample_rate": 48000,
-    "hop_length": 512,
+    "hop_length": 1920,
     "latent_dim": 32
   },
   "runtime": {
@@ -264,7 +264,7 @@ manifest `codec` key instead of copying codec weights into `weights.npz`:
     "artifact_format": "irodori-tts-mlx-dacvae-codec",
     "artifact_format_version": "0.2",
     "sample_rate": 48000,
-    "hop_length": 512,
+    "hop_length": 1920,
     "latent_dim": 32,
     "runtime_modes": ["mlx-decode", "mlx"],
     "provenance": {

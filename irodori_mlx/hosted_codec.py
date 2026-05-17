@@ -139,7 +139,7 @@ def _validate_manifest(manifest: dict[str, Any], *, source_kind: str) -> dict[st
             raise HostedCodecError("codec manifest file entries must be non-empty strings")
         _manifest_relative_path(entry, label=f"codec manifest files.{key}")
     codec = _require_mapping(manifest, "codec", label="codec manifest")
-    for key, expected in (("sample_rate", 48000), ("hop_length", 512), ("latent_dim", 32)):
+    for key, expected in (("sample_rate", 48000), ("hop_length", 1920), ("latent_dim", 32)):
         try:
             actual = int(codec.get(key, -1))
         except (TypeError, ValueError) as exc:

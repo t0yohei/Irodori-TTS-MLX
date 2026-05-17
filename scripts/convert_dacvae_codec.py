@@ -20,7 +20,7 @@ from typing import Any, Iterable, Mapping
 CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
 CODEC_SOURCE_FILE = "weights.pth"
 EXPECTED_SAMPLE_RATE = 48000
-EXPECTED_HOP_LENGTH = 512
+EXPECTED_HOP_LENGTH = 1920
 EXPECTED_LATENT_DIM = 32
 REQUIRED_ENCODE_GROUPS = {
     "encoder": ("encoder.",),

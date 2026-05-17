@@ -44,7 +44,7 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
             "encoder.block.0.weight": np.ones((64, 1, 7), dtype=np.float32),
         }
         dims = [1536, 768, 384, 192, 96]
-        for index, stride in enumerate((8, 8, 4, 2)):
+        for index, stride in enumerate((12, 10, 8, 2)):
             in_dim = dims[index]
             out_dim = dims[index + 1]
             prefix = f"decoder.model.{index + 1}.block"
@@ -128,7 +128,7 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
         executable = convert_dacvae_decoder.build_executable_decoder_tensors(tensors)
 
         self.assertEqual(executable["quantizer_out_proj.weight_v"].shape, (1024, 1, 32))
-        self.assertEqual(executable["blocks.0.main_upsample.1.weight_v"].shape, (768, 16, 1536))
+        self.assertEqual(executable["blocks.0.main_upsample.1.weight_v"].shape, (768, 24, 1536))
         self.assertEqual(executable["blocks.0.main_upsample.0.alpha"].shape, (1, 1, 1536))
 
     def test_capability_report_reports_executable_decoder_support(self):
@@ -158,7 +158,7 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
                 "artifact_format_version": "0.2",
                 "artifact_kind": "real_semantic_dacvae_decoder",
                 "sample_rate": 48000,
-                "hop_length": 512,
+                "hop_length": 1920,
                 "latent_dim": 4,
                 "semantic_dacvae_decoder_config": {
                     "latent_dim": 8,
@@ -174,7 +174,7 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
             np.savez(
                 path,
                 sample_rate=np.array(48000),
-                hop_length=np.array(512),
+                hop_length=np.array(1920),
                 latent_dim=np.array(4),
                 metadata_json=np.array(json.dumps(metadata)),
                 **{"dacvae_decoder/decoder.final.bias": np.zeros((1,), dtype=np.float32)},

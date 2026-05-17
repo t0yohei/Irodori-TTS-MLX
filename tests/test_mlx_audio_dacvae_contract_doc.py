@@ -23,16 +23,16 @@ MLX_AUDIO_DACVAE_CONFIG = {
 def _write_fixture_codec(path: Path, *, include_encode: bool = False) -> None:
     payload: dict[str, object] = {
         "sample_rate": np.array(48000),
-        "hop_length": np.array(512),
+        "hop_length": np.array(1920),
         "latent_dim": np.array(32),
-        "decode_basis": np.ones((32, 512), dtype=np.float32),
-        "decode_bias": np.zeros((512,), dtype=np.float32),
+        "decode_basis": np.ones((32, 1920), dtype=np.float32),
+        "decode_bias": np.zeros((1920,), dtype=np.float32),
         "metadata_json": np.array(
             json.dumps(
                 {
                     "source_layout": "mlx-audio dacvae/config.json + dacvae/model.safetensors",
                     "sample_rate": 48000,
-                    "hop_length": 512,
+                    "hop_length": 1920,
                     "latent_dim": 32,
                     "large_weight_policy": "local-only",
                 }
@@ -40,7 +40,7 @@ def _write_fixture_codec(path: Path, *, include_encode: bool = False) -> None:
         ),
     }
     if include_encode:
-        payload["encode_basis"] = np.ones((512, 32), dtype=np.float32)
+        payload["encode_basis"] = np.ones((1920, 32), dtype=np.float32)
         payload["encode_bias"] = np.zeros((32,), dtype=np.float32)
     np.savez(path, **payload)
 
@@ -100,7 +100,7 @@ class MlxAudioDACVAEContractDocTests(unittest.TestCase):
 
             artifact = inspect_mlx_codec_artifact(codec_path)
             self.assertEqual(artifact["sample_rate"], 48000)
-            self.assertEqual(artifact["hop_length"], 512)
+            self.assertEqual(artifact["hop_length"], 1920)
             self.assertEqual(artifact["latent_dim"], 32)
             self.assertTrue(artifact["has_mlx_decode"])
             self.assertFalse(artifact["has_mlx_encode"])
