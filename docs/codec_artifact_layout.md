@@ -116,12 +116,14 @@ final non-watermarked output activation/projection is sourced from
 bypass path where `decoder.alpha == 0`.
 
 This real decoder artifact is deterministic and executable for decode-only MLX
-runtime modes. Runtime capability inspection reports
+runtime modes, but executable is not the same as parity-backed. Runtime
+capability inspection reports
 `has_real_dacvae_decode=true`, `has_executable_mlx_decode=true`, and
 `has_mlx_decode=true` when the executable tensor layout is present. Acoustic
-parity is still a separate validation gate; keep `persistent`/`subprocess`
-PyTorch bridge modes available as a fallback until parity reports have been run
-against local real weights.
+parity remains a separate pass/fail gate owned by
+`scripts/check_dacvae_decode_parity.py`; keep `persistent`/`subprocess` PyTorch
+bridge modes available as a fallback until a local report for issue #172 passes
+against real converted weights.
 
 After conversion, validate the transport contract by checking that the converter
 report and runtime capability inspection identify the artifact as an executable
@@ -141,8 +143,9 @@ Expected evidence is `artifact_kind=real_semantic_dacvae_decoder`,
 `has_real_dacvae_decode=true`, `has_executable_mlx_decode=true`,
 `has_mlx_decode=true`, `runtime_status.mlx_decoder_execution=available_unvalidated`,
 and a capability message that acoustic parity remains gated by local validation.
-Decode parity comparison is the next validation step before publishing converted
-weights as a parity-backed hosted artifact.
+Run `scripts/check_dacvae_decode_parity.py` with a fixed `(1,T,32)` latent
+fixture and the converted artifact next; only a passing `dacvae-decode-parity.json`
+should be cited before publishing converted weights as parity-backed.
 
 ## Hosted companion metadata
 

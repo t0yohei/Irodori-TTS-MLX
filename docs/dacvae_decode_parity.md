@@ -1,7 +1,7 @@
 # DACVAE decode parity validation
 
-Issue #152 tracks the real decode parity gate for the v0.2 MLX DACVAE work
-under parent epic #160. The validation input is intentionally a fixed latent
+Issue #172 tracks the real decode parity gate for the executable MLX DACVAE
+decoder work under parent epic #169. The validation input is intentionally a fixed latent
 `.npy` file plus a locally produced MLX codec `.npz`; this repository does not
 commit upstream codec weights, converted codec weights, decoded audio, Hugging
 Face cache contents, or other heavyweight derived assets.
@@ -27,10 +27,16 @@ Default pass/fail tolerances are:
 - `rmse <= 2e-3`
 - `cosine >= 0.999`
 
-These tolerances are explicit command-line defaults, not a claim that every
-future converted codec artifact must already meet them. If a real artifact
-drifts, keep the failed report and document the observed metrics in the PR or
-issue before adjusting thresholds.
+These tolerances are deliberately tighter than a user-facing smoke test and
+looser than bitwise equality. They are meant to catch layout, padding,
+watermark-bypass, and weight-normalization mistakes while allowing ordinary
+float32 backend differences. If a real artifact drifts, keep the failed report
+and document the observed metrics in the PR or issue before adjusting
+thresholds.
+
+The fixture must use runtime latent layout `(1, T, 32)` by default. The script
+accepts `--expected-latent-dim` for synthetic tests, but real Semantic-DACVAE
+decode evidence should leave the default `32` in place.
 
 ## Local real-artifact command
 
@@ -59,7 +65,8 @@ python scripts/check_dacvae_decode_parity.py \
   --codec-path /path/to/dacvae-codec.npz \
   --output-dir /tmp/irodori-dacvae-decode-fixtures/parity \
   --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim \
-  --codec-device cpu
+  --codec-device cpu \
+  --expected-latent-dim 32
 ```
 
 The command writes:
@@ -73,6 +80,11 @@ tolerances, and pass/fail metrics. A complete run has `run.status: complete`
 and `comparison.status: passed` or `failed`. Keep generated WAVs and local
 artifacts out of git unless their license/provenance has been reviewed for
 redistribution.
+
+A passing report is the gate for describing the executable decoder artifact as
+parity-backed. Until then, runtime capability output may say
+`has_executable_mlx_decode=true`, but docs and release notes should keep the
+status as `available_unvalidated`.
 
 For CI or developer machines that should record deterministic skip evidence when
 local artifacts are absent, add `--allow-partial`:
