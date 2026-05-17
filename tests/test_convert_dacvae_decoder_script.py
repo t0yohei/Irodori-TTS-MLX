@@ -41,7 +41,16 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
             "decoder.wm_model.encoder_block.pre.1.bias": np.zeros((1,), dtype=np.float32),
             "decoder.wm_model.encoder_block.pre.1.parametrizations.weight.original0": np.ones((1, 1, 1), dtype=np.float32),
             "decoder.wm_model.encoder_block.pre.1.parametrizations.weight.original1": np.ones((1, 96, 7), dtype=np.float32),
-            "encoder.block.0.weight": np.ones((64, 1, 7), dtype=np.float32),
+            "encoder.block.0.bias": np.zeros((64,), dtype=np.float32),
+            "encoder.block.0.parametrizations.weight.original0": np.ones((64, 1, 1), dtype=np.float32),
+            "encoder.block.0.parametrizations.weight.original1": np.ones((64, 1, 7), dtype=np.float32),
+            "encoder.block.5.alpha": np.ones((1, 1024, 1), dtype=np.float32),
+            "encoder.block.6.bias": np.zeros((1024,), dtype=np.float32),
+            "encoder.block.6.parametrizations.weight.original0": np.ones((1024, 1, 1), dtype=np.float32),
+            "encoder.block.6.parametrizations.weight.original1": np.ones((1024, 1024, 3), dtype=np.float32),
+            "quantizer.in_proj.bias": np.zeros((64,), dtype=np.float32),
+            "quantizer.in_proj.parametrizations.weight.original0": np.ones((64, 1, 1), dtype=np.float32),
+            "quantizer.in_proj.parametrizations.weight.original1": np.ones((64, 1024, 1), dtype=np.float32),
         }
         dims = [1536, 768, 384, 192, 96]
         for index, stride in enumerate((12, 10, 8, 2)):
@@ -61,6 +70,24 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
                 state[f"{prefix}.{source_block}.block.3.bias"] = np.zeros((out_dim,), dtype=np.float32)
                 state[f"{prefix}.{source_block}.block.3.parametrizations.weight.original0"] = np.ones((out_dim, 1, 1), dtype=np.float32)
                 state[f"{prefix}.{source_block}.block.3.parametrizations.weight.original1"] = np.ones((out_dim, out_dim, 1), dtype=np.float32)
+        encoder_dims = [64, 128, 256, 512, 1024]
+        for index, stride in enumerate((2, 8, 10, 12)):
+            in_dim = encoder_dims[index]
+            out_dim = encoder_dims[index + 1]
+            prefix = f"encoder.block.{index + 1}.block"
+            for source_block in ("0", "1", "2"):
+                state[f"{prefix}.{source_block}.block.0.alpha"] = np.ones((1, in_dim, 1), dtype=np.float32)
+                state[f"{prefix}.{source_block}.block.1.bias"] = np.zeros((in_dim,), dtype=np.float32)
+                state[f"{prefix}.{source_block}.block.1.parametrizations.weight.original0"] = np.ones((in_dim, 1, 1), dtype=np.float32)
+                state[f"{prefix}.{source_block}.block.1.parametrizations.weight.original1"] = np.ones((in_dim, in_dim, 7), dtype=np.float32)
+                state[f"{prefix}.{source_block}.block.2.alpha"] = np.ones((1, in_dim, 1), dtype=np.float32)
+                state[f"{prefix}.{source_block}.block.3.bias"] = np.zeros((in_dim,), dtype=np.float32)
+                state[f"{prefix}.{source_block}.block.3.parametrizations.weight.original0"] = np.ones((in_dim, 1, 1), dtype=np.float32)
+                state[f"{prefix}.{source_block}.block.3.parametrizations.weight.original1"] = np.ones((in_dim, in_dim, 1), dtype=np.float32)
+            state[f"{prefix}.3.alpha"] = np.ones((1, in_dim, 1), dtype=np.float32)
+            state[f"{prefix}.4.bias"] = np.zeros((out_dim,), dtype=np.float32)
+            state[f"{prefix}.4.parametrizations.weight.original0"] = np.ones((out_dim, 1, 1), dtype=np.float32)
+            state[f"{prefix}.4.parametrizations.weight.original1"] = np.ones((out_dim, in_dim, 2 * stride), dtype=np.float32)
         return state
 
     def _args(self, *, dry_run: bool = False):
@@ -75,12 +102,13 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
             dry_run=dry_run,
         )
 
-    def test_extract_decoder_tensors_keeps_only_decode_groups(self):
+    def test_extract_decoder_tensors_keeps_codec_groups(self):
         tensors = convert_dacvae_decoder.extract_decoder_tensors(self._state_dict())
 
         self.assertIn("quantizer.out_proj.bias", tensors)
         self.assertIn("decoder.model.0.bias", tensors)
-        self.assertNotIn("encoder.block.0.weight", tensors)
+        self.assertIn("encoder.block.0.bias", tensors)
+        self.assertIn("quantizer.in_proj.bias", tensors)
         self.assertEqual(tensors["quantizer.out_proj.parametrizations.weight.original1"].shape, (1024, 32, 1))
 
     def test_extract_decoder_tensors_rejects_missing_quantizer_out_projection(self):
@@ -107,13 +135,17 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
             self.assertTrue(artifact["has_real_dacvae_decode"])
             self.assertTrue(artifact["has_mlx_decode"])
             self.assertTrue(artifact["has_executable_mlx_decode"])
+            self.assertTrue(artifact["has_mlx_encode"])
+            self.assertTrue(artifact["has_executable_mlx_encode"])
             self.assertGreater(artifact["executable_dacvae_decode_tensor_count"], 0)
+            self.assertGreater(artifact["executable_dacvae_encode_tensor_count"], 0)
 
             metadata = artifact["metadata"]
             self.assertEqual(metadata["source_revision"], "hf-commit-for-test")
             self.assertEqual(metadata["dacvae_revision"], "dacvae-commit-for-test")
             self.assertEqual(metadata["license_review_status"], "pending")
             self.assertEqual(metadata["runtime_status"]["mlx_decoder_execution"], "available_unvalidated")
+            self.assertEqual(metadata["runtime_status"]["mlx_encoder_execution"], "available_unvalidated")
             self.assertEqual(
                 metadata["tensor_manifest_sha256"],
                 convert_dacvae_decoder.manifest_digest(metadata["tensors"]),
@@ -121,6 +153,10 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
             self.assertEqual(
                 metadata["executable_tensor_manifest_sha256"],
                 convert_dacvae_decoder.manifest_digest(metadata["executable_tensors"]),
+            )
+            self.assertEqual(
+                metadata["executable_encoder_tensor_manifest_sha256"],
+                convert_dacvae_decoder.manifest_digest(metadata["executable_encoder_tensors"]),
             )
 
     def test_executable_tensor_mapping_transposes_weights_and_snake_alpha(self):
@@ -130,6 +166,15 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
         self.assertEqual(executable["quantizer_out_proj.weight_v"].shape, (1024, 1, 32))
         self.assertEqual(executable["blocks.0.main_upsample.1.weight_v"].shape, (768, 24, 1536))
         self.assertEqual(executable["blocks.0.main_upsample.0.alpha"].shape, (1, 1, 1536))
+
+    def test_executable_encoder_mapping_transposes_weights_and_quantizer_mean_projection(self):
+        tensors = convert_dacvae_decoder.extract_decoder_tensors(self._state_dict())
+        executable = convert_dacvae_decoder.build_executable_encoder_tensors(tensors)
+
+        self.assertEqual(executable["conv_in.weight_v"].shape, (64, 7, 1))
+        self.assertEqual(executable["blocks.0.downsample.weight_v"].shape, (128, 4, 64))
+        self.assertEqual(executable["quantizer_in_proj.weight_v"].shape, (64, 1, 1024))
+        self.assertEqual(executable["blocks.0.residuals.0.act1.alpha"].shape, (1, 1, 64))
 
     def test_capability_report_reports_executable_decoder_support(self):
         from irodori_mlx.dacvae import (

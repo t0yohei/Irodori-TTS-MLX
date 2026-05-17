@@ -16,10 +16,14 @@ import mlx.core as mx
 from .config import ModelConfig
 from .dacvae import (
     EXECUTABLE_DECODER_PREFIX,
+    EXECUTABLE_ENCODER_PREFIX,
     load_semantic_dacvae_decoder_artifact,
+    load_semantic_dacvae_encoder_artifact,
     semantic_dacvae_decoder_config_from_metadata,
     semantic_dacvae_decoder_expected_shapes,
     semantic_dacvae_decoder_required_keys,
+    semantic_dacvae_encoder_config_from_metadata,
+    semantic_dacvae_encoder_expected_shapes,
 )
 from .duration import build_duration_features, estimate_fallback_duration_seconds
 from .layers import unpatch_latents
@@ -518,6 +522,8 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
             real_decode_tensors = sorted(name for name in files if name.startswith("dacvae_decoder/"))
             executable_decode_tensors = sorted(name for name in files if name.startswith(EXECUTABLE_DECODER_PREFIX))
             executable_decode_keys = {name[len(EXECUTABLE_DECODER_PREFIX) :] for name in executable_decode_tensors}
+            executable_encode_tensors = sorted(name for name in files if name.startswith(EXECUTABLE_ENCODER_PREFIX))
+            executable_encode_keys = {name[len(EXECUTABLE_ENCODER_PREFIX) :] for name in executable_encode_tensors}
             semantic_decoder_config = semantic_dacvae_decoder_config_from_metadata(metadata)
             expected_executable_shapes = semantic_dacvae_decoder_expected_shapes(semantic_decoder_config)
             required_executable_keys = set(expected_executable_shapes)
@@ -533,6 +539,21 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
                 and not executable_shape_mismatches
                 and int(latent_dim) == int(semantic_decoder_config.codebook_dim)
             )
+            semantic_encoder_config = semantic_dacvae_encoder_config_from_metadata(metadata)
+            expected_executable_encode_shapes = semantic_dacvae_encoder_expected_shapes(semantic_encoder_config)
+            required_executable_encode_keys = set(expected_executable_encode_shapes)
+            executable_encode_shape_mismatches = {}
+            for key, expected in expected_executable_encode_shapes.items():
+                if key not in executable_encode_keys:
+                    continue
+                actual = _npz_array_shape(archive, EXECUTABLE_ENCODER_PREFIX + key)
+                if actual != expected:
+                    executable_encode_shape_mismatches[key] = {"expected": expected, "actual": actual}
+            has_executable_encode = (
+                required_executable_encode_keys.issubset(executable_encode_keys)
+                and not executable_encode_shape_mismatches
+                and int(latent_dim) == int(semantic_encoder_config.codebook_dim)
+            )
             has_decode = has_linear_decode or has_executable_decode
             semantic_encoder_tensors = sorted(name for name in files if name.startswith("dacvae_encoder/encoder."))
             semantic_in_proj_tensors = sorted(
@@ -543,7 +564,7 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
             )
             raw_artifact_kind = str(metadata.get("artifact_kind") or "linear-fixture")
             has_semantic_encoder_manifest = "semantic_encoder_manifest_json" in files
-            has_real_semantic_encode = bool(semantic_encoder_tensors) and bool(semantic_in_proj_tensors)
+            has_real_semantic_encode = has_executable_encode or (bool(semantic_encoder_tensors) and bool(semantic_in_proj_tensors))
             is_semantic_dacvae = (
                 raw_artifact_kind == "semantic-dacvae"
                 and has_semantic_encoder_manifest
@@ -568,7 +589,9 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
         "has_mlx_decode": has_decode,
         "has_linear_mlx_decode": has_linear_decode,
         "has_executable_mlx_decode": has_executable_decode,
-        "has_mlx_encode": has_encode,
+        "has_mlx_encode": has_encode or has_executable_encode,
+        "has_linear_mlx_encode": has_encode,
+        "has_executable_mlx_encode": has_executable_encode,
         "artifact_kind": artifact_kind,
         "is_semantic_dacvae": is_semantic_dacvae,
         "has_semantic_encoder_manifest": has_semantic_encoder_manifest,
@@ -580,6 +603,9 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
         "executable_dacvae_decode_tensor_count": len(executable_decode_tensors),
         "missing_executable_dacvae_decode_tensor_count": len(required_executable_keys - executable_decode_keys),
         "mismatched_executable_dacvae_decode_tensor_count": len(executable_shape_mismatches),
+        "executable_dacvae_encode_tensor_count": len(executable_encode_tensors),
+        "missing_executable_dacvae_encode_tensor_count": len(required_executable_encode_keys - executable_encode_keys),
+        "mismatched_executable_dacvae_encode_tensor_count": len(executable_encode_shape_mismatches),
         "metadata": metadata,
     }
 
@@ -643,6 +669,11 @@ def describe_codec_capabilities(
                 report["artifact"] = artifact
                 report["mlx_decode_available"] = bool(artifact["has_mlx_decode"])
                 report["mlx_encode_available"] = bool(artifact["has_mlx_encode"])
+                if artifact.get("has_executable_mlx_encode"):
+                    messages.append(
+                        "Codec artifact contains executable Semantic-DACVAE encoder tensors for MLX reference-audio encode; "
+                        "encode parity remains gated by local validation."
+                    )
                 if artifact.get("has_executable_mlx_decode"):
                     messages.append(
                         "Codec artifact contains executable Semantic-DACVAE decoder tensors for MLX decode; "
@@ -656,7 +687,10 @@ def describe_codec_capabilities(
                 elif not artifact["has_mlx_decode"]:
                     messages.append("Codec artifact is missing decode_basis/decode_bias, so MLX decode is unavailable.")
                 if mode == "mlx" and not artifact["has_mlx_encode"]:
-                    messages.append("Codec artifact is missing encode_basis/encode_bias; use mlx-decode for decode-only artifacts.")
+                    messages.append(
+                        "Codec artifact is missing executable encoder tensors or encode_basis/encode_bias; "
+                        "use mlx-decode for decode-only artifacts."
+                    )
         else:
             messages.append(
                 "MLX codec modes require --codec-path pointing to a local DACVAE codec .npz; "
@@ -687,6 +721,7 @@ class MLXDACVAEBridge:
         self.config = config
         self.codec_path = Path(config.codec_path).expanduser()
         self.semantic_decoder = None
+        self.semantic_encoder = None
         try:
             import numpy as np
 
@@ -697,8 +732,11 @@ class MLXDACVAEBridge:
                 self.hop_length = int(metadata.get("hop_length", _load_npz_scalar_int(archive, "hop_length")))
                 self.latent_dim = int(metadata.get("latent_dim", _load_npz_scalar_int(archive, "latent_dim")))
                 has_linear_decode = {"decode_basis", "decode_bias"}.issubset(archive.files)
+                has_linear_encode = {"encode_basis", "encode_bias"}.issubset(archive.files)
                 executable_names = [name for name in archive.files if name.startswith(EXECUTABLE_DECODER_PREFIX)]
                 executable_keys = {name[len(EXECUTABLE_DECODER_PREFIX) :] for name in executable_names}
+                executable_encode_names = [name for name in archive.files if name.startswith(EXECUTABLE_ENCODER_PREFIX)]
+                executable_encode_keys = {name[len(EXECUTABLE_ENCODER_PREFIX) :] for name in executable_encode_names}
                 semantic_decoder_config = semantic_dacvae_decoder_config_from_metadata(metadata)
                 expected_shapes = semantic_dacvae_decoder_expected_shapes(semantic_decoder_config)
                 has_complete_executable_decode = (
@@ -716,6 +754,26 @@ class MLXDACVAEBridge:
                         f"latent_dim={self.latent_dim}, codebook_dim={semantic_decoder_config.codebook_dim}."
                     )
                 has_executable_decode = has_complete_executable_decode
+                semantic_encoder_config = semantic_dacvae_encoder_config_from_metadata(metadata)
+                expected_encode_shapes = semantic_dacvae_encoder_expected_shapes(semantic_encoder_config)
+                has_complete_executable_encode = (
+                    bool(executable_encode_names)
+                    and set(expected_encode_shapes).issubset(executable_encode_keys)
+                    and all(
+                        _npz_array_shape(archive, EXECUTABLE_ENCODER_PREFIX + key) == expected
+                        for key, expected in expected_encode_shapes.items()
+                    )
+                )
+                if (
+                    has_complete_executable_encode
+                    and require_encode
+                    and int(self.latent_dim) != int(semantic_encoder_config.codebook_dim)
+                ):
+                    raise ValueError(
+                        "Executable Semantic-DACVAE encoder artifact latent_dim must match "
+                        "semantic_dacvae_encoder_config.codebook_dim: "
+                        f"latent_dim={self.latent_dim}, codebook_dim={semantic_encoder_config.codebook_dim}."
+                    )
                 if has_executable_decode:
                     self.semantic_decoder = load_semantic_dacvae_decoder_artifact(self.codec_path)
                     self.decode_basis = None
@@ -729,16 +787,21 @@ class MLXDACVAEBridge:
                         )
                     self.decode_basis = mx.array(archive["decode_basis"].astype("float32", copy=False))
                     self.decode_bias = mx.array(archive["decode_bias"].astype("float32", copy=False))
-                self.encode_basis = (
-                    mx.array(archive["encode_basis"].astype("float32", copy=False))
-                    if "encode_basis" in archive.files
-                    else None
-                )
-                self.encode_bias = (
-                    mx.array(archive["encode_bias"].astype("float32", copy=False))
-                    if "encode_bias" in archive.files
-                    else None
-                )
+                if has_complete_executable_encode and require_encode:
+                    self.semantic_encoder = load_semantic_dacvae_encoder_artifact(self.codec_path)
+                    self.encode_basis = None
+                    self.encode_bias = None
+                else:
+                    self.encode_basis = (
+                        mx.array(archive["encode_basis"].astype("float32", copy=False))
+                        if has_linear_encode
+                        else None
+                    )
+                    self.encode_bias = (
+                        mx.array(archive["encode_bias"].astype("float32", copy=False))
+                        if has_linear_encode
+                        else None
+                    )
         except FileNotFoundError as exc:
             raise FileNotFoundError(f"Converted MLX DACVAE codec artifact was not found: {self.codec_path}") from exc
         except KeyError as exc:
@@ -753,9 +816,9 @@ class MLXDACVAEBridge:
                 )
             if tuple(self.decode_bias.shape) != (self.hop_length,):
                 raise ValueError(f"decode_bias must have shape ({self.hop_length},), got {self.decode_bias.shape}")
-        if require_encode and (self.encode_basis is None or self.encode_bias is None):
+        if require_encode and self.semantic_encoder is None and (self.encode_basis is None or self.encode_bias is None):
             raise ValueError(
-                f"Converted MLX DACVAE codec artifact {self.codec_path} is missing encode_basis/encode_bias; "
+                f"Converted MLX DACVAE codec artifact {self.codec_path} is missing executable encoder tensors or encode_basis/encode_bias; "
                 "use codec_runtime_mode='mlx-decode' for decode-only artifacts, or use persistent/subprocess "
                 "when you need the PyTorch bridge fallback for both encode and decode."
             )
@@ -774,7 +837,7 @@ class MLXDACVAEBridge:
         normalize_db: float | None,
         ensure_max: bool,
     ) -> mx.array:
-        if self.encode_basis is None or self.encode_bias is None:
+        if self.semantic_encoder is None and (self.encode_basis is None or self.encode_bias is None):
             raise RuntimeError("This MLX DACVAE artifact is decode-only and cannot encode reference audio.")
         samples, sample_rate = _load_audio_numpy(path)
         if max_seconds is not None and float(max_seconds) > 0:
@@ -786,6 +849,11 @@ class MLXDACVAEBridge:
             samples = _ensure_audio_peak(samples)
         if samples.size == 0:
             raise ValueError("reference audio is empty")
+        if self.semantic_encoder is not None:
+            padded = _pad_audio_to_hop(samples, self.hop_length)
+            latents = self.semantic_encoder(mx.array(padded[None, :, None], dtype=mx.float32))
+            mx.eval(latents)
+            return latents
         frames = _frame_audio(samples, self.hop_length)
         latents = mx.array(frames, dtype=mx.float32) @ self.encode_basis + self.encode_bias
         mx.eval(latents)
@@ -905,6 +973,18 @@ def _frame_audio(samples, hop_length: int):
         mode = "reflect" if int(samples.shape[0]) > 1 else "edge"
         samples = np.pad(samples, (0, pad), mode=mode)
     return samples.reshape((-1, hop)).astype("float32", copy=False)
+
+
+def _pad_audio_to_hop(samples, hop_length: int):
+    import numpy as np
+
+    samples = np.asarray(samples, dtype="float32")
+    hop = int(hop_length)
+    pad = (-int(samples.shape[0])) % hop
+    if not pad:
+        return samples
+    mode = "reflect" if int(samples.shape[0]) > 1 and pad < int(samples.shape[0]) else "edge"
+    return np.pad(samples, (0, pad), mode=mode).astype("float32", copy=False)
 
 
 def _resample_audio_linear(samples, *, source_rate: int, target_rate: int):

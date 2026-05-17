@@ -20,6 +20,7 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "encode_basis",
             "encode_bias",
             "semantic_encoder_manifest_json",
+            "dacvae_encoder_exec/<module-key>",
             "artifact_kind",
             "metadata_json",
             "scripts/convert_dacvae_decoder.py",
@@ -64,12 +65,13 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "v3",
             "reference encode still uses the PyTorch bridge",
             "has_executable_mlx_decode=true",
+            "has_executable_mlx_encode=true",
             "available_unvalidated",
             "scripts/check_dacvae_decode_parity.py",
             "issue #172",
             "--no-reference",
-            "irodori-tts-convert-dacvae-codec",
-            "blocked conversion status",
+            "runtime_status.mlx_encoder_execution=available_unvalidated",
+            "Encode parity remains owned by",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)

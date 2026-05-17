@@ -64,7 +64,7 @@
     "v3": "uses the same 32-dim codec and adds duration-predictor RF-DiT weights"
   },
   "unknowns_and_blockers": [
-    "The public codec is distributed as a PyTorch weights.pth file, not safetensors; scripts/convert_dacvae_decoder.py can emit a decoder-only executable MLX artifact, while scripts/convert_dacvae_codec.py remains blocked for full encode/decode artifacts until real MLX encoder and VAEBottleneck modules exist.",
+    "The public codec is distributed as a PyTorch weights.pth file, not safetensors; scripts/convert_dacvae_decoder.py can emit executable MLX decoder tensors and executable MLX encoder mean-path tensors. scripts/convert_dacvae_codec.py remains the broader inspection/blocker entrypoint. Parity-backed publication remains gated by local encode/decode validation.",
     "The lightweight MLX fixture codec in this repository is not an acoustic Semantic-DACVAE conversion and must not be treated as parity evidence.",
     "Exact MLX parity requires fixed waveform/latent fixtures covering encode mean latents, decode waveform shape/range, watermark bypass, and tail padding behavior; issue #172 owns the executable decoder pass/fail report before MLX decode can be described as parity-backed.",
     "Redistribution of converted codec weights remains subject to the repository license/distribution policy and must stay separate from test fixtures."
@@ -75,6 +75,7 @@
     "https://github.com/t0yohei/Irodori-TTS-MLX/issues/114",
     "https://github.com/t0yohei/Irodori-TTS-MLX/issues/115",
     "https://github.com/t0yohei/Irodori-TTS-MLX/issues/154",
-    "https://github.com/t0yohei/Irodori-TTS-MLX/issues/172"
+    "https://github.com/t0yohei/Irodori-TTS-MLX/issues/172",
+    "https://github.com/t0yohei/Irodori-TTS-MLX/issues/173"
   ]
 }

@@ -10,6 +10,7 @@ import mlx.nn as nn
 
 
 EXECUTABLE_DECODER_PREFIX = "dacvae_decoder_exec/"
+EXECUTABLE_ENCODER_PREFIX = "dacvae_encoder_exec/"
 
 
 def _normalize_weight(weight: mx.array, *, except_dim: int = 0, eps: float = 1e-12) -> mx.array:
@@ -390,6 +391,79 @@ class DACVAEQuantizerOutProj(DACVAEWNConv1d):
         super().__init__(in_dim, out_dim, kernel_size=1, norm="weight_norm")
 
 
+class DACVAEQuantizerInProj(DACVAEWNConv1d):
+    def __init__(self, in_dim: int, out_dim: int):
+        super().__init__(in_dim, out_dim, kernel_size=1, norm="weight_norm")
+
+
+@dataclass(frozen=True)
+class SemanticDACVAEEncoderConfig:
+    input_channels: int = 1
+    encoder_dim: int = 64
+    encoder_rates: tuple[int, ...] = (2, 8, 10, 12)
+    latent_dim: int = 1024
+    codebook_dim: int = 32
+
+
+class DACVAEEncoderBlock(nn.Module):
+    """Main Semantic-DACVAE encoder block."""
+
+    def __init__(self, input_dim: int, output_dim: int, stride: int):
+        super().__init__()
+        self.residuals = [
+            DACVAEResidualUnit(input_dim, dilation=1, act="Snake"),
+            DACVAEResidualUnit(input_dim, dilation=3, act="Snake"),
+            DACVAEResidualUnit(input_dim, dilation=9, act="Snake"),
+        ]
+        self.downsample_act = DACVAESnake1d(input_dim)
+        self.downsample = DACVAEWNConv1d(
+            input_dim,
+            output_dim,
+            kernel_size=2 * int(stride),
+            stride=int(stride),
+            causal=False,
+            pad_mode="none",
+            norm="weight_norm",
+        )
+
+    def __call__(self, x: mx.array) -> mx.array:
+        for residual in self.residuals:
+            x = residual(x)
+        return self.downsample(self.downsample_act(x))
+
+
+class SemanticDACVAEEncoder(nn.Module):
+    """Encode mono waveforms into Semantic-DACVAE 32-dim latent means."""
+
+    def __init__(self, config: SemanticDACVAEEncoderConfig = SemanticDACVAEEncoderConfig()):
+        super().__init__()
+        self.config = config
+        self.conv_in = DACVAEWNConv1d(config.input_channels, config.encoder_dim, kernel_size=7, stride=1)
+        blocks = []
+        for idx, stride in enumerate(config.encoder_rates):
+            input_dim = config.encoder_dim * (2**idx)
+            output_dim = config.encoder_dim * (2 ** (idx + 1))
+            blocks.append(DACVAEEncoderBlock(input_dim, output_dim, int(stride)))
+        self.blocks = blocks
+        final_dim = config.encoder_dim * (2 ** len(config.encoder_rates))
+        if final_dim != int(config.latent_dim):
+            raise ValueError(f"encoder final dim {final_dim} must match latent_dim={config.latent_dim}")
+        self.snake_out = DACVAESnake1d(config.latent_dim)
+        self.conv_out = DACVAEWNConv1d(config.latent_dim, config.latent_dim, kernel_size=3, stride=1)
+        self.quantizer_in_proj = DACVAEQuantizerInProj(config.latent_dim, 2 * config.codebook_dim)
+
+    def __call__(self, samples: mx.array) -> mx.array:
+        if len(samples.shape) != 3:
+            raise ValueError(f"SemanticDACVAEEncoder expects samples shaped (B,T,C), got {samples.shape}")
+        if int(samples.shape[2]) != int(self.config.input_channels):
+            raise ValueError(f"Expected input_channels={self.config.input_channels}, got {samples.shape[2]}")
+        x = self.conv_in(samples)
+        for block in self.blocks:
+            x = block(x)
+        projected = self.quantizer_in_proj(self.conv_out(self.snake_out(x)))
+        return projected[:, :, : int(self.config.codebook_dim)]
+
+
 @dataclass(frozen=True)
 class SemanticDACVAEDecoderConfig:
     latent_dim: int = 1024
@@ -459,6 +533,61 @@ def semantic_dacvae_decoder_config_from_metadata(metadata: dict[str, object] | N
     return SemanticDACVAEDecoderConfig(**kwargs)
 
 
+def semantic_dacvae_encoder_config_from_metadata(metadata: dict[str, object] | None) -> SemanticDACVAEEncoderConfig:
+    payload = (metadata or {}).get("semantic_dacvae_encoder_config")
+    if payload is None:
+        return SemanticDACVAEEncoderConfig()
+    if not isinstance(payload, dict):
+        raise ValueError("semantic_dacvae_encoder_config metadata must be an object")
+    allowed = {
+        "input_channels",
+        "encoder_dim",
+        "encoder_rates",
+        "latent_dim",
+        "codebook_dim",
+    }
+    kwargs = {key: value for key, value in payload.items() if key in allowed}
+    if "encoder_rates" in kwargs:
+        kwargs["encoder_rates"] = tuple(int(value) for value in kwargs["encoder_rates"])
+    return SemanticDACVAEEncoderConfig(**kwargs)
+
+
+def semantic_dacvae_encoder_required_keys(
+    config: SemanticDACVAEEncoderConfig = SemanticDACVAEEncoderConfig(),
+) -> tuple[str, ...]:
+    return tuple(semantic_dacvae_encoder_expected_shapes(config))
+
+
+def semantic_dacvae_encoder_expected_shapes(
+    config: SemanticDACVAEEncoderConfig = SemanticDACVAEEncoderConfig(),
+) -> dict[str, tuple[int, ...]]:
+    shapes: dict[str, tuple[int, ...]] = {}
+
+    def conv(prefix: str, *, in_channels: int, out_channels: int, kernel_size: int) -> None:
+        shapes[f"{prefix}.weight_g"] = (int(out_channels), 1, 1)
+        shapes[f"{prefix}.weight_v"] = (int(out_channels), int(kernel_size), int(in_channels))
+        shapes[f"{prefix}.bias"] = (int(out_channels),)
+
+    conv("conv_in", in_channels=config.input_channels, out_channels=config.encoder_dim, kernel_size=7)
+    for index, stride in enumerate(config.encoder_rates):
+        block = f"blocks.{index}"
+        input_dim = config.encoder_dim * (2**index)
+        output_dim = config.encoder_dim * (2 ** (index + 1))
+        for residual_index in range(3):
+            residual = f"{block}.residuals.{residual_index}"
+            shapes[f"{residual}.act1.alpha"] = (1, 1, int(input_dim))
+            conv(f"{residual}.conv1", in_channels=input_dim, out_channels=input_dim, kernel_size=7)
+            shapes[f"{residual}.act2.alpha"] = (1, 1, int(input_dim))
+            conv(f"{residual}.conv2", in_channels=input_dim, out_channels=input_dim, kernel_size=1)
+        shapes[f"{block}.downsample_act.alpha"] = (1, 1, int(input_dim))
+        conv(f"{block}.downsample", in_channels=input_dim, out_channels=output_dim, kernel_size=2 * int(stride))
+    final_dim = config.encoder_dim * (2 ** len(config.encoder_rates))
+    shapes["snake_out.alpha"] = (1, 1, int(final_dim))
+    conv("conv_out", in_channels=final_dim, out_channels=config.latent_dim, kernel_size=3)
+    conv("quantizer_in_proj", in_channels=config.latent_dim, out_channels=2 * config.codebook_dim, kernel_size=1)
+    return shapes
+
+
 def semantic_dacvae_decoder_required_keys(
     config: SemanticDACVAEDecoderConfig = SemanticDACVAEDecoderConfig(),
 ) -> tuple[str, ...]:
@@ -520,10 +649,13 @@ def load_semantic_dacvae_decoder_artifact(
             metadata_value = metadata_json.item() if getattr(metadata_json, "shape", ()) == () else metadata_json[0]
             metadata = json.loads(str(metadata_value))
             config = semantic_dacvae_decoder_config_from_metadata(metadata)
+            required = set(semantic_dacvae_decoder_required_keys(config))
             weights = {
-                name[len(EXECUTABLE_DECODER_PREFIX) :]: mx.array(archive[name].astype("float32", copy=False))
+                key: mx.array(archive[name].astype("float32", copy=False))
                 for name in archive.files
                 if name.startswith(EXECUTABLE_DECODER_PREFIX)
+                for key in (name[len(EXECUTABLE_DECODER_PREFIX) :],)
+                if key in required
             }
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"Semantic-DACVAE decoder artifact was not found: {artifact_path}") from exc
@@ -543,9 +675,55 @@ def load_semantic_dacvae_decoder_artifact(
     return decoder
 
 
+def load_semantic_dacvae_encoder_artifact(
+    path: str | Path,
+    *,
+    strict: bool = True,
+) -> SemanticDACVAEEncoder:
+    """Load an executable Semantic-DACVAE encoder artifact into MLX modules."""
+
+    import numpy as np
+
+    from .weights import assign_named_weights
+
+    artifact_path = Path(path).expanduser()
+    try:
+        with np.load(artifact_path, allow_pickle=False) as archive:
+            metadata_json = archive["metadata_json"]
+            metadata_value = metadata_json.item() if getattr(metadata_json, "shape", ()) == () else metadata_json[0]
+            metadata = json.loads(str(metadata_value))
+            config = semantic_dacvae_encoder_config_from_metadata(metadata)
+            required = set(semantic_dacvae_encoder_required_keys(config))
+            weights = {
+                key: mx.array(archive[name].astype("float32", copy=False))
+                for name in archive.files
+                if name.startswith(EXECUTABLE_ENCODER_PREFIX)
+                for key in (name[len(EXECUTABLE_ENCODER_PREFIX) :],)
+                if key in required
+            }
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Semantic-DACVAE encoder artifact was not found: {artifact_path}") from exc
+    except KeyError as exc:
+        raise ValueError(f"Semantic-DACVAE encoder artifact {artifact_path} is missing {exc}.") from exc
+    if not weights:
+        raise ValueError(f"Semantic-DACVAE encoder artifact {artifact_path} has no executable encoder tensors.")
+
+    encoder = SemanticDACVAEEncoder(config)
+    assign_named_weights(
+        encoder,
+        weights,
+        required=semantic_dacvae_encoder_required_keys(config),
+        strict=strict,
+    )
+    mx.eval(encoder.parameters())
+    return encoder
+
+
 __all__ = [
     "DACVAEElu",
     "DACVAEDecoderBlock",
+    "DACVAEEncoderBlock",
+    "DACVAEQuantizerInProj",
     "DACVAEQuantizerOutProj",
     "DACVAEResidualUnit",
     "DACVAESnake1d",
@@ -553,10 +731,17 @@ __all__ = [
     "DACVAEWNConvTranspose1d",
     "SemanticDACVAEDecoder",
     "SemanticDACVAEDecoderConfig",
+    "SemanticDACVAEEncoder",
+    "SemanticDACVAEEncoderConfig",
     "EXECUTABLE_DECODER_PREFIX",
+    "EXECUTABLE_ENCODER_PREFIX",
     "dacvae_snake",
     "semantic_dacvae_decoder_config_from_metadata",
     "semantic_dacvae_decoder_expected_shapes",
+    "semantic_dacvae_encoder_config_from_metadata",
+    "semantic_dacvae_encoder_expected_shapes",
+    "load_semantic_dacvae_encoder_artifact",
     "load_semantic_dacvae_decoder_artifact",
     "semantic_dacvae_decoder_required_keys",
+    "semantic_dacvae_encoder_required_keys",
 ]
