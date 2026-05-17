@@ -104,7 +104,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 "source_file": "weights.pth",
                 "artifact_kind": "semantic-dacvae",
                 "sample_rate": 48000,
-                "hop_length": 512,
+                "hop_length": 1920,
                 "latent_dim": 32,
             },
             "runtime": {

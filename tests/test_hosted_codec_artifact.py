@@ -26,16 +26,16 @@ def _write_codec_layout(root: Path, *, license_status: str = "pending", file_pre
     np.savez(
         codec_path,
         sample_rate=np.array(48000, dtype=np.int64),
-        hop_length=np.array(512, dtype=np.int64),
+        hop_length=np.array(1920, dtype=np.int64),
         latent_dim=np.array(32, dtype=np.int64),
-        decode_basis=np.zeros((32, 512), dtype=np.float32),
-        decode_bias=np.zeros((512,), dtype=np.float32),
+        decode_basis=np.zeros((32, 1920), dtype=np.float32),
+        decode_bias=np.zeros((1920,), dtype=np.float32),
         metadata_json=np.array(
             json.dumps(
                 {
                     "artifact_kind": "linear-fixture",
                     "sample_rate": 48000,
-                    "hop_length": 512,
+                    "hop_length": 1920,
                     "latent_dim": 32,
                 }
             )
@@ -74,7 +74,7 @@ def _write_codec_layout(root: Path, *, license_status: str = "pending", file_pre
             "source_file": "weights.pth",
             "artifact_kind": "semantic-dacvae",
             "sample_rate": 48000,
-            "hop_length": 512,
+            "hop_length": 1920,
             "latent_dim": 32,
         },
         "runtime": {
