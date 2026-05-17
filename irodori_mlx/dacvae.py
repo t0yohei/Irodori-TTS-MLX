@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
+from pathlib import Path
 
 import mlx.core as mx
 import mlx.nn as nn
+
+
+EXECUTABLE_DECODER_PREFIX = "dacvae_decoder_exec/"
 
 
 def _normalize_weight(weight: mx.array, *, except_dim: int = 0, eps: float = 1e-12) -> mx.array:
@@ -387,7 +392,7 @@ class DACVAEQuantizerOutProj(DACVAEWNConv1d):
 
 @dataclass(frozen=True)
 class SemanticDACVAEDecoderConfig:
-    latent_dim: int = 32
+    latent_dim: int = 1024
     decoder_dim: int = 1536
     decoder_rates: tuple[int, ...] = (8, 8, 4, 2)
     wm_rates: tuple[int, ...] = (8, 5, 4, 2)
@@ -432,6 +437,112 @@ class SemanticDACVAEDecoder(nn.Module):
         return mx.tanh(self.conv_out(self.snake_out(x)))
 
 
+def semantic_dacvae_decoder_config_from_metadata(metadata: dict[str, object] | None) -> SemanticDACVAEDecoderConfig:
+    payload = (metadata or {}).get("semantic_dacvae_decoder_config")
+    if payload is None:
+        return SemanticDACVAEDecoderConfig()
+    if not isinstance(payload, dict):
+        raise ValueError("semantic_dacvae_decoder_config metadata must be an object")
+    allowed = {
+        "latent_dim",
+        "decoder_dim",
+        "decoder_rates",
+        "wm_rates",
+        "codebook_dim",
+        "output_channels",
+    }
+    kwargs = {key: value for key, value in payload.items() if key in allowed}
+    if "decoder_rates" in kwargs:
+        kwargs["decoder_rates"] = tuple(int(value) for value in kwargs["decoder_rates"])
+    if "wm_rates" in kwargs:
+        kwargs["wm_rates"] = tuple(int(value) for value in kwargs["wm_rates"])
+    return SemanticDACVAEDecoderConfig(**kwargs)
+
+
+def semantic_dacvae_decoder_required_keys(
+    config: SemanticDACVAEDecoderConfig = SemanticDACVAEDecoderConfig(),
+) -> tuple[str, ...]:
+    return tuple(semantic_dacvae_decoder_expected_shapes(config))
+
+
+def semantic_dacvae_decoder_expected_shapes(
+    config: SemanticDACVAEDecoderConfig = SemanticDACVAEDecoderConfig(),
+) -> dict[str, tuple[int, ...]]:
+    shapes: dict[str, tuple[int, ...]] = {}
+
+    def conv(prefix: str, *, in_channels: int, out_channels: int, kernel_size: int, transposed: bool = False) -> None:
+        weight_shape = (int(out_channels), int(kernel_size), int(in_channels))
+        shapes[f"{prefix}.weight_g"] = (1, 1, int(in_channels)) if transposed else (int(out_channels), 1, 1)
+        shapes[f"{prefix}.weight_v"] = weight_shape
+        shapes[f"{prefix}.bias"] = (int(out_channels),)
+
+    conv("quantizer_out_proj", in_channels=config.codebook_dim, out_channels=config.latent_dim, kernel_size=1)
+    conv("conv_in", in_channels=config.latent_dim, out_channels=config.decoder_dim, kernel_size=7)
+    for index, _stride in enumerate(config.decoder_rates):
+        block = f"blocks.{index}"
+        input_dim = config.decoder_dim // (2**index)
+        output_dim = config.decoder_dim // (2 ** (index + 1))
+        shapes[f"{block}.main_upsample.0.alpha"] = (1, 1, int(input_dim))
+        conv(
+            f"{block}.main_upsample.1",
+            in_channels=input_dim,
+            out_channels=output_dim,
+            kernel_size=2 * int(_stride),
+            transposed=True,
+        )
+        for residual_index in range(3):
+            residual = f"{block}.residuals.{residual_index}"
+            shapes[f"{residual}.act1.alpha"] = (1, 1, int(output_dim))
+            conv(f"{residual}.conv1", in_channels=output_dim, out_channels=output_dim, kernel_size=7)
+            shapes[f"{residual}.act2.alpha"] = (1, 1, int(output_dim))
+            conv(f"{residual}.conv2", in_channels=output_dim, out_channels=output_dim, kernel_size=1)
+    final_dim = config.decoder_dim // (2 ** len(config.decoder_rates))
+    shapes["snake_out.alpha"] = (1, 1, int(final_dim))
+    conv("conv_out", in_channels=final_dim, out_channels=config.output_channels, kernel_size=7)
+    return shapes
+
+
+def load_semantic_dacvae_decoder_artifact(
+    path: str | Path,
+    *,
+    strict: bool = True,
+) -> SemanticDACVAEDecoder:
+    """Load an executable Semantic-DACVAE decoder artifact into MLX modules."""
+
+    import numpy as np
+
+    from .weights import assign_named_weights
+
+    artifact_path = Path(path).expanduser()
+    try:
+        with np.load(artifact_path, allow_pickle=False) as archive:
+            metadata_json = archive["metadata_json"]
+            metadata_value = metadata_json.item() if getattr(metadata_json, "shape", ()) == () else metadata_json[0]
+            metadata = json.loads(str(metadata_value))
+            config = semantic_dacvae_decoder_config_from_metadata(metadata)
+            weights = {
+                name[len(EXECUTABLE_DECODER_PREFIX) :]: mx.array(archive[name].astype("float32", copy=False))
+                for name in archive.files
+                if name.startswith(EXECUTABLE_DECODER_PREFIX)
+            }
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Semantic-DACVAE decoder artifact was not found: {artifact_path}") from exc
+    except KeyError as exc:
+        raise ValueError(f"Semantic-DACVAE decoder artifact {artifact_path} is missing {exc}.") from exc
+    if not weights:
+        raise ValueError(f"Semantic-DACVAE decoder artifact {artifact_path} has no executable decoder tensors.")
+
+    decoder = SemanticDACVAEDecoder(config)
+    assign_named_weights(
+        decoder,
+        weights,
+        required=semantic_dacvae_decoder_required_keys(config),
+        strict=strict,
+    )
+    mx.eval(decoder.parameters())
+    return decoder
+
+
 __all__ = [
     "DACVAEElu",
     "DACVAEDecoderBlock",
@@ -442,5 +553,10 @@ __all__ = [
     "DACVAEWNConvTranspose1d",
     "SemanticDACVAEDecoder",
     "SemanticDACVAEDecoderConfig",
+    "EXECUTABLE_DECODER_PREFIX",
     "dacvae_snake",
+    "semantic_dacvae_decoder_config_from_metadata",
+    "semantic_dacvae_decoder_expected_shapes",
+    "load_semantic_dacvae_decoder_artifact",
+    "semantic_dacvae_decoder_required_keys",
 ]

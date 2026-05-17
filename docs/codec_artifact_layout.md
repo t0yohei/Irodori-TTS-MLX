@@ -96,29 +96,36 @@ python scripts/convert_dacvae_decoder.py \
   --json
 ```
 
-The converter writes the scalar runtime constants, `metadata_json`, and every
-decoder-side tensor under `dacvae_decoder/<state-dict-key>`. The required groups
-are:
+The converter writes the scalar runtime constants, `metadata_json`, every
+decoder-side source tensor under `dacvae_decoder/<state-dict-key>`, and the
+runtime-ready MLX decoder tensors under `dacvae_decoder_exec/<module-key>`. The
+required source groups are:
 
 - `quantizer.out_proj.*`, including a 32-channel latent decode projection;
 - `decoder.*`, including the mono waveform projection;
 - provenance fields for source repo, source revision, source file, converter
   commit, `dacvae` revision, watermark-bypass policy, and license-review status.
 
-This real decoder artifact is a deterministic manifest and tensor transport
-contract. The current public runtime can inspect it and report that real
-Semantic-DACVAE decoder tensors are present, but it cannot yet execute the full
-MLX convolutional decoder stack. Until that executor lands, keep
-`persistent`/`subprocess` PyTorch bridge modes as the waveform decode fallback.
-Do not use `scripts/check_dacvae_decode_parity.py` for artifacts of kind
-`real_semantic_dacvae_decoder`: those artifacts intentionally contain
-`dacvae_decoder/<state-dict-key>` tensors instead of the fixture
-`decode_basis`/`decode_bias` arrays, so `MLXDACVAEBridge` rejects them until the
-real MLX decoder executor exists.
+The executable keys mirror `irodori_mlx.dacvae.SemanticDACVAEDecoder` names, for
+example `quantizer_out_proj.weight_g`, `blocks.0.main_upsample.1.weight_v`, and
+`conv_out.bias`. PyTorch Conv1d and ConvTranspose1d kernels are transposed into
+MLX channel-last layout, and PyTorch parametrized weight norm tensors are mapped
+from `parametrizations.weight.original0/original1` to `weight_g/weight_v`. The
+final non-watermarked output activation/projection is sourced from
+`decoder.wm_model.encoder_block.pre`, matching the upstream Irodori watermark
+bypass path where `decoder.alpha == 0`.
+
+This real decoder artifact is deterministic and executable for decode-only MLX
+runtime modes. Runtime capability inspection reports
+`has_real_dacvae_decode=true`, `has_executable_mlx_decode=true`, and
+`has_mlx_decode=true` when the executable tensor layout is present. Acoustic
+parity is still a separate validation gate; keep `persistent`/`subprocess`
+PyTorch bridge modes available as a fallback until parity reports have been run
+against local real weights.
 
 After conversion, validate the transport contract by checking that the converter
-report and runtime capability inspection identify the artifact as a blocked real
-decoder artifact:
+report and runtime capability inspection identify the artifact as an executable
+real decoder artifact:
 
 ```bash
 python scripts/convert_dacvae_decoder.py \
@@ -131,10 +138,11 @@ python scripts/convert_dacvae_decoder.py \
 ```
 
 Expected evidence is `artifact_kind=real_semantic_dacvae_decoder`,
-`has_real_dacvae_decode=true`, `has_mlx_decode=false`, and a capability message
-that the MLX DACVAE convolutional decoder executor is not implemented yet.
-Decode parity comparison becomes the required validation path only after the
-real MLX executor can consume those decoder tensors.
+`has_real_dacvae_decode=true`, `has_executable_mlx_decode=true`,
+`has_mlx_decode=true`, `runtime_status.mlx_decoder_execution=available_unvalidated`,
+and a capability message that acoustic parity remains gated by local validation.
+Decode parity comparison is the next validation step before publishing converted
+weights as a parity-backed hosted artifact.
 
 ## Hosted companion metadata
 

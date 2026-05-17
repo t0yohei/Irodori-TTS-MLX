@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -30,7 +31,12 @@ ARTIFACT_KIND = "real_semantic_dacvae_decoder"
 SAMPLE_RATE = 48000
 HOP_LENGTH = 512
 LATENT_DIM = 32
+DECODER_LATENT_DIM = 1024
+DECODER_DIM = 1536
+DECODER_RATES = (8, 8, 4, 2)
+WM_RATES = (8, 5, 4, 2)
 TENSOR_PREFIX = "dacvae_decoder/"
+EXECUTABLE_TENSOR_PREFIX = "dacvae_decoder_exec/"
 
 DECODE_REQUIRED_PREFIXES = (
     "quantizer.out_proj.",
@@ -45,6 +51,22 @@ class DACVAEDecoderConversionError(RuntimeError):
 @dataclass(frozen=True)
 class DecoderTensor:
     name: str
+    shape: tuple[int, ...]
+    dtype: str
+    array: Any
+
+    @property
+    def parameter_count(self) -> int:
+        total = 1
+        for dim in self.shape:
+            total *= int(dim)
+        return total
+
+
+@dataclass(frozen=True)
+class ExecutableDecoderTensor:
+    source_name: str
+    target_name: str
     shape: tuple[int, ...]
     dtype: str
     array: Any
@@ -204,6 +226,171 @@ def extract_decoder_tensors(state_dict: Mapping[str, Any]) -> dict[str, DecoderT
     return dict(sorted(tensors.items()))
 
 
+def semantic_dacvae_decoder_config_metadata() -> dict[str, object]:
+    return {
+        "latent_dim": DECODER_LATENT_DIM,
+        "decoder_dim": DECODER_DIM,
+        "decoder_rates": list(DECODER_RATES),
+        "wm_rates": list(WM_RATES),
+        "codebook_dim": LATENT_DIM,
+        "output_channels": 1,
+    }
+
+
+def _map_weight_norm_suffix(suffix: str) -> str | None:
+    aliases = {
+        "bias": "bias",
+        "alpha": "alpha",
+        "weight": "weight",
+        "weight_g": "weight_g",
+        "weight_v": "weight_v",
+        "parametrizations.weight.original0": "weight_g",
+        "parametrizations.weight.original1": "weight_v",
+    }
+    return aliases.get(suffix)
+
+
+def _decoder_block_target(index: int, suffix: str) -> tuple[str, bool] | None:
+    block_prefix = f"blocks.{index}"
+    simple_map = {
+        "0": (f"{block_prefix}.main_upsample.0", False),
+        "1": (f"{block_prefix}.main_upsample.1", True),
+    }
+    for source_block, target in simple_map.items():
+        prefix = f"{source_block}."
+        if suffix.startswith(prefix):
+            param = _map_weight_norm_suffix(suffix[len(prefix) :])
+            return (f"{target[0]}.{param}", target[1]) if param else None
+
+    residual_map = {
+        "4": "0",
+        "5": "1",
+        "8": "2",
+    }
+    for source_block, residual_index in residual_map.items():
+        prefix = f"{source_block}.block."
+        if not suffix.startswith(prefix):
+            continue
+        inner = suffix[len(prefix) :]
+        if inner.startswith("0."):
+            param = _map_weight_norm_suffix(inner[2:])
+            return (f"{block_prefix}.residuals.{residual_index}.act1.{param}", False) if param else None
+        if inner.startswith("1."):
+            param = _map_weight_norm_suffix(inner[2:])
+            return (f"{block_prefix}.residuals.{residual_index}.conv1.{param}", False) if param else None
+        if inner.startswith("2."):
+            param = _map_weight_norm_suffix(inner[2:])
+            return (f"{block_prefix}.residuals.{residual_index}.act2.{param}", False) if param else None
+        if inner.startswith("3."):
+            param = _map_weight_norm_suffix(inner[2:])
+            return (f"{block_prefix}.residuals.{residual_index}.conv2.{param}", False) if param else None
+    return None
+
+
+def _executable_target_for_name(name: str) -> tuple[str, bool] | None:
+    # Irodori's wrapper sets decoder.alpha=0 and replaces decoder.watermark with
+    # wm_model.encoder_block.forward_no_conv, so this pre block is the final
+    # non-watermarked output path for converted public checkpoints.
+    prefixes: tuple[tuple[str, str, bool], ...] = (
+        ("quantizer.out_proj.", "quantizer_out_proj.", False),
+        ("decoder.model.0.", "conv_in.", False),
+        ("decoder.wm_model.encoder_block.pre.0.", "snake_out.", False),
+        ("decoder.wm_model.encoder_block.pre.1.", "conv_out.", False),
+    )
+    for source_prefix, target_prefix, is_transposed_conv in prefixes:
+        if name.startswith(source_prefix):
+            param = _map_weight_norm_suffix(name[len(source_prefix) :])
+            return (target_prefix + param, is_transposed_conv) if param else None
+
+    match = re.match(r"^decoder\.model\.(\d+)\.block\.(.+)$", name)
+    if match:
+        model_index = int(match.group(1))
+        if model_index <= 0:
+            return None
+        block_index = model_index - 1
+        if block_index >= len(DECODER_RATES):
+            return None
+        return _decoder_block_target(block_index, match.group(2))
+    return None
+
+
+def _to_mlx_conv_weight(array: Any, *, is_transposed_conv: bool) -> Any:
+    np = import_numpy()
+    value = np.asarray(array)
+    if value.ndim != 3:
+        return value
+    if is_transposed_conv:
+        return np.transpose(value, (1, 2, 0)).astype(value.dtype, copy=False)
+    return np.transpose(value, (0, 2, 1)).astype(value.dtype, copy=False)
+
+
+def _to_mlx_snake_alpha(array: Any) -> Any:
+    np = import_numpy()
+    value = np.asarray(array)
+    if value.ndim == 3 and value.shape[0] == 1 and value.shape[2] == 1:
+        return np.transpose(value, (0, 2, 1)).astype(value.dtype, copy=False)
+    return value
+
+
+def build_executable_decoder_tensors(
+    tensors: Mapping[str, DecoderTensor],
+) -> dict[str, ExecutableDecoderTensor]:
+    executable: dict[str, ExecutableDecoderTensor] = {}
+    for source_name, tensor in tensors.items():
+        mapped = _executable_target_for_name(source_name)
+        if mapped is None:
+            continue
+        target_name, is_transposed_conv = mapped
+        if target_name.endswith(".alpha"):
+            array = _to_mlx_snake_alpha(tensor.array)
+        elif target_name.endswith((".weight", ".weight_g", ".weight_v")):
+            array = _to_mlx_conv_weight(tensor.array, is_transposed_conv=is_transposed_conv)
+        else:
+            array = tensor.array
+        executable[target_name] = ExecutableDecoderTensor(
+            source_name=source_name,
+            target_name=target_name,
+            shape=tuple(int(dim) for dim in array.shape),
+            dtype=str(array.dtype),
+            array=array,
+        )
+
+    if not executable:
+        raise DACVAEDecoderConversionError(
+            "No executable Semantic-DACVAE decoder tensors could be mapped from the checkpoint."
+        )
+    missing_pairs: list[str] = []
+    for prefix in sorted({name.rsplit(".", 1)[0] for name in executable}):
+        has_direct = f"{prefix}.weight" in executable
+        has_weight_norm = f"{prefix}.weight_g" in executable and f"{prefix}.weight_v" in executable
+        if any(name.startswith(prefix + ".weight") for name in executable) and not (has_direct or has_weight_norm):
+            missing_pairs.append(prefix)
+    if missing_pairs:
+        raise DACVAEDecoderConversionError(
+            "Incomplete weight-normalized decoder tensors for executable modules: " + ", ".join(missing_pairs[:8])
+        )
+    from irodori_mlx.dacvae import semantic_dacvae_decoder_expected_shapes
+
+    expected_shapes = semantic_dacvae_decoder_expected_shapes()
+    missing_required = tuple(name for name in expected_shapes if name not in executable)
+    if missing_required:
+        raise DACVAEDecoderConversionError(
+            "Checkpoint is missing executable Semantic-DACVAE decoder tensors required by the MLX runtime: "
+            + ", ".join(missing_required[:8])
+        )
+    shape_mismatches = [
+        f"{name}: expected {expected_shapes[name]}, got {executable[name].shape}"
+        for name in expected_shapes
+        if tuple(executable[name].shape) != tuple(expected_shapes[name])
+    ]
+    if shape_mismatches:
+        raise DACVAEDecoderConversionError(
+            "Executable Semantic-DACVAE decoder tensor shapes do not match the MLX runtime contract: "
+            + "; ".join(shape_mismatches[:8])
+        )
+    return dict(sorted(executable.items()))
+
+
 def tensor_manifest(tensors: Mapping[str, DecoderTensor]) -> list[dict[str, Any]]:
     return [
         {
@@ -217,13 +404,32 @@ def tensor_manifest(tensors: Mapping[str, DecoderTensor]) -> list[dict[str, Any]
     ]
 
 
+def executable_tensor_manifest(tensors: Mapping[str, ExecutableDecoderTensor]) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_name": tensor.source_name,
+            "target_name": tensor.target_name,
+            "artifact_key": EXECUTABLE_TENSOR_PREFIX + tensor.target_name,
+            "shape": list(tensor.shape),
+            "dtype": tensor.dtype,
+            "parameter_count": tensor.parameter_count,
+        }
+        for tensor in tensors.values()
+    ]
+
+
 def manifest_digest(manifest: list[dict[str, Any]]) -> str:
     payload = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
-def build_metadata(args: argparse.Namespace, tensors: Mapping[str, DecoderTensor]) -> dict[str, Any]:
+def build_metadata(
+    args: argparse.Namespace,
+    tensors: Mapping[str, DecoderTensor],
+    executable_tensors: Mapping[str, ExecutableDecoderTensor],
+) -> dict[str, Any]:
     manifest = tensor_manifest(tensors)
+    executable_manifest = executable_tensor_manifest(executable_tensors)
     return {
         "artifact_format": ARTIFACT_FORMAT,
         "artifact_format_version": ARTIFACT_FORMAT_VERSION,
@@ -236,6 +442,7 @@ def build_metadata(args: argparse.Namespace, tensors: Mapping[str, DecoderTensor
         "sample_rate": SAMPLE_RATE,
         "hop_length": HOP_LENGTH,
         "latent_dim": LATENT_DIM,
+        "semantic_dacvae_decoder_config": semantic_dacvae_decoder_config_metadata(),
         "decode_present": True,
         "encode_present": False,
         "watermark_bypass": {
@@ -245,15 +452,17 @@ def build_metadata(args: argparse.Namespace, tensors: Mapping[str, DecoderTensor
         "license_review_status": args.license_review_status,
         "license_review_ref": args.license_review_ref,
         "tensor_count": len(tensors),
+        "executable_tensor_count": len(executable_tensors),
         "total_parameters": sum(tensor.parameter_count for tensor in tensors.values()),
+        "executable_total_parameters": sum(tensor.parameter_count for tensor in executable_tensors.values()),
         "tensor_manifest_sha256": manifest_digest(manifest),
+        "executable_tensor_manifest_sha256": manifest_digest(executable_manifest),
         "tensors": manifest,
+        "executable_tensors": executable_manifest,
         "runtime_status": {
-            "mlx_decoder_execution": "blocked",
-            "blocker": (
-                "The artifact contains the real Semantic-DACVAE decoder tensors and provenance, "
-                "but the MLX convolutional DACVAE executor is not implemented in this repository yet."
-            ),
+            "mlx_decoder_execution": "available_unvalidated",
+            "parity_status": "not_validated",
+            "note": "Executable MLX decoder tensors are present, but acoustic parity is gated separately.",
         },
     }
 
@@ -271,8 +480,11 @@ def build_report(source: Path, output: Path, metadata: Mapping[str, Any], *, dry
         "hop_length": metadata["hop_length"],
         "latent_dim": metadata["latent_dim"],
         "tensor_count": metadata["tensor_count"],
+        "executable_tensor_count": metadata["executable_tensor_count"],
         "total_parameters": metadata["total_parameters"],
+        "executable_total_parameters": metadata["executable_total_parameters"],
         "tensor_manifest_sha256": metadata["tensor_manifest_sha256"],
+        "executable_tensor_manifest_sha256": metadata["executable_tensor_manifest_sha256"],
         "license_review_status": metadata["license_review_status"],
         "runtime_status": metadata["runtime_status"],
     }
@@ -287,7 +499,12 @@ def validate_source_path(source: Path) -> None:
         raise DACVAEDecoderConversionError("Expected the upstream Semantic-DACVAE weights.pth file.")
 
 
-def write_npz_atomic(output: Path, tensors: Mapping[str, DecoderTensor], metadata: Mapping[str, Any]) -> None:
+def write_npz_atomic(
+    output: Path,
+    tensors: Mapping[str, DecoderTensor],
+    executable_tensors: Mapping[str, ExecutableDecoderTensor],
+    metadata: Mapping[str, Any],
+) -> None:
     np = import_numpy()
     output.parent.mkdir(parents=True, exist_ok=True)
     arrays: dict[str, Any] = {
@@ -297,6 +514,7 @@ def write_npz_atomic(output: Path, tensors: Mapping[str, DecoderTensor], metadat
         "metadata_json": np.array(json.dumps(metadata, sort_keys=True, separators=(",", ":"))),
     }
     arrays.update({TENSOR_PREFIX + name: tensor.array for name, tensor in tensors.items()})
+    arrays.update({EXECUTABLE_TENSOR_PREFIX + name: tensor.array for name, tensor in executable_tensors.items()})
 
     fd, temp_name = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=str(output.parent))
     try:
@@ -316,9 +534,10 @@ def convert(source: Path, output: Path, args: argparse.Namespace) -> dict[str, A
     torch = import_torch()
     checkpoint = torch.load(str(source), map_location="cpu")
     tensors = extract_decoder_tensors(unwrap_state_dict(checkpoint))
-    metadata = build_metadata(args, tensors)
+    executable_tensors = build_executable_decoder_tensors(tensors)
+    metadata = build_metadata(args, tensors, executable_tensors)
     if not args.dry_run:
-        write_npz_atomic(output, tensors, metadata)
+        write_npz_atomic(output, tensors, executable_tensors, metadata)
     return build_report(source, output, metadata, dry_run=bool(args.dry_run))
 
 
@@ -334,8 +553,11 @@ def print_text_report(report: Mapping[str, Any]) -> None:
     print(f"hop_length: {report['hop_length']}")
     print(f"latent_dim: {report['latent_dim']}")
     print(f"tensor_count: {report['tensor_count']}")
+    print(f"executable_tensor_count: {report['executable_tensor_count']}")
     print(f"total_parameters: {report['total_parameters']:,}")
+    print(f"executable_total_parameters: {report['executable_total_parameters']:,}")
     print(f"tensor_manifest_sha256: {report['tensor_manifest_sha256']}")
+    print(f"executable_tensor_manifest_sha256: {report['executable_tensor_manifest_sha256']}")
     print(f"license_review_status: {report['license_review_status']}")
     print(f"runtime_status: {report['runtime_status']['mlx_decoder_execution']}")
 
