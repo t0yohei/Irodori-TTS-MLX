@@ -1,10 +1,35 @@
 # DACVAE decode parity validation
 
-Issue #172 tracks the real decode parity gate for the executable MLX DACVAE
+Issue #184 tracks the current real decode parity gate for the executable MLX DACVAE
 decoder work under parent epic #169. The validation input is intentionally a fixed latent
 `.npy` file plus a locally produced MLX codec `.npz`; this repository does not
 commit upstream codec weights, converted codec weights, decoded audio, Hugging
 Face cache contents, or other heavyweight derived assets.
+
+## Current validation status
+
+The 2026-05-18 real-artifact run passed with `run.status: complete` and
+`comparison.status: passed`. The checked-in JSON report is
+[parity-reports/2026-05-18-dacvae-decode-parity.json](parity-reports/2026-05-18-dacvae-decode-parity.json).
+
+That run used:
+
+- upstream codec repo: `Aratako/Semantic-DACVAE-Japanese-32dim`
+- upstream codec snapshot: `47376ee24834d7a05a48ebabfe3cde29b3c5e214`
+- local converted codec artifact format: `irodori-tts-mlx-dacvae-codec` `0.2`
+- fixed latent fixture seed: `20260518`, shape `(1, 8, 32)`
+- `dacvae==1.0.0`, `codec_device=cpu`, watermark disabled
+
+Observed metrics:
+
+- `max_abs = 3.0517578125e-05`
+- `mean_abs = 8.145968166672901e-08`
+- `rmse = 1.5766902379255043e-06`
+- `cosine = 1.0`
+
+This validates the fixed real decode artifact and fixture above. It does not
+redistribute the artifact or claim broad acoustic parity for arbitrary future
+codec artifacts without rerunning this check.
 
 ## What the check compares
 
@@ -81,10 +106,11 @@ and `comparison.status: passed` or `failed`. Keep generated WAVs and local
 artifacts out of git unless their license/provenance has been reviewed for
 redistribution.
 
-A passing report is the gate for describing the executable decoder artifact as
-parity-backed. Until then, runtime capability output may say
-`has_executable_mlx_decode=true`, but docs and release notes should keep the
-status as `available_unvalidated`.
+A passing report is the gate for describing a specific executable decoder
+artifact as parity-backed. Runtime capability output may still say
+`has_executable_mlx_decode=true` before a report exists, but docs and release
+notes should only call a converted artifact parity-backed when its current
+report is complete and passed.
 
 For CI or developer machines that should record deterministic skip evidence when
 local artifacts are absent, add `--allow-partial`:
