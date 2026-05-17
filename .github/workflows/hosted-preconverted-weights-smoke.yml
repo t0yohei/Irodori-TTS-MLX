@@ -21,7 +21,11 @@ jobs:
       - name: Install package
         run: python -m pip install -e .
       - name: Run hosted-layout contract tests
-        run: python -m unittest tests.test_hosted_weights_smoke -v
+        run: |
+          python -m unittest \
+            tests.test_hosted_weights_runtime \
+            tests.test_hosted_rf_dit_artifacts \
+            -v
 
   optional-real-artifact:
     name: Optional real hosted artifact smoke

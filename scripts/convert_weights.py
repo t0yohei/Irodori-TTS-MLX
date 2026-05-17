@@ -412,8 +412,8 @@ def validate_voicedesign_config(config: dict[str, Any] | None) -> list[str]:
             errors.append(f"config {key}: expected {expected!r}, got {config.get(key)!r}")
     if config.get("use_caption_condition") is not True:
         errors.append("VoiceDesign checkpoints must set use_caption_condition=true")
-    if config.get("use_speaker_condition") is True or any(key.startswith("speaker_") for key in config):
-        errors.append("VoiceDesign checkpoints must not include speaker conditioning metadata")
+    if config.get("use_speaker_condition") is True:
+        errors.append("VoiceDesign checkpoints must not enable speaker conditioning")
     return errors
 
 

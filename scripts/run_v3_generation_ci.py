@@ -91,6 +91,20 @@ def _model_config_payload(config: dict[str, Any] | None) -> dict[str, Any]:
     return payload
 
 
+def _load_generation_payload(stdout: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError as direct_error:
+        start = stdout.rfind("\n{")
+        start = start + 1 if start >= 0 else stdout.find("{")
+        if start < 0:
+            raise direct_error
+        payload = json.loads(stdout[start:])
+    if not isinstance(payload, dict):
+        raise RuntimeError("generate_wav.py --json must emit a JSON object.")
+    return payload
+
+
 def _build_generation_command(
     *,
     python_executable: str,
@@ -209,7 +223,7 @@ def run_generation(
         )
         stdout_path.write_text(completed.stdout, encoding="utf-8")
         stderr_path.write_text(completed.stderr, encoding="utf-8")
-        generation_payload = json.loads(completed.stdout)
+        generation_payload = _load_generation_payload(completed.stdout)
         duration_mode = generation_payload.get("result", {}).get("duration_mode")
         if duration_mode != "predicted":
             raise RuntimeError(

@@ -44,7 +44,12 @@ class RunV3GenerationCIScriptTests(unittest.TestCase):
                 output_wav = Path(command[command.index("--output") + 1])
                 metadata_path.write_text(json.dumps(generation_payload), encoding="utf-8")
                 output_wav.write_bytes(b"fake wav")
-                return CompletedProcess(args=command, returncode=0, stdout=json.dumps(generation_payload), stderr="")
+                return CompletedProcess(
+                    args=command,
+                    returncode=0,
+                    stdout="[codec] loading checkpoint\n" + json.dumps(generation_payload),
+                    stderr="",
+                )
 
             download_calls = []
 
