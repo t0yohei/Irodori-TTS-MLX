@@ -1,10 +1,38 @@
 # DACVAE encode parity fixtures
 
-Issue #174 tracks encode parity evidence for the Semantic-DACVAE MLX codec port
-under parent epic #169. The fixture is intentionally a fixed reference
+Issue #185 tracks real encode parity evidence for the Semantic-DACVAE MLX codec
+port under parent epic #169. The fixture is intentionally a fixed reference
 WAV plus a locally produced MLX codec `.npz`; this repository does not commit
 upstream codec weights, converted codec weights, generated latents, reference
 audio, Hugging Face cache contents, or other heavyweight derived assets.
+
+## Current validation status
+
+The current real-weight validation run completed on 2026-05-18 against the
+public `Aratako/Semantic-DACVAE-Japanese-32dim` checkpoint revision
+`47376ee24834d7a05a48ebabfe3cde29b3c5e214`. The local MLX codec artifact was
+converted from `weights.pth` with `scripts/convert_dacvae_decoder.py`, using
+`facebookresearch/dacvae` revision
+`414c20785fc3a28373073ea8ef7a1316eeeaca6e`.
+
+The fixed license-clean reference WAV is a generated 0.5 second, 48 kHz, mono
+440 Hz sine fixture. It is not committed to the repository.
+
+The report completed with `run.status = "complete"` and
+`comparison.status = "passed"`:
+
+- latent shape: `[1, 13, 32]` for both upstream PyTorch and MLX encode
+- finite-value checks: passed for both latent tensors
+- length/mask contract: `hop_length = 1920`,
+  `latent_steps = speaker_mask_true_count = 13`
+- tolerance metrics: `max_abs = 2.7686357498168945e-05`,
+  `mean_abs = 3.6222247672412777e-06`,
+  `rmse = 5.6087264965754e-06`,
+  `cosine = 1.0000001192092896`
+
+No threshold change was needed. The generated local report remains outside git
+with the converted codec artifact and latent fixtures because those files are
+derived from upstream codec weights and local fixture paths.
 
 ## What the check compares
 
@@ -129,7 +157,7 @@ python -m pytest tests/test_check_dacvae_encode_parity_script.py tests/test_dacv
 ```
 
 `tests/test_dacvae_mlx_parity_fixtures.py` remains available for real fixture
-validation through environment variables. For issue #174 encode evidence, the
+validation through environment variables. For issue #185 encode evidence, the
 required variables are the codec artifact, reference WAV fixture, and upstream
 encoded latent fixture:
 
