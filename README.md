@@ -72,7 +72,7 @@ The bridge runtime needs upstream `irodori_tts.codec.DACVAECodec` for the defaul
 
 The shortest current CLI path is an approved hosted/pre-converted weights layout loaded with `--weights-repo` or the same layout from disk with `--weights-dir`. Use only repositories whose `irodori_mlx_manifest.json` has `license_review.status: "approved"` and whose README/model card records provenance for the exact upstream checkpoint revision.
 
-Published RF-DiT artifact status is tracked in [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md). VoiceDesign currently has an approved public hosted artifact; v3 remains on the local conversion fallback until an approved public repo and immutable revision are published.
+Published RF-DiT artifact status is tracked in [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md). VoiceDesign and v3 currently have approved public hosted artifacts.
 
 VoiceDesign example:
 
@@ -86,6 +86,20 @@ irodori-tts-generate \
   --output /tmp/irodori-hosted.wav \
   --preset balanced \
   --json
+```
+
+v3 hosted example:
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3-hosted.wav \
+  --preset balanced \
+  --metadata-json /tmp/irodori-v3-hosted-metadata.json
 ```
 
 v3 local fallback smoke example:

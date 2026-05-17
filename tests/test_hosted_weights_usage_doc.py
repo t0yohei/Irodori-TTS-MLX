@@ -19,7 +19,8 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
     def test_hosted_quick_path_and_local_layout_are_documented(self):
         required_terms = [
             "--weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign",
-            "--weights-repo <approved-v3-repo-id>",
+            "--weights-repo t0yohei/Irodori-TTS-MLX-500M-v3",
+            "--weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359",
             "hosted_rf_dit_artifacts.md",
             "--weights-dir /models/Irodori-TTS-MLX-500M-v2-VoiceDesign",
             "license_review.status: \"approved\"",
@@ -64,6 +65,7 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
                 self.assertIn("docs/hosted_weights_usage.md", text)
                 self.assertIn("docs/hosted_rf_dit_artifacts.md", text)
                 self.assertIn("--weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign", text)
+                self.assertIn("--weights-repo t0yohei/Irodori-TTS-MLX-500M-v3", text)
                 self.assertIn("upstream PyTorch DACVAE bridge", text)
                 self.assertIn("codec artifact", text)
 

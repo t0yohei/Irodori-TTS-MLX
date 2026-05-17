@@ -56,12 +56,13 @@ Expected behavior:
 - loads `model_config.json`, `tokenizer_config.json`, and `weights.npz` through the same internal runtime path used by local hosted-layout directories;
 - still uses the upstream PyTorch DACVAE bridge for codec encode/decode.
 
-No approved public v3 hosted artifact location is recorded for #157 yet. For v3, keep using the local conversion fallback until [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md) lists an approved public repo id and immutable revision. Once such a v3 hosted artifact exists, use the approved repo id and omit `--caption`; if the v3 manifest says `supports_predicted_duration: true`, omit `--seconds` to exercise predicted-duration generation:
+An approved public v3 hosted artifact is now recorded in [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md). For v3, use the approved repo id, omit `--caption`, and omit `--seconds` to exercise predicted-duration generation:
 
 ```bash
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
-  --weights-repo <approved-v3-repo-id> \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3-hosted.wav \
