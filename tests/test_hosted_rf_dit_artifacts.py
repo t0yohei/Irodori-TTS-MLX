@@ -31,16 +31,19 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
             "t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign",
         )
 
-    def test_v3_is_an_explicit_blocker_not_a_private_path(self):
+    def test_v3_public_artifact_is_discoverable(self):
         v3 = hosted_rf_dit_artifacts()[CHECKPOINT_FAMILY_V3]
 
-        self.assertFalse(v3.is_approved_public)
-        self.assertEqual(v3.publication_status, "blocked")
-        self.assertIsNone(v3.repo_id)
-        self.assertIsNone(v3.revision)
-        self.assertIn("No approved public hosted v3 RF-DiT artifact location", v3.blocker or "")
-        with self.assertRaisesRegex(RuntimeError, "No approved public hosted v3 RF-DiT artifact location"):
-            approved_hosted_rf_dit_repo(CHECKPOINT_FAMILY_V3)
+        self.assertTrue(v3.is_approved_public)
+        self.assertEqual(v3.repo_id, "t0yohei/Irodori-TTS-MLX-500M-v3")
+        self.assertEqual(v3.revision, "078ffb11ffad92e6dde237a6abef730f4341b359")
+        self.assertEqual(v3.publication_status, "approved-public")
+        self.assertEqual(v3.license_review_status, "approved")
+        self.assertIsNone(v3.blocker)
+        self.assertEqual(
+            approved_hosted_rf_dit_repo(CHECKPOINT_FAMILY_V3),
+            "t0yohei/Irodori-TTS-MLX-500M-v3",
+        )
 
     def test_approved_registry_contains_no_private_or_local_paths(self):
         forbidden = re.compile(r"(/Users/|/tmp/|file://|localhost|private|staging)", re.IGNORECASE)
@@ -56,17 +59,19 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
                 with self.subTest(value=value):
                     self.assertNotRegex(value, forbidden)
 
-    def test_doc_records_public_status_and_blocker(self):
+    def test_doc_records_public_status_and_smoke_commands(self):
         required_terms = [
-            "#157",
+            "#187",
             "#160",
             "irodori_mlx.hosted_artifacts.HOSTED_RF_DIT_ARTIFACTS",
             "t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign",
             "bf877a3beb7d921dc6bfb2b6812d02be07f39f2a",
             "--weights-revision bf877a3beb7d921dc6bfb2b6812d02be07f39f2a",
+            "t0yohei/Irodori-TTS-MLX-500M-v3",
+            "078ffb11ffad92e6dde237a6abef730f4341b359",
+            "--weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359",
+            "supports_predicted_duration: true",
             "license_review.status: \"approved\"",
-            "v3 hosted artifact is intentionally marked blocked",
-            "Do not replace the blocked status with a local filesystem path",
             "local conversion fallback",
             'mkdir -p "$WORK"',
             'python - "$WORK/checkpoint-inspect.json" > "$WORK/model_config.json"',

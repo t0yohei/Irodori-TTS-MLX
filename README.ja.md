@@ -72,7 +72,7 @@ default の `persistent` / `subprocess` codec mode では upstream `irodori_tts.
 
 現行 CLI の最短経路は、承認済み hosted/pre-converted weights layout を `--weights-repo` で読むか、同じ layout を disk から `--weights-dir` で読む方法です。`irodori_mlx_manifest.json` の `license_review.status: "approved"` と、README/model card の upstream checkpoint revision provenance を確認してください。
 
-RF-DiT artifact の公開状況は [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md) に固定しています。VoiceDesign は承認済み public hosted artifact があります。v3 は承認済み public repo と immutable revision が公開されるまで local conversion fallback を使います。
+RF-DiT artifact の公開状況は [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md) に固定しています。VoiceDesign と v3 は承認済み public hosted artifact があります。
 
 VoiceDesign の例:
 
@@ -86,6 +86,20 @@ irodori-tts-generate \
   --output /tmp/irodori-hosted.wav \
   --preset balanced \
   --json
+```
+
+v3 hosted の例:
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3-hosted.wav \
+  --preset balanced \
+  --metadata-json /tmp/irodori-v3-hosted-metadata.json
 ```
 
 v3 local fallback smoke の例:

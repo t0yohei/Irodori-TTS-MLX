@@ -48,21 +48,16 @@ HOSTED_RF_DIT_ARTIFACTS: dict[str, HostedRfDitArtifact] = {
     CHECKPOINT_FAMILY_V3: HostedRfDitArtifact(
         family=CHECKPOINT_FAMILY_V3,
         upstream_checkpoint="Aratako/Irodori-TTS-500M-v3",
-        repo_id=None,
-        revision=None,
-        publication_status="blocked",
+        repo_id="t0yohei/Irodori-TTS-MLX-500M-v3",
+        revision="078ffb11ffad92e6dde237a6abef730f4341b359",
+        publication_status="approved-public",
         license_review_status="approved",
         review_reference=(
             "https://github.com/t0yohei/Irodori-TTS-MLX/blob/main/"
             "docs/preconverted_weights_redistribution_audit.md"
         ),
-        issue_url="https://github.com/t0yohei/Irodori-TTS-MLX/issues/157",
+        issue_url="https://github.com/t0yohei/Irodori-TTS-MLX/issues/187",
         parent_issue_url="https://github.com/t0yohei/Irodori-TTS-MLX/issues/160",
-        blocker=(
-            "No approved public hosted v3 RF-DiT artifact location was provided "
-            "for issue #157. Keep v3 on the local conversion fallback until an "
-            "approved public repository and immutable revision are published."
-        ),
     ),
 }
 
