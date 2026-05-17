@@ -783,7 +783,7 @@ class MLXDACVAEBridge:
                         )
                     self.decode_basis = mx.array(archive["decode_basis"].astype("float32", copy=False))
                     self.decode_bias = mx.array(archive["decode_bias"].astype("float32", copy=False))
-                if has_complete_executable_encode:
+                if has_complete_executable_encode and require_encode:
                     self.semantic_encoder = load_semantic_dacvae_encoder_artifact(self.codec_path)
                     self.encode_basis = None
                     self.encode_bias = None

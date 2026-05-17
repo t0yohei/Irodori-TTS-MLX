@@ -649,10 +649,13 @@ def load_semantic_dacvae_decoder_artifact(
             metadata_value = metadata_json.item() if getattr(metadata_json, "shape", ()) == () else metadata_json[0]
             metadata = json.loads(str(metadata_value))
             config = semantic_dacvae_decoder_config_from_metadata(metadata)
+            required = set(semantic_dacvae_decoder_required_keys(config))
             weights = {
-                name[len(EXECUTABLE_DECODER_PREFIX) :]: mx.array(archive[name].astype("float32", copy=False))
+                key: mx.array(archive[name].astype("float32", copy=False))
                 for name in archive.files
                 if name.startswith(EXECUTABLE_DECODER_PREFIX)
+                for key in (name[len(EXECUTABLE_DECODER_PREFIX) :],)
+                if key in required
             }
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"Semantic-DACVAE decoder artifact was not found: {artifact_path}") from exc
@@ -690,10 +693,13 @@ def load_semantic_dacvae_encoder_artifact(
             metadata_value = metadata_json.item() if getattr(metadata_json, "shape", ()) == () else metadata_json[0]
             metadata = json.loads(str(metadata_value))
             config = semantic_dacvae_encoder_config_from_metadata(metadata)
+            required = set(semantic_dacvae_encoder_required_keys(config))
             weights = {
-                name[len(EXECUTABLE_ENCODER_PREFIX) :]: mx.array(archive[name].astype("float32", copy=False))
+                key: mx.array(archive[name].astype("float32", copy=False))
                 for name in archive.files
                 if name.startswith(EXECUTABLE_ENCODER_PREFIX)
+                for key in (name[len(EXECUTABLE_ENCODER_PREFIX) :],)
+                if key in required
             }
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"Semantic-DACVAE encoder artifact was not found: {artifact_path}") from exc

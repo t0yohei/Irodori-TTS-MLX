@@ -587,6 +587,7 @@ class RuntimeBridgeTests(unittest.TestCase):
                 self.assertIsNotNone(resolved, name)
                 parent, attr = resolved
                 executable_arrays[prefix + name] = np.array(getattr(parent, attr), dtype=np.float32)
+        executable_arrays[EXECUTABLE_ENCODER_PREFIX + "future_extra.weight"] = np.zeros((1,), dtype=np.float32)
 
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "semantic-codec.npz"
@@ -632,6 +633,14 @@ class RuntimeBridgeTests(unittest.TestCase):
             artifact = inspect_mlx_codec_artifact(codec_path)
             self.assertTrue(artifact["has_mlx_encode"])
             self.assertTrue(artifact["has_executable_mlx_encode"])
+
+            decode_only_bridge = MLXDACVAEBridge(
+                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                require_encode=False,
+            )
+            decode_only_out = Path(td) / "decode-only.wav"
+            decode_only_bridge.decode_to_wav(mx.ones((1, 2, 4), dtype=mx.float32), decode_only_out, max_samples=4)
+            self.assertTrue(decode_only_out.exists())
 
             bridge = MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
             latents = bridge.encode_reference(ref_path, max_seconds=None, normalize_db=None, ensure_max=False)
