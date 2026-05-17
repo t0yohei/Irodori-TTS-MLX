@@ -29,17 +29,16 @@ class _FakeRuntime:
         output = Path(request.output_wav)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake wav")
-        decode_backend = "mlx" if self.config.codec.runtime_mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"} else "pytorch"
+        mode = self.config.codec.runtime_mode
+        decode_backend = "mlx" if mode in {"mlx-decode", "mlx-decode-subprocess"} else mode
         if request.no_reference or not self.config.model_config.use_speaker_condition:
             encode_backend = "not-required"
-        elif self.config.codec.runtime_mode == "mlx":
-            encode_backend = "mlx"
-        elif self.config.codec.runtime_mode == "subprocess":
+        elif mode == "mlx-decode-subprocess":
             encode_backend = "pytorch-subprocess"
-        elif self.config.codec.runtime_mode == "mlx-decode-subprocess":
-            encode_backend = "pytorch-subprocess"
-        else:
+        elif mode == "mlx-decode":
             encode_backend = "pytorch-persistent"
+        else:
+            encode_backend = mode
         return type(
             "Result",
             (),
@@ -533,7 +532,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
         self.assertEqual(payload["result"]["codec_decode_backend"], "mlx")
 
-    def test_main_metadata_marks_reference_audio_subprocess_encode(self):
+    def test_main_metadata_matches_subprocess_backend_names(self):
         runtime_holder = {}
 
         def fake_runtime_factory(*, config):
@@ -557,8 +556,8 @@ class GenerateWavScriptTests(unittest.TestCase):
             payload = json.loads(metadata_path.read_text(encoding="utf-8"))
 
         self.assertEqual(rc, 0)
-        self.assertEqual(payload["result"]["codec_encode_backend"], "pytorch-subprocess")
-        self.assertEqual(payload["result"]["codec_decode_backend"], "pytorch")
+        self.assertEqual(payload["result"]["codec_encode_backend"], "subprocess")
+        self.assertEqual(payload["result"]["codec_decode_backend"], "subprocess")
 
     def test_main_metadata_marks_reference_audio_full_mlx_encode_and_decode(self):
         runtime_holder = {}
