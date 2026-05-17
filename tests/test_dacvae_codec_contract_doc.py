@@ -71,6 +71,8 @@ class DACVAECodecContractDocTests(unittest.TestCase):
         self.assertIn("fixed waveform/latent fixtures", blocker_text)
         self.assertIn("Redistribution", blocker_text)
         self.assertIn("https://github.com/t0yohei/Irodori-TTS-MLX/issues/154", self.contract["implementation_consumers"])
+        self.assertIn("issue #172", blocker_text)
+        self.assertIn("https://github.com/t0yohei/Irodori-TTS-MLX/issues/172", self.contract["implementation_consumers"])
 
 
 if __name__ == "__main__":

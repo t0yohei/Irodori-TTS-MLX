@@ -65,6 +65,8 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "reference encode still uses the PyTorch bridge",
             "has_executable_mlx_decode=true",
             "available_unvalidated",
+            "scripts/check_dacvae_decode_parity.py",
+            "issue #172",
             "--no-reference",
             "irodori-tts-convert-dacvae-codec",
             "blocked conversion status",

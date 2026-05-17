@@ -17,6 +17,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+SCHEMA_VERSION = 3
+SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/172"
+PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169"
+DEFAULT_EXPECTED_LATENT_DIM = 32
+
 DACVAEBridgeConfig: Any = None
 MLXDACVAEBridge: Any = None
 PyTorchDACVAEBridge: Any = None
@@ -84,14 +89,19 @@ def _preflight_decode_pair(args: argparse.Namespace) -> None:
     )
 
 
-def _load_latents(path: str | Path):
-    import mlx.core as mx
-
+def _load_latents(path: str | Path, *, expected_latent_dim: int = DEFAULT_EXPECTED_LATENT_DIM):
     latents = np.load(Path(path).expanduser()).astype("float32", copy=False)
     if latents.ndim != 3:
         raise ValueError(f"Expected latents shaped (B,T,D), got {latents.shape}: {path}")
     if int(latents.shape[0]) != 1:
         raise ValueError(f"Decode parity currently expects batch size 1, got {latents.shape[0]}: {path}")
+    if int(latents.shape[2]) != int(expected_latent_dim):
+        raise ValueError(
+            "Decode parity expected runtime-layout latents shaped "
+            f"(1,T,{int(expected_latent_dim)}), got {latents.shape}: {path}"
+        )
+    import mlx.core as mx
+
     return mx.array(latents)
 
 
@@ -109,9 +119,9 @@ def _is_partial_exception(exc: Exception) -> bool:
 def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[str, Any]:
     status = "partial" if _is_partial_exception(exc) else "failed"
     return {
-        "schema_version": 2,
-        "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/152",
-        "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160",
+        "schema_version": SCHEMA_VERSION,
+        "source_issue": SOURCE_ISSUE,
+        "parent_epic": PARENT_EPIC,
         "run": {
             "status": status,
             "reason": str(exc),
@@ -121,6 +131,7 @@ def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[st
         "codec": {
             "repo": args.codec_repo,
             "device": args.codec_device,
+            "expected_latent_dim": int(args.expected_latent_dim),
             "mlx_codec": _path_metadata(args.codec_path),
             "watermark": "disabled",
         },
@@ -206,7 +217,7 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
     _load_runtime_decode_dependencies()
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    latents = _load_latents(args.latents_npy)
+    latents = _load_latents(args.latents_npy, expected_latent_dim=int(args.expected_latent_dim))
     codec_path = Path(args.codec_path).expanduser()
     if not codec_path.exists():
         raise FileNotFoundError(f"Converted MLX DACVAE codec artifact was not found: {codec_path}")
@@ -255,10 +266,12 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
         min_cosine=float(args.min_cosine),
     )
     comparison = compare_audio(upstream_audio, mlx_audio, sample_rate=int(upstream_sr), tolerances=tolerances)
+    if upstream_audio.shape != mlx_audio.shape:
+        comparison["reason"] = f"decoded waveform shape mismatch: upstream={upstream_audio.shape}, mlx={mlx_audio.shape}"
     return {
-        "schema_version": 1,
-        "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/152",
-        "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160",
+        "schema_version": SCHEMA_VERSION,
+        "source_issue": SOURCE_ISSUE,
+        "parent_epic": PARENT_EPIC,
         "run": {
             "status": "complete",
             "complete": True,
@@ -272,9 +285,16 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "repo": args.codec_repo,
             "device": args.codec_device,
             "mlx_codec_path": str(codec_path),
+            "expected_latent_dim": int(args.expected_latent_dim),
             "sample_rate": int(upstream_bridge.sample_rate),
             "hop_length": int(upstream_bridge.hop_length),
             "latent_dim": int(upstream_bridge.latent_dim),
+            "metadata_checks": {
+                "sample_rate": True,
+                "hop_length": True,
+                "latent_dim": True,
+                "decoded_wav_sample_rate": True,
+            },
             "watermark": "disabled",
         },
         "outputs": {
@@ -294,6 +314,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--codec-repo", default="Aratako/Semantic-DACVAE-Japanese-32dim")
     parser.add_argument("--codec-device", default="cpu")
     parser.add_argument("--max-samples", type=int)
+    parser.add_argument(
+        "--expected-latent-dim",
+        type=int,
+        default=DEFAULT_EXPECTED_LATENT_DIM,
+        help="Expected runtime latent channel count for the fixed fixture. Defaults to 32 for Semantic-DACVAE.",
+    )
     parser.add_argument("--max-abs-tolerance", type=float, default=DecodeParityTolerances.max_abs)
     parser.add_argument("--mean-abs-tolerance", type=float, default=DecodeParityTolerances.mean_abs)
     parser.add_argument("--rmse-tolerance", type=float, default=DecodeParityTolerances.rmse)

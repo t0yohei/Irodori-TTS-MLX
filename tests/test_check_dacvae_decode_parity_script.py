@@ -100,6 +100,8 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
                     str(root / "out"),
                     "--max-samples",
                     "4",
+                    "--expected-latent-dim",
+                    "2",
                 ]
             )
 
@@ -108,6 +110,8 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
 
             with mock.patch.object(
                 check_dacvae_decode_parity, "DACVAEBridgeConfig", side_effect=lambda **kwargs: kwargs
+            ), mock.patch.object(
+                check_dacvae_decode_parity, "_load_runtime_decode_dependencies"
             ), mock.patch.object(
                 check_dacvae_decode_parity, "PyTorchDACVAEBridge", return_value=FakeDecodeBridge(offset=0.0)
             ) as upstream_factory, mock.patch.object(
@@ -120,10 +124,74 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
         upstream_factory.assert_called_once()
         mlx_factory.assert_called_once()
         self.assertEqual(report["comparison"]["status"], "passed")
+        self.assertEqual(report["schema_version"], check_dacvae_decode_parity.SCHEMA_VERSION)
+        self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/172")
+        self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169")
         self.assertEqual(report["latents"]["shape"], [1, 2, 2])
+        self.assertEqual(report["codec"]["expected_latent_dim"], 2)
+        self.assertTrue(report["codec"]["metadata_checks"]["sample_rate"])
         self.assertEqual(report["comparison"]["metrics"]["compared_samples"], 4)
         self.assertEqual(report["outputs"]["upstream_wav"].split("/")[-1], "upstream-decode.wav")
         self.assertEqual(report["outputs"]["mlx_wav"].split("/")[-1], "mlx-decode.wav")
+
+    def test_decode_pair_rejects_latent_channel_drift_before_decode(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            latents_path = root / "latents.npy"
+            codec_path = root / "codec.npz"
+            np.save(latents_path, np.zeros((1, 2, 3), dtype=np.float32))
+            codec_path.write_bytes(b"fake codec")
+            args = check_dacvae_decode_parity.parse_args(
+                [
+                    "--latents-npy",
+                    str(latents_path),
+                    "--codec-path",
+                    str(codec_path),
+                    "--output-dir",
+                    str(root / "out"),
+                    "--expected-latent-dim",
+                    "2",
+                ]
+            )
+
+            with mock.patch.object(check_dacvae_decode_parity, "_load_runtime_decode_dependencies"):
+                with self.assertRaisesRegex(ValueError, r"\(1,T,2\)"):
+                    check_dacvae_decode_parity.decode_pair(args)
+
+    def test_decode_pair_fails_fast_on_bridge_metadata_mismatch(self):
+        class MismatchedBridge(FakeDecodeBridge):
+            sample_rate = 16000
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            latents_path = root / "latents.npy"
+            codec_path = root / "codec.npz"
+            np.save(latents_path, np.array([[[0.1, -0.2], [0.3, -0.4]]], dtype=np.float32))
+            codec_path.write_bytes(b"fake codec")
+            args = check_dacvae_decode_parity.parse_args(
+                [
+                    "--latents-npy",
+                    str(latents_path),
+                    "--codec-path",
+                    str(codec_path),
+                    "--output-dir",
+                    str(root / "out"),
+                    "--expected-latent-dim",
+                    "2",
+                ]
+            )
+
+            with mock.patch.object(
+                check_dacvae_decode_parity, "DACVAEBridgeConfig", side_effect=lambda **kwargs: kwargs
+            ), mock.patch.object(
+                check_dacvae_decode_parity, "_load_runtime_decode_dependencies"
+            ), mock.patch.object(
+                check_dacvae_decode_parity, "PyTorchDACVAEBridge", return_value=FakeDecodeBridge(offset=0.0)
+            ), mock.patch.object(
+                check_dacvae_decode_parity, "MLXDACVAEBridge", return_value=MismatchedBridge(offset=0.0)
+            ):
+                with self.assertRaisesRegex(ValueError, "sample_rate mismatch"):
+                    check_dacvae_decode_parity.decode_pair(args)
 
     def test_main_returns_nonzero_for_metric_failure_and_persists_json(self):
         with tempfile.TemporaryDirectory() as td:
@@ -203,6 +271,8 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(report["comparison"]["status"], "partial")
             self.assertEqual(report["run"]["status"], "partial")
+            self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/172")
+            self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169")
             self.assertFalse(report["run"]["complete"])
             self.assertTrue(report["latents"]["exists"])
             self.assertFalse(report["codec"]["mlx_codec"]["exists"])
@@ -303,7 +373,7 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
             report = json.loads(report_path.read_text(encoding="utf-8"))
             self.assertIn(rc, (0, 1))
             self.assertEqual(report["run"]["status"], "complete")
-            self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/152")
+            self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/172")
             self.assertIn("sample_rate", report["comparison"])
             self.assertIn("max_abs", report["comparison"]["metrics"])
 
