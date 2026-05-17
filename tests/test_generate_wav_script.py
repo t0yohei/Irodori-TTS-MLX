@@ -29,6 +29,15 @@ class _FakeRuntime:
         output = Path(request.output_wav)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake wav")
+        decode_backend = "mlx" if self.config.codec.runtime_mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"} else "pytorch"
+        if request.no_reference or not self.config.model_config.use_speaker_condition:
+            encode_backend = "not-required"
+        elif self.config.codec.runtime_mode == "mlx":
+            encode_backend = "mlx"
+        elif self.config.codec.runtime_mode == "mlx-decode-subprocess":
+            encode_backend = "pytorch-subprocess"
+        else:
+            encode_backend = "pytorch-persistent"
         return type(
             "Result",
             (),
@@ -41,6 +50,9 @@ class _FakeRuntime:
                 "seed": request.seed,
                 "timings_ms": {"sample_rf": 12.5, "total_to_decode": 20.0},
                 "messages": ["ok"],
+                "codec_backend": decode_backend,
+                "codec_encode_backend": encode_backend,
+                "codec_decode_backend": decode_backend,
             },
         )()
 
@@ -490,6 +502,62 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(runtime_holder["runtime"].config.weights_path, str(resolved.weights_path))
         self.assertEqual(runtime_holder["runtime"].config.model_config.text_tokenizer_repo, "layout/text")
+
+    def test_main_metadata_marks_no_reference_mlx_decode_as_not_required_encode(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "metadata.json"
+            args = self._args(str(Path(td) / "out.wav"))
+            args.no_reference = True
+            args.caption = None
+            args.codec_runtime_mode = "mlx-decode"
+            args.codec_path = "codec.npz"
+            args.metadata_json = str(metadata_path)
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
+        self.assertEqual(payload["result"]["codec_decode_backend"], "mlx")
+
+    def test_main_metadata_marks_reference_audio_full_mlx_encode_and_decode(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "metadata.json"
+            args = self._args(str(Path(td) / "out.wav"))
+            args.reference_wav = str(Path(td) / "reference.wav")
+            args.caption = None
+            args.codec_runtime_mode = "mlx"
+            args.codec_path = "codec.npz"
+            args.metadata_json = str(metadata_path)
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig()
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["result"]["codec_encode_backend"], "mlx")
+        self.assertEqual(payload["result"]["codec_decode_backend"], "mlx")
 
     def test_main_rejects_layout_no_reference_when_manifest_requires_reference(self):
         with tempfile.TemporaryDirectory() as td:
