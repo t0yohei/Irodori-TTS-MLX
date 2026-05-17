@@ -34,6 +34,8 @@ class _FakeRuntime:
             encode_backend = "not-required"
         elif self.config.codec.runtime_mode == "mlx":
             encode_backend = "mlx"
+        elif self.config.codec.runtime_mode == "subprocess":
+            encode_backend = "pytorch-subprocess"
         elif self.config.codec.runtime_mode == "mlx-decode-subprocess":
             encode_backend = "pytorch-subprocess"
         else:
@@ -530,6 +532,33 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
         self.assertEqual(payload["result"]["codec_decode_backend"], "mlx")
+
+    def test_main_metadata_marks_reference_audio_subprocess_encode(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "metadata.json"
+            args = self._args(str(Path(td) / "out.wav"))
+            args.reference_wav = str(Path(td) / "reference.wav")
+            args.caption = None
+            args.codec_runtime_mode = "subprocess"
+            args.metadata_json = str(metadata_path)
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig()
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["result"]["codec_encode_backend"], "pytorch-subprocess")
+        self.assertEqual(payload["result"]["codec_decode_backend"], "pytorch")
 
     def test_main_metadata_marks_reference_audio_full_mlx_encode_and_decode(self):
         runtime_holder = {}
