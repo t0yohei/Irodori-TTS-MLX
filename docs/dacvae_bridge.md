@@ -241,7 +241,7 @@ checks, and checkpoint-family fallback policy are defined in
 Decode-only parity fixtures and the reproducible upstream PyTorch versus MLX
 comparison command are documented in
 [dacvae_decode_parity.md](dacvae_decode_parity.md). That check owns fixed-latent
-decode evidence for #172. Encode parity fixtures, length/mask contract checks,
+decode evidence for #184. Encode parity fixtures, length/mask contract checks,
 and the reproducible fixed-audio command for #174 are documented in
 [dacvae_encode_parity.md](dacvae_encode_parity.md).
 

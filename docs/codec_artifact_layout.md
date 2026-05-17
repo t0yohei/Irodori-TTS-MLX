@@ -137,7 +137,7 @@ capability inspection reports
 `has_executable_mlx_encode=true` / `has_mlx_encode=true` when the executable
 encoder tensor layout is present. Acoustic parity remains a separate pass/fail gate owned by
 `scripts/check_dacvae_decode_parity.py`; keep `persistent`/`subprocess` PyTorch
-bridge modes available as a fallback until a local report for issue #172 passes
+bridge modes available as a fallback until a local report for issue #184 passes
 against real converted weights.
 
 After conversion, validate the transport contract by checking that the converter

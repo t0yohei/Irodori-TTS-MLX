@@ -1,0 +1,87 @@
+{
+  "codec": {
+    "device": "cpu",
+    "expected_latent_dim": 32,
+    "hop_length": 1920,
+    "latent_dim": 32,
+    "metadata_checks": {
+      "decoded_wav_sample_rate": true,
+      "hop_length": true,
+      "latent_dim": true,
+      "sample_rate": true
+    },
+    "mlx_codec_path": "/tmp/irodori-issue-184-dacvae-decode/dacvae-codec.npz",
+    "repo": "Aratako/Semantic-DACVAE-Japanese-32dim",
+    "sample_rate": 48000,
+    "watermark": "disabled"
+  },
+  "comparison": {
+    "checks": {
+      "cosine": true,
+      "finite": true,
+      "max_abs": true,
+      "mean_abs": true,
+      "range": true,
+      "rmse": true,
+      "shape": true
+    },
+    "metrics": {
+      "compared_samples": 15360,
+      "cosine": 1.0,
+      "max_abs": 3.0517578125e-05,
+      "mean_abs": 8.145968166672901e-08,
+      "mlx": {
+        "dtype": "float32",
+        "finite": true,
+        "max": 0.117767333984375,
+        "min": -0.144744873046875,
+        "peak_abs": 0.144744873046875,
+        "rms": 0.031871479004621506,
+        "sample_rate": 48000,
+        "samples": 15360,
+        "within_unit_range": true
+      },
+      "rmse": 1.5766902379255043e-06,
+      "shape_match": true,
+      "upstream": {
+        "dtype": "float32",
+        "finite": true,
+        "max": 0.117767333984375,
+        "min": -0.144744873046875,
+        "peak_abs": 0.144744873046875,
+        "rms": 0.031871479004621506,
+        "sample_rate": 48000,
+        "samples": 15360,
+        "within_unit_range": true
+      }
+    },
+    "sample_rate": 48000,
+    "status": "passed",
+    "tolerances": {
+      "max_abs": 0.005,
+      "mean_abs": 0.001,
+      "min_cosine": 0.999,
+      "rmse": 0.002
+    }
+  },
+  "latents": {
+    "dtype": "float32",
+    "path": "/tmp/irodori-issue-184-dacvae-decode/decode-latents.npy",
+    "shape": [
+      1,
+      8,
+      32
+    ]
+  },
+  "outputs": {
+    "mlx_wav": "/private/tmp/irodori-issue-184-dacvae-decode/parity/mlx-decode.wav",
+    "upstream_wav": "/private/tmp/irodori-issue-184-dacvae-decode/parity/upstream-decode.wav"
+  },
+  "parent_epic": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169",
+  "run": {
+    "complete": true,
+    "status": "complete"
+  },
+  "schema_version": 3,
+  "source_issue": "https://github.com/t0yohei/Irodori-TTS-MLX/issues/184"
+}
