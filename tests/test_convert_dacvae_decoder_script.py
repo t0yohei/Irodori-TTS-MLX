@@ -159,7 +159,7 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
                 "artifact_kind": "real_semantic_dacvae_decoder",
                 "sample_rate": 48000,
                 "hop_length": 512,
-                "latent_dim": 32,
+                "latent_dim": 4,
                 "semantic_dacvae_decoder_config": {
                     "latent_dim": 8,
                     "decoder_dim": 16,
@@ -175,7 +175,7 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
                 path,
                 sample_rate=np.array(48000),
                 hop_length=np.array(512),
-                latent_dim=np.array(32),
+                latent_dim=np.array(4),
                 metadata_json=np.array(json.dumps(metadata)),
                 **{"dacvae_decoder/decoder.final.bias": np.zeros((1,), dtype=np.float32)},
                 **arrays,

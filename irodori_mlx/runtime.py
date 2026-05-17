@@ -518,9 +518,8 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
             real_decode_tensors = sorted(name for name in files if name.startswith("dacvae_decoder/"))
             executable_decode_tensors = sorted(name for name in files if name.startswith(EXECUTABLE_DECODER_PREFIX))
             executable_decode_keys = {name[len(EXECUTABLE_DECODER_PREFIX) :] for name in executable_decode_tensors}
-            expected_executable_shapes = semantic_dacvae_decoder_expected_shapes(
-                semantic_dacvae_decoder_config_from_metadata(metadata)
-            )
+            semantic_decoder_config = semantic_dacvae_decoder_config_from_metadata(metadata)
+            expected_executable_shapes = semantic_dacvae_decoder_expected_shapes(semantic_decoder_config)
             required_executable_keys = set(expected_executable_shapes)
             executable_shape_mismatches = {}
             for key, expected in expected_executable_shapes.items():
@@ -532,6 +531,7 @@ def inspect_mlx_codec_artifact(path: str | Path) -> dict[str, object]:
             has_executable_decode = (
                 required_executable_keys.issubset(executable_decode_keys)
                 and not executable_shape_mismatches
+                and int(latent_dim) == int(semantic_decoder_config.codebook_dim)
             )
             has_decode = has_linear_decode or has_executable_decode
             semantic_encoder_tensors = sorted(name for name in files if name.startswith("dacvae_encoder/encoder."))
@@ -699,10 +699,9 @@ class MLXDACVAEBridge:
                 has_linear_decode = {"decode_basis", "decode_bias"}.issubset(archive.files)
                 executable_names = [name for name in archive.files if name.startswith(EXECUTABLE_DECODER_PREFIX)]
                 executable_keys = {name[len(EXECUTABLE_DECODER_PREFIX) :] for name in executable_names}
-                expected_shapes = semantic_dacvae_decoder_expected_shapes(
-                    semantic_dacvae_decoder_config_from_metadata(metadata)
-                )
-                has_executable_decode = (
+                semantic_decoder_config = semantic_dacvae_decoder_config_from_metadata(metadata)
+                expected_shapes = semantic_dacvae_decoder_expected_shapes(semantic_decoder_config)
+                has_complete_executable_decode = (
                     bool(executable_names)
                     and set(expected_shapes).issubset(executable_keys)
                     and all(
@@ -710,6 +709,13 @@ class MLXDACVAEBridge:
                         for key, expected in expected_shapes.items()
                     )
                 )
+                if has_complete_executable_decode and int(self.latent_dim) != int(semantic_decoder_config.codebook_dim):
+                    raise ValueError(
+                        "Executable Semantic-DACVAE decoder artifact latent_dim must match "
+                        "semantic_dacvae_decoder_config.codebook_dim: "
+                        f"latent_dim={self.latent_dim}, codebook_dim={semantic_decoder_config.codebook_dim}."
+                    )
+                has_executable_decode = has_complete_executable_decode
                 if has_executable_decode:
                     self.semantic_decoder = load_semantic_dacvae_decoder_artifact(self.codec_path)
                     self.decode_basis = None
