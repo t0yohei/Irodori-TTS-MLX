@@ -764,7 +764,11 @@ class MLXDACVAEBridge:
                         for key, expected in expected_encode_shapes.items()
                     )
                 )
-                if has_complete_executable_encode and int(self.latent_dim) != int(semantic_encoder_config.codebook_dim):
+                if (
+                    has_complete_executable_encode
+                    and require_encode
+                    and int(self.latent_dim) != int(semantic_encoder_config.codebook_dim)
+                ):
                     raise ValueError(
                         "Executable Semantic-DACVAE encoder artifact latent_dim must match "
                         "semantic_dacvae_encoder_config.codebook_dim: "
