@@ -99,12 +99,21 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
                     "--normalize-db",
                     "-16",
                     "--ensure-max",
+                    "--expected-latent-dim",
+                    "2",
                 ]
             )
 
             upstream = FakeEncodeBridge(offset=0.0)
             mlx = FakeEncodeBridge(offset=0.0)
+            fake_audio = np.array([0.25, -0.5, 0.75, -1.0], dtype=np.float32)
             with mock.patch.object(
+                check_dacvae_encode_parity, "DACVAEBridgeConfig", side_effect=lambda **kwargs: kwargs
+            ), mock.patch.object(
+                check_dacvae_encode_parity, "_load_runtime_encode_dependencies"
+            ), mock.patch.object(
+                check_dacvae_encode_parity, "_load_audio_numpy", return_value=(fake_audio, 8000)
+            ), mock.patch.object(
                 check_dacvae_encode_parity, "PyTorchDACVAEBridge", return_value=upstream
             ) as upstream_factory, mock.patch.object(
                 check_dacvae_encode_parity, "MLXDACVAEBridge", return_value=mlx
@@ -115,21 +124,26 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
         mlx_factory.assert_called_once()
         self.assertEqual(upstream.calls, [(str(audio_path), 0.25, -16.0, True)])
         self.assertEqual(mlx.calls, [(str(audio_path), 0.25, -16.0, True)])
-        self.assertEqual(report["status"], "complete")
-        self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/155")
-        self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160")
+        self.assertEqual(report["run"]["status"], "complete")
+        self.assertEqual(report["schema_version"], check_dacvae_encode_parity.SCHEMA_VERSION)
+        self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/174")
+        self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169")
         self.assertEqual(report["comparison"]["status"], "passed")
         self.assertEqual(report["comparison"]["metrics"]["upstream"]["shape"], [1, 1, 2])
+        self.assertTrue(report["codec"]["metadata_checks"]["sample_rate"])
+        self.assertEqual(report["codec"]["expected_latent_dim"], 2)
         self.assertEqual(report["outputs"]["upstream_latents_npy"].split("/")[-1], "upstream-encode-latents.npy")
         self.assertEqual(report["outputs"]["mlx_latents_npy"].split("/")[-1], "mlx-encode-latents.npy")
 
     def test_main_returns_nonzero_for_metric_failure_and_persists_json(self):
         with tempfile.TemporaryDirectory() as td:
             report = {
-                "status": "failed",
+                "run": {"status": "complete"},
                 "comparison": {"status": "failed"},
             }
-            with mock.patch.object(check_dacvae_encode_parity, "encode_pair", return_value=report):
+            with mock.patch.object(check_dacvae_encode_parity, "_preflight_encode_pair"), mock.patch.object(
+                check_dacvae_encode_parity, "encode_pair", return_value=report
+            ):
                 rc = check_dacvae_encode_parity.main(
                     [
                         "--audio-wav",
@@ -145,17 +159,79 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
             self.assertEqual(rc, 1)
             self.assertEqual(json.loads(report_path.read_text(encoding="utf-8")), report)
 
-    def test_main_returns_partial_report_when_setup_or_encode_is_blocked(self):
+    def test_main_writes_partial_report_for_missing_codec_when_allowed(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             audio_path = root / "ref.wav"
             codec_path = root / "missing-codec.npz"
             write_wav(audio_path)
 
-            with mock.patch.object(
+            rc = check_dacvae_encode_parity.main(
+                [
+                    "--audio-wav",
+                    str(audio_path),
+                    "--codec-path",
+                    str(codec_path),
+                    "--output-dir",
+                    td,
+                    "--allow-partial",
+                ]
+            )
+
+            report = json.loads((root / "dacvae-encode-parity.json").read_text(encoding="utf-8"))
+            self.assertEqual(rc, 0)
+            self.assertEqual(report["run"]["status"], "partial")
+            self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/174")
+            self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169")
+            self.assertIn("codec artifact", report["run"]["reason"])
+            self.assertTrue(report["audio"]["stats_available"])
+            self.assertFalse(report["codec"]["mlx_codec"]["exists"])
+            self.assertEqual(report["comparison"]["status"], "partial")
+
+    def test_main_writes_partial_report_for_import_time_dependency_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            audio_path = root / "ref.wav"
+            codec_path = root / "codec.npz"
+            write_wav(audio_path)
+            codec_path.write_bytes(b"fake codec")
+
+            def fake_import(module_name):
+                if module_name == "irodori_tts.codec":
+                    raise ModuleNotFoundError("No module named 'einops'")
+                return object()
+
+            with mock.patch.object(check_dacvae_encode_parity.importlib, "import_module", side_effect=fake_import):
+                rc = check_dacvae_encode_parity.main(
+                    [
+                        "--audio-wav",
+                        str(audio_path),
+                        "--codec-path",
+                        str(codec_path),
+                        "--output-dir",
+                        td,
+                        "--allow-partial",
+                    ]
+                )
+
+            report = json.loads((root / "dacvae-encode-parity.json").read_text(encoding="utf-8"))
+            self.assertEqual(rc, 0)
+            self.assertEqual(report["run"]["status"], "partial")
+            self.assertEqual(report["comparison"]["status"], "partial")
+            self.assertIn("Upstream irodori_tts.codec dependency", report["run"]["reason"])
+
+    def test_main_does_not_treat_runtime_encode_errors_as_partial(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            audio_path = root / "ref.wav"
+            codec_path = root / "codec.npz"
+            write_wav(audio_path)
+            codec_path.write_bytes(b"fake codec")
+
+            with mock.patch.object(check_dacvae_encode_parity, "_preflight_encode_pair"), mock.patch.object(
                 check_dacvae_encode_parity,
                 "encode_pair",
-                side_effect=RuntimeError("real Semantic-DACVAE encoder conversion is blocked"),
+                side_effect=RuntimeError("semantic encoder tensor shape drift"),
             ):
                 rc = check_dacvae_encode_parity.main(
                     [
@@ -165,19 +241,15 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
                         str(codec_path),
                         "--output-dir",
                         td,
+                        "--allow-partial",
                     ]
                 )
 
             report = json.loads((root / "dacvae-encode-parity.json").read_text(encoding="utf-8"))
-            self.assertEqual(rc, 2)
-            self.assertEqual(report["status"], "partial")
-            self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/155")
-            self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/160")
-            self.assertEqual(report["blocker"]["stage"], "setup-or-encode")
-            self.assertIn("blocked", report["blocker"]["message"])
-            self.assertTrue(report["audio"]["stats_available"])
-            self.assertFalse(report["codec"]["mlx_codec_path_exists"])
-            self.assertIsNone(report["comparison"])
+            self.assertEqual(rc, 1)
+            self.assertEqual(report["run"]["status"], "failed")
+            self.assertEqual(report["comparison"]["status"], "failed")
+            self.assertIn("shape drift", report["comparison"]["reason"])
 
 
 if __name__ == "__main__":
