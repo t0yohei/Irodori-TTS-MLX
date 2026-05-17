@@ -228,7 +228,10 @@ no-reference `mlx-decode` path, `codec_decode_backend` is `"mlx"` and
 `codec_encode_backend` is `"not-required"`. On reference-audio
 `mlx-decode` requests, `codec_decode_backend` remains `"mlx"`, while
 `codec_encode_backend` reports the PyTorch fallback backend used for reference
-encode.
+encode. On reference-audio `mlx` requests with an executable encoder/decoder
+artifact, both `codec_encode_backend` and `codec_decode_backend` are
+`"mlx"`; that is the fully-MLX generation boundary for speaker-conditioned
+requests.
 
 The upstream architecture, runtime constants, logical tensor groups, and known
 conversion blockers for that real codec artifact are tracked in
