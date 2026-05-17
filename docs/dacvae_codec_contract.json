@@ -64,7 +64,7 @@
     "v3": "uses the same 32-dim codec and adds duration-predictor RF-DiT weights"
   },
   "unknowns_and_blockers": [
-    "The public codec is distributed as a PyTorch weights.pth file, not safetensors; scripts/convert_dacvae_codec.py can inspect torch state_dict keys, but artifact writing remains blocked until real MLX DACVAE modules exist.",
+    "The public codec is distributed as a PyTorch weights.pth file, not safetensors; scripts/convert_dacvae_decoder.py can emit a decoder-only executable MLX artifact, while scripts/convert_dacvae_codec.py remains blocked for full encode/decode artifacts until real MLX encoder and VAEBottleneck modules exist.",
     "The lightweight MLX fixture codec in this repository is not an acoustic Semantic-DACVAE conversion and must not be treated as parity evidence.",
     "Exact MLX parity requires fixed waveform/latent fixtures covering encode mean latents, decode waveform shape/range, watermark bypass, and tail padding behavior.",
     "Redistribution of converted codec weights remains subject to the repository license/distribution policy and must stay separate from test fixtures."

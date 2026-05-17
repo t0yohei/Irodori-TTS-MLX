@@ -163,8 +163,9 @@ hosted codec artifact should therefore be versioned separately and include:
 
 - Exact serialized key names and nested tensor shapes can be inspected from
   `weights.pth` with `scripts/convert_dacvae_codec.py --inspect-only`, but the
-  converter remains blocked from writing an artifact until the runtime has real
-  MLX DACVAE modules instead of the current linear fixture tensors.
+  full-codec converter remains blocked from writing an encode/decode artifact
+  until the runtime has real MLX encoder and VAEBottleneck modules; decoder-only
+  conversion is handled by `scripts/convert_dacvae_decoder.py`.
 - Encode parity must compare the deterministic mean latent path, not the
   stochastic VAE sample path.
 - Decode parity must include the Irodori watermark bypass; enabling the default

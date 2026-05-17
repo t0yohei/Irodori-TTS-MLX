@@ -73,6 +73,21 @@ def require_mlx(test_func):
     return unittest.skipUnless(HAS_MLX, f"MLX is not available: {globals().get('MLX_IMPORT_ERROR')}")(test_func)
 
 
+def executable_decoder_manifest(arrays: dict[str, np.ndarray]) -> list[dict[str, object]]:
+    prefix = "dacvae_decoder_exec/"
+    return [
+        {
+            "target_name": key[len(prefix) :],
+            "artifact_key": key,
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+            "parameter_count": int(value.size),
+        }
+        for key, value in sorted(arrays.items())
+        if key.startswith(prefix)
+    ]
+
+
 class FakeTokenizer:
     def __init__(self, *, token_ids=None, mask=None):
         self._token_ids = token_ids
@@ -236,6 +251,117 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertFalse(full_report["requires_pytorch_encode"])
 
     @require_mlx
+    def test_codec_capability_report_rejects_partial_executable_decoder_payload(self):
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "partial-executable-decoder.npz"
+            metadata = {
+                "sample_rate": 48000,
+                "hop_length": 512,
+                "latent_dim": 32,
+                "artifact_kind": "real_semantic_dacvae_decoder",
+            }
+            np.savez(
+                codec_path,
+                sample_rate=np.array(48000),
+                hop_length=np.array(512),
+                latent_dim=np.array(32),
+                metadata_json=np.array(json.dumps(metadata)),
+                **{"dacvae_decoder/decoder.model.6.bias": np.zeros((1,), dtype=np.float32)},
+                **{"dacvae_decoder_exec/quantizer_out_proj.bias": np.zeros((1024,), dtype=np.float32)},
+            )
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+            report = describe_codec_capabilities(
+                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                model_config=ModelConfig(),
+            )
+
+        self.assertFalse(artifact["has_executable_mlx_decode"])
+        self.assertFalse(artifact["has_mlx_decode"])
+        self.assertGreater(artifact["missing_executable_dacvae_decode_tensor_count"], 0)
+        self.assertFalse(report["mlx_decode_available"])
+
+    @require_mlx
+    def test_codec_capability_report_rejects_shape_mismatched_executable_decoder_payload(self):
+        from irodori_mlx.dacvae import (
+            EXECUTABLE_DECODER_PREFIX,
+            SemanticDACVAEDecoderConfig,
+            semantic_dacvae_decoder_expected_shapes,
+        )
+
+        decoder_config = SemanticDACVAEDecoderConfig(
+            latent_dim=8,
+            decoder_dim=16,
+            decoder_rates=(2,),
+            wm_rates=(2,),
+            codebook_dim=4,
+            output_channels=1,
+        )
+        arrays = {
+            EXECUTABLE_DECODER_PREFIX + name: np.zeros(shape, dtype=np.float32)
+            for name, shape in semantic_dacvae_decoder_expected_shapes(decoder_config).items()
+        }
+        arrays[EXECUTABLE_DECODER_PREFIX + "conv_out.bias"] = np.zeros((2,), dtype=np.float32)
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "mismatched-executable-decoder.npz"
+            metadata = {
+                "sample_rate": 8000,
+                "hop_length": 2,
+                "latent_dim": 4,
+                "artifact_kind": "real_semantic_dacvae_decoder",
+                "semantic_dacvae_decoder_config": {
+                    "latent_dim": 8,
+                    "decoder_dim": 16,
+                    "decoder_rates": [2],
+                    "wm_rates": [2],
+                    "codebook_dim": 4,
+                    "output_channels": 1,
+                },
+                "executable_tensors": executable_decoder_manifest(arrays),
+            }
+            np.savez(
+                codec_path,
+                sample_rate=np.array(8000),
+                hop_length=np.array(2),
+                latent_dim=np.array(4),
+                metadata_json=np.array(json.dumps(metadata)),
+                **{"dacvae_decoder/decoder.model.6.bias": np.zeros((1,), dtype=np.float32)},
+                **arrays,
+            )
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+
+        self.assertFalse(artifact["has_executable_mlx_decode"])
+        self.assertFalse(artifact["has_mlx_decode"])
+        self.assertEqual(artifact["mismatched_executable_dacvae_decode_tensor_count"], 1)
+
+    @require_mlx
+    def test_mlx_dacvae_bridge_falls_back_to_linear_decode_when_executable_payload_is_partial(self):
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "linear-with-partial-executable.npz"
+            output_path = Path(td) / "out.wav"
+            np.savez(
+                codec_path,
+                metadata_json=np.array(json.dumps({"artifact_kind": "real_semantic_dacvae_decoder"})),
+                sample_rate=np.array(8000),
+                hop_length=np.array(2),
+                latent_dim=np.array(2),
+                decode_basis=np.ones((2, 2), dtype=np.float32),
+                decode_bias=np.zeros((2,), dtype=np.float32),
+                encode_basis=np.zeros((2, 2), dtype=np.float32),
+                encode_bias=np.zeros((2,), dtype=np.float32),
+                **{"dacvae_decoder_exec/quantizer_out_proj.bias": np.zeros((1024,), dtype=np.float32)},
+            )
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+            bridge = MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
+            bridge.decode_to_wav(mx.ones((1, 1, 2), dtype=mx.float32), output_path)
+            self.assertTrue(output_path.exists())
+
+        self.assertTrue(artifact["has_linear_mlx_decode"])
+        self.assertFalse(artifact["has_executable_mlx_decode"])
+
+    @require_mlx
     def test_codec_artifact_inspection_rejects_mislabeled_semantic_fixture(self):
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "mislabeled-codec.npz"
@@ -355,6 +481,130 @@ class RuntimeBridgeTests(unittest.TestCase):
             imported_roots = {call_args.args[0].split(".")[0] for call_args in importer.call_args_list}
             self.assertNotIn("torch", imported_roots)
             self.assertNotIn("irodori_tts", imported_roots)
+
+    @require_mlx
+    def test_mlx_dacvae_bridge_loads_executable_semantic_decoder_artifact(self):
+        from irodori_mlx.dacvae import (
+            EXECUTABLE_DECODER_PREFIX,
+            SemanticDACVAEDecoder,
+            SemanticDACVAEDecoderConfig,
+            semantic_dacvae_decoder_required_keys,
+        )
+        from irodori_mlx.weights import _resolve_parent
+
+        config = SemanticDACVAEDecoderConfig(
+            latent_dim=8,
+            decoder_dim=16,
+            decoder_rates=(2,),
+            wm_rates=(2,),
+            codebook_dim=4,
+            output_channels=1,
+        )
+        decoder = SemanticDACVAEDecoder(config)
+        executable_arrays = {}
+        for name in semantic_dacvae_decoder_required_keys(config):
+            resolved = _resolve_parent(decoder, name)
+            self.assertIsNotNone(resolved, name)
+            parent, attr = resolved
+            executable_arrays[EXECUTABLE_DECODER_PREFIX + name] = np.array(getattr(parent, attr), dtype=np.float32)
+
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "semantic-codec.npz"
+            output_path = Path(td) / "semantic-out.wav"
+            metadata = {
+                "artifact_kind": "real_semantic_dacvae_decoder",
+                "sample_rate": 8000,
+                "hop_length": 2,
+                "latent_dim": 4,
+                "semantic_dacvae_decoder_config": {
+                    "latent_dim": 8,
+                    "decoder_dim": 16,
+                    "decoder_rates": [2],
+                    "wm_rates": [2],
+                    "codebook_dim": 4,
+                    "output_channels": 1,
+                },
+                "executable_tensors": executable_decoder_manifest(executable_arrays),
+            }
+            np.savez(
+                codec_path,
+                sample_rate=np.array(8000),
+                hop_length=np.array(2),
+                latent_dim=np.array(4),
+                metadata_json=np.array(json.dumps(metadata)),
+                **executable_arrays,
+            )
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+            self.assertTrue(artifact["has_mlx_decode"])
+            self.assertTrue(artifact["has_executable_mlx_decode"])
+
+            bridge = MLXDACVAEBridge(
+                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                require_encode=False,
+            )
+            bridge.decode_to_wav(mx.ones((1, 3, 4), dtype=mx.float32), output_path, max_samples=4)
+            self.assertTrue(output_path.exists())
+
+    @require_mlx
+    def test_mlx_dacvae_bridge_rejects_executable_decoder_latent_dim_mismatch(self):
+        from irodori_mlx.dacvae import (
+            EXECUTABLE_DECODER_PREFIX,
+            SemanticDACVAEDecoder,
+            SemanticDACVAEDecoderConfig,
+            semantic_dacvae_decoder_required_keys,
+        )
+        from irodori_mlx.weights import _resolve_parent
+
+        config = SemanticDACVAEDecoderConfig(
+            latent_dim=8,
+            decoder_dim=16,
+            decoder_rates=(2,),
+            wm_rates=(2,),
+            codebook_dim=4,
+            output_channels=1,
+        )
+        decoder = SemanticDACVAEDecoder(config)
+        executable_arrays = {}
+        for name in semantic_dacvae_decoder_required_keys(config):
+            resolved = _resolve_parent(decoder, name)
+            self.assertIsNotNone(resolved, name)
+            parent, attr = resolved
+            executable_arrays[EXECUTABLE_DECODER_PREFIX + name] = np.array(getattr(parent, attr), dtype=np.float32)
+
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "semantic-codec-mismatch.npz"
+            metadata = {
+                "artifact_kind": "real_semantic_dacvae_decoder",
+                "sample_rate": 8000,
+                "hop_length": 2,
+                "latent_dim": 5,
+                "semantic_dacvae_decoder_config": {
+                    "latent_dim": 8,
+                    "decoder_dim": 16,
+                    "decoder_rates": [2],
+                    "wm_rates": [2],
+                    "codebook_dim": 4,
+                    "output_channels": 1,
+                },
+                "executable_tensors": executable_decoder_manifest(executable_arrays),
+            }
+            np.savez(
+                codec_path,
+                sample_rate=np.array(8000),
+                hop_length=np.array(2),
+                latent_dim=np.array(5),
+                metadata_json=np.array(json.dumps(metadata)),
+                **executable_arrays,
+            )
+
+            artifact = inspect_mlx_codec_artifact(codec_path)
+            self.assertFalse(artifact["has_executable_mlx_decode"])
+            with self.assertRaisesRegex(ValueError, "codebook_dim"):
+                MLXDACVAEBridge(
+                    config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                    require_encode=False,
+                )
 
     @require_mlx
     def test_mlx_dacvae_bridge_encode_decode_contract_matches_fixture_math(self):
