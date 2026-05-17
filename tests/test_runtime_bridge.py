@@ -192,6 +192,84 @@ def tiny_config() -> ModelConfig:
     )
 
 
+def write_executable_semantic_codec(codec_path: Path) -> None:
+    from irodori_mlx.dacvae import (
+        EXECUTABLE_DECODER_PREFIX,
+        EXECUTABLE_ENCODER_PREFIX,
+        SemanticDACVAEDecoder,
+        SemanticDACVAEDecoderConfig,
+        SemanticDACVAEEncoder,
+        SemanticDACVAEEncoderConfig,
+        semantic_dacvae_decoder_required_keys,
+        semantic_dacvae_encoder_required_keys,
+    )
+    from irodori_mlx.weights import _resolve_parent
+
+    decoder_config = SemanticDACVAEDecoderConfig(
+        latent_dim=8,
+        decoder_dim=16,
+        decoder_rates=(2,),
+        wm_rates=(2,),
+        codebook_dim=4,
+        output_channels=1,
+    )
+    encoder_config = SemanticDACVAEEncoderConfig(
+        input_channels=1,
+        encoder_dim=4,
+        encoder_rates=(2,),
+        latent_dim=8,
+        codebook_dim=4,
+    )
+    executable_arrays = {}
+    for model, prefix, required in (
+        (
+            SemanticDACVAEDecoder(decoder_config),
+            EXECUTABLE_DECODER_PREFIX,
+            semantic_dacvae_decoder_required_keys(decoder_config),
+        ),
+        (
+            SemanticDACVAEEncoder(encoder_config),
+            EXECUTABLE_ENCODER_PREFIX,
+            semantic_dacvae_encoder_required_keys(encoder_config),
+        ),
+    ):
+        for name in required:
+            resolved = _resolve_parent(model, name)
+            if resolved is None:
+                raise AssertionError(name)
+            parent, attr = resolved
+            executable_arrays[prefix + name] = np.array(getattr(parent, attr), dtype=np.float32)
+    metadata = {
+        "artifact_kind": "real_semantic_dacvae_decoder",
+        "sample_rate": 8000,
+        "hop_length": 2,
+        "latent_dim": 4,
+        "semantic_dacvae_decoder_config": {
+            "latent_dim": 8,
+            "decoder_dim": 16,
+            "decoder_rates": [2],
+            "wm_rates": [2],
+            "codebook_dim": 4,
+            "output_channels": 1,
+        },
+        "semantic_dacvae_encoder_config": {
+            "input_channels": 1,
+            "encoder_dim": 4,
+            "encoder_rates": [2],
+            "latent_dim": 8,
+            "codebook_dim": 4,
+        },
+    }
+    np.savez(
+        codec_path,
+        sample_rate=np.array(8000),
+        hop_length=np.array(2),
+        latent_dim=np.array(4),
+        metadata_json=np.array(json.dumps(metadata)),
+        **executable_arrays,
+    )
+
+
 class RuntimeBridgeTests(unittest.TestCase):
     @require_mlx
     def test_codec_capability_report_distinguishes_mlx_decode_and_encode_artifacts(self):
@@ -246,9 +324,11 @@ class RuntimeBridgeTests(unittest.TestCase):
                 DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(encode_decode)),
                 model_config=ModelConfig(),
             )
-            self.assertTrue(full_report["mlx_decode_available"])
-            self.assertTrue(full_report["mlx_encode_available"])
+            self.assertFalse(full_report["mlx_decode_available"])
+            self.assertFalse(full_report["mlx_encode_available"])
             self.assertFalse(full_report["requires_pytorch_encode"])
+            self.assertIn("requires executable Semantic-DACVAE decoder", "\n".join(full_report["messages"]))
+            self.assertIn("requires executable Semantic-DACVAE encoder", "\n".join(full_report["messages"]))
 
     @require_mlx
     def test_codec_capability_report_rejects_partial_executable_decoder_payload(self):
@@ -354,7 +434,10 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
 
             artifact = inspect_mlx_codec_artifact(codec_path)
-            bridge = MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
+            bridge = MLXDACVAEBridge(
+                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                require_encode=False,
+            )
             bridge.decode_to_wav(mx.ones((1, 1, 2), dtype=mx.float32), output_path)
             self.assertTrue(output_path.exists())
 
@@ -473,7 +556,8 @@ class RuntimeBridgeTests(unittest.TestCase):
 
             with patch.object(builtins, "__import__", side_effect=guarded_import) as importer:
                 bridge = MLXDACVAEBridge(
-                    config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path))
+                    config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                    require_encode=False,
                 )
                 bridge.decode_to_wav(mx.ones((1, 2, 2), dtype=mx.float32), output_path, max_samples=5)
 
@@ -791,10 +875,9 @@ class RuntimeBridgeTests(unittest.TestCase):
                 )
 
     @require_mlx
-    def test_mlx_dacvae_bridge_encode_decode_contract_matches_fixture_math(self):
+    def test_full_mlx_mode_rejects_legacy_linear_fixture_codec(self):
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "codec.npz"
-            ref_path = Path(td) / "ref.wav"
             out_path = Path(td) / "decoded.wav"
             decode_basis = np.array([[0.2, 0.0], [0.0, 0.2]], dtype=np.float32)
             encode_basis = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
@@ -808,29 +891,22 @@ class RuntimeBridgeTests(unittest.TestCase):
                 encode_basis=encode_basis,
                 encode_bias=np.array([0.0, 0.0], dtype=np.float32),
             )
-            save_wav_np = np.array([0.25, -0.5, 0.75, -1.0], dtype=np.float32)
-            import wave
 
-            pcm = (save_wav_np * 32767.0).astype("<i2")
-            with wave.open(str(ref_path), "wb") as fh:
-                fh.setnchannels(1)
-                fh.setsampwidth(2)
-                fh.setframerate(8000)
-                fh.writeframes(pcm.tobytes())
+            with self.assertRaisesRegex(ValueError, "requires executable Semantic-DACVAE decoder and encoder tensors"):
+                MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
 
-            bridge = MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
-            latents = bridge.encode_reference(ref_path, max_seconds=None, normalize_db=None, ensure_max=False)
-            np.testing.assert_allclose(np.array(latents), np.array([[[0.24996948, -0.49996948], [0.7499695, -0.9999695]]], dtype=np.float32), atol=1e-4)
-
+            bridge = MLXDACVAEBridge(
+                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                require_encode=False,
+            )
             decoded = bridge.decode_to_wav(mx.array([[[1.0, 2.0], [3.0, 4.0]]], dtype=mx.float32), out_path)
             self.assertEqual(decoded, out_path)
             self.assertTrue(out_path.exists())
 
     @require_mlx
-    def test_mlx_dacvae_bridge_encode_resamples_normalizes_and_reflect_pads(self):
+    def test_full_mlx_mode_rejects_linear_encoder_even_when_decode_fixture_exists(self):
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "codec.npz"
-            ref_path = Path(td) / "ref.wav"
             np.savez(
                 codec_path,
                 sample_rate=np.array(4),
@@ -841,30 +917,9 @@ class RuntimeBridgeTests(unittest.TestCase):
                 encode_basis=np.array([[1.0, 0.0], [0.0, 1.0], [0.5, -0.5]], dtype=np.float32),
                 encode_bias=np.array([0.1, -0.2], dtype=np.float32),
             )
-            samples = np.array([0.25, -0.5, 0.75, -1.0], dtype=np.float32)
-            import wave
 
-            pcm = (samples * 32767.0).astype("<i2")
-            with wave.open(str(ref_path), "wb") as fh:
-                fh.setnchannels(1)
-                fh.setsampwidth(2)
-                fh.setframerate(8)
-                fh.writeframes(pcm.tobytes())
-
-            bridge = MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
-            latents = bridge.encode_reference(ref_path, max_seconds=0.5, normalize_db=-6.0, ensure_max=True)
-
-            loaded = np.array([0.24996948, -0.49996948, 0.7499695, -0.9999695], dtype=np.float32)
-            resampled = np.interp(
-                np.linspace(0.0, float(loaded.shape[0] - 1), num=2, dtype=np.float64),
-                np.arange(loaded.shape[0], dtype=np.float64),
-                loaded.astype("float64"),
-            ).astype(np.float32)
-            normalized = resampled * ((10.0 ** (-6.0 / 20.0)) / np.sqrt(np.mean(np.square(resampled.astype("float64")))))
-            framed = np.pad(normalized, (0, 1), mode="reflect").reshape(1, 3).astype(np.float32)
-            expected = framed @ np.array([[1.0, 0.0], [0.0, 1.0], [0.5, -0.5]], dtype=np.float32)
-            expected = expected + np.array([0.1, -0.2], dtype=np.float32)
-            np.testing.assert_allclose(np.array(latents), expected[None, :, :], atol=1e-5)
+            with self.assertRaisesRegex(ValueError, "requires executable Semantic-DACVAE decoder and encoder tensors"):
+                MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
 
     @require_mlx
     def test_runtime_uses_mlx_encode_for_reference_audio_and_reports_backend(self):
@@ -872,16 +927,7 @@ class RuntimeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "codec.npz"
             ref_path = Path(td) / "ref.wav"
-            np.savez(
-                codec_path,
-                sample_rate=np.array(8000),
-                hop_length=np.array(2),
-                latent_dim=np.array(4),
-                decode_basis=np.zeros((4, 2), dtype=np.float32),
-                decode_bias=np.zeros((2,), dtype=np.float32),
-                encode_basis=np.zeros((2, 4), dtype=np.float32),
-                encode_bias=np.ones((4,), dtype=np.float32),
-            )
+            write_executable_semantic_codec(codec_path)
             import wave
 
             pcm = (np.array([0.25, -0.5, 0.5, -0.25], dtype=np.float32) * 32767.0).astype("<i2")
@@ -941,16 +987,7 @@ class RuntimeBridgeTests(unittest.TestCase):
         cfg = tiny_config()
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "codec.npz"
-            np.savez(
-                codec_path,
-                sample_rate=np.array(8000),
-                hop_length=np.array(2),
-                latent_dim=np.array(4),
-                decode_basis=np.zeros((4, 2), dtype=np.float32),
-                decode_bias=np.zeros((2,), dtype=np.float32),
-                encode_basis=np.zeros((2, 4), dtype=np.float32),
-                encode_bias=np.zeros((4,), dtype=np.float32),
-            )
+            write_executable_semantic_codec(codec_path)
             runtime = MLXDACVAERuntime(
                 config=MLXRuntimeConfig(
                     model_config=cfg,

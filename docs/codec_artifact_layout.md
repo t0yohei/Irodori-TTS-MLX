@@ -31,22 +31,26 @@ dacvae-codec.npz
 |-- sample_rate              # scalar int, expected 48000 for the public codec
 |-- hop_length               # scalar int, expected 1920 for the public codec
 |-- latent_dim               # scalar int, expected 32 for Irodori families
-|-- decode_basis             # required by current MLX decode fixture path
-|-- decode_bias              # required by current MLX decode fixture path
-|-- encode_basis             # required only for experimental full mlx mode
-|-- encode_bias              # required only for experimental full mlx mode
+|-- decode_basis             # accepted by legacy MLX decode-only fixture path
+|-- decode_bias              # accepted by legacy MLX decode-only fixture path
+|-- encode_basis             # legacy fixture metadata only; not sufficient for full mlx mode
+|-- encode_bias              # legacy fixture metadata only; not sufficient for full mlx mode
 |-- dacvae_encoder_exec/...  # runtime-ready MLX Semantic-DACVAE encoder tensors
 |-- dacvae_decoder_exec/...  # runtime-ready MLX Semantic-DACVAE decoder tensors
 |-- semantic_encoder_manifest_json  # required by a future real Semantic-DACVAE encoder artifact
 `-- metadata_json            # optional scalar JSON string with provenance
 ```
 
-The current checked-in MLX artifact format is intentionally a small fixture
-contract. It proves runtime selection, local artifact loading, encode/decode
-routing, and metadata reporting without claiming Semantic-DACVAE acoustic
-parity. A real converted codec artifact must replace the fixture tensors with
-the full DACVAE encoder, quantizer projections, decoder, and watermark-bypass
-metadata described in [dacvae_architecture.md](dacvae_architecture.md).
+The current checked-in linear fixture format is intentionally small and is kept
+only for decode-only smoke coverage and historical inspection compatibility. It
+proves runtime selection, local artifact loading, decode routing, and metadata
+reporting without claiming Semantic-DACVAE acoustic parity. Full
+`codec_runtime_mode="mlx"` requires executable `dacvae_encoder_exec/` and
+`dacvae_decoder_exec/` tensors; legacy `encode_basis` / `decode_basis`
+fixtures are rejected for full MLX mode. A real converted codec artifact must
+replace the fixture tensors with the full DACVAE encoder, quantizer projections,
+decoder, and watermark-bypass metadata described in
+[dacvae_architecture.md](dacvae_architecture.md).
 
 `metadata_json.artifact_kind` distinguishes this temporary runtime fixture from
 a future real conversion. The current writer/fixtures use
@@ -69,8 +73,9 @@ real-weight converter and runtime with the executable MLX encoder path for
 - `semantic_dacvae_encoder_config` in `metadata_json`;
 - `runtime_status.mlx_encoder_execution=available_unvalidated`.
 
-The MLX runtime uses `dacvae_encoder_exec/` for `codec_runtime_mode="mlx"` when
-the full executable encoder contract is present. Reference audio is loaded as
+The MLX runtime uses `dacvae_encoder_exec/` and `dacvae_decoder_exec/` for
+`codec_runtime_mode="mlx"` only when the full executable encoder and decoder
+contracts are present. Reference audio is loaded as
 mono, resampled to the codec sample rate, optionally loudness-normalized or
 peak-limited, and right-padded to a hop-length multiple before entering the
 encoder. The encoder returns the deterministic VAE mean path, shaped `(B,T,32)`;
