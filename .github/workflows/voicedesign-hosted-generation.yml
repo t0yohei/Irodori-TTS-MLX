@@ -31,7 +31,8 @@ jobs:
       - name: Check out upstream Irodori-TTS
         run: |
           git clone --depth=1 https://github.com/Aratako/Irodori-TTS.git "$RUNNER_TEMP/Irodori-TTS"
-          python -m pip install -e "$RUNNER_TEMP/Irodori-TTS"
+          python -m pip install 'dacvae @ git+https://github.com/facebookresearch/dacvae.git'
+          python -m pip install --no-deps -e "$RUNNER_TEMP/Irodori-TTS"
 
       - name: Run hosted VoiceDesign generation coverage
         run: |
