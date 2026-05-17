@@ -667,8 +667,12 @@ def describe_codec_capabilities(
                 messages.append(str(exc))
             else:
                 report["artifact"] = artifact
-                report["mlx_decode_available"] = bool(artifact["has_mlx_decode"])
-                report["mlx_encode_available"] = bool(artifact["has_mlx_encode"])
+                if mode == "mlx":
+                    report["mlx_decode_available"] = bool(artifact["has_executable_mlx_decode"])
+                    report["mlx_encode_available"] = bool(artifact["has_executable_mlx_encode"])
+                else:
+                    report["mlx_decode_available"] = bool(artifact["has_mlx_decode"])
+                    report["mlx_encode_available"] = bool(artifact["has_mlx_encode"])
                 if artifact.get("has_executable_mlx_encode"):
                     messages.append(
                         "Codec artifact contains executable Semantic-DACVAE encoder tensors for MLX reference-audio encode; "
@@ -686,9 +690,14 @@ def describe_codec_capabilities(
                     )
                 elif not artifact["has_mlx_decode"]:
                     messages.append("Codec artifact is missing decode_basis/decode_bias, so MLX decode is unavailable.")
-                if mode == "mlx" and not artifact["has_mlx_encode"]:
+                if mode == "mlx" and not artifact["has_executable_mlx_decode"]:
                     messages.append(
-                        "Codec artifact is missing executable encoder tensors or encode_basis/encode_bias; "
+                        "codec_runtime_mode='mlx' requires executable Semantic-DACVAE decoder tensors; "
+                        "use mlx-decode for decode-only artifacts or PyTorch bridge modes as fallback."
+                    )
+                if mode == "mlx" and not artifact["has_executable_mlx_encode"]:
+                    messages.append(
+                        "codec_runtime_mode='mlx' requires executable Semantic-DACVAE encoder tensors; "
                         "use mlx-decode for decode-only artifacts."
                     )
         else:
@@ -773,6 +782,18 @@ class MLXDACVAEBridge:
                         "Executable Semantic-DACVAE encoder artifact latent_dim must match "
                         "semantic_dacvae_encoder_config.codebook_dim: "
                         f"latent_dim={self.latent_dim}, codebook_dim={semantic_encoder_config.codebook_dim}."
+                    )
+                if require_encode and not (has_executable_decode and has_complete_executable_encode):
+                    missing = []
+                    if not has_executable_decode:
+                        missing.append("decoder")
+                    if not has_complete_executable_encode:
+                        missing.append("encoder")
+                    raise ValueError(
+                        "codec_runtime_mode='mlx' requires executable Semantic-DACVAE "
+                        + " and ".join(missing)
+                        + " tensors in the codec artifact. Use codec_runtime_mode='mlx-decode' for decode-only "
+                        "artifacts, or persistent/subprocess for the PyTorch bridge fallback."
                     )
                 if has_executable_decode:
                     self.semantic_decoder = load_semantic_dacvae_decoder_artifact(self.codec_path)

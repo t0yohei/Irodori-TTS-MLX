@@ -169,7 +169,7 @@ support matrix and runner caveats.
 - `subprocess`: run encode/decode in short-lived helper processes for investigation and benchmarking
 - `mlx-decode`: decode generated latents with a local MLX codec artifact; reference-audio encode remains on the in-process PyTorch bridge
 - `mlx-decode-subprocess`: decode generated latents with a local MLX codec artifact; reference-audio encode remains on the subprocess PyTorch bridge
-- `mlx`: use the local MLX codec artifact for both reference-audio encode and generated-latent decode when the artifact includes encode tensors
+- `mlx`: use the local MLX codec artifact for both reference-audio encode and generated-latent decode only when the artifact includes executable Semantic-DACVAE encoder and decoder tensors
 
 The current recommendation is to keep `persistent` as the normal runtime mode
 unless you are explicitly validating MLX codec artifacts.
@@ -194,22 +194,28 @@ python3 scripts/generate_wav.py \
   --codec-path /path/to/dacvae-codec.npz
 ```
 
-The MLX codec artifact contract is a local `.npz` file with:
+The decode-only MLX codec artifact contract accepts either the legacy fixture
+arrays or the executable Semantic-DACVAE decoder tensors. Full `mlx` mode no
+longer accepts the legacy linear fixture arrays; it requires both executable
+encoder and executable decoder tensors from the real converter.
+
+The local `.npz` file contains:
 
 - `sample_rate`, `hop_length`, `latent_dim` scalar arrays
 - `decode_basis` shaped `(latent_dim, hop_length)`
 - `decode_bias` shaped `(hop_length,)`
-- optional `encode_basis` shaped `(hop_length, latent_dim)` for the experimental `mlx` encode fixture path
-- optional `encode_bias` shaped `(latent_dim,)` for the experimental `mlx` encode fixture path
+- optional legacy `encode_basis` / `encode_bias` fixture arrays, which are
+  inspected for historical compatibility but are not sufficient for
+  `--codec-runtime-mode mlx`
+- `dacvae_decoder_exec/...` for executable MLX Semantic-DACVAE decode
+- `dacvae_encoder_exec/...` for executable MLX Semantic-DACVAE reference encode
 - optional `metadata_json` scalar string with the same metadata and provenance
 
-This contract is intentionally small enough for checked-in unit tests and local
-parity fixtures. It proves the runtime can encode reference audio and decode
-generated latents through an MLX-owned codec object without calling upstream
-`irodori_tts.codec.DACVAECodec` when `--codec-runtime-mode mlx` is used with
-both encode and decode tensors. The MLX encode path downmixes to mono, truncates
-to `--max-reference-seconds`, resamples to the artifact sample rate, applies the
-configured `normalize_db` or peak safety, reflect-pads to the hop multiple, and
+The legacy fixture contract remains small enough for checked-in unit tests and
+decode-only smoke coverage. The full MLX encode path is enabled only by the
+executable encoder tensor layout: it downmixes to mono, truncates to
+`--max-reference-seconds`, resamples to the artifact sample rate, applies the
+configured `normalize_db` or peak safety, right-pads to the hop multiple, and
 returns runtime latents as `(batch, latent_steps, latent_dim)` before the normal
 speaker patching/mask logic runs.
 
