@@ -19,7 +19,7 @@ VOICE_DESIGN_WEIGHTS_REVISION = "bf877a3beb7d921dc6bfb2b6812d02be07f39f2a"
 V3_WEIGHTS_REPO = "t0yohei/Irodori-TTS-MLX-500M-v3"
 V3_WEIGHTS_REVISION = "078ffb11ffad92e6dde237a6abef730f4341b359"
 DEFAULT_CODEC_ARTIFACT_REPO = "t0yohei/Irodori-TTS-MLX-DACVAE-Codec"
-MLX_CODEC_RUNTIME_MODES = {"mlx", "mlx-decode", "mlx-decode-subprocess"}
+MLX_CODEC_RUNTIME_MODES = {"mlx"}
 
 ARTIFACT_PRESETS = {
     "VoiceDesign hosted": {
@@ -57,7 +57,7 @@ class WebGenerationConfig:
     seed: int = 0
     seconds: float | None = None
     duration_scale: float = 1.0
-    codec_runtime_mode: str = "mlx-decode"
+    codec_runtime_mode: str = "mlx"
     codec_artifact_repo: str = DEFAULT_CODEC_ARTIFACT_REPO
     codec_artifact_revision: str = ""
     codec_artifact_dir: str = ""
@@ -241,7 +241,7 @@ def build_ui() -> Any:
             seconds = gr.Textbox(label="Seconds")
             duration_scale = gr.Number(label="Duration scale", value=1.0)
         with gr.Accordion("Codec", open=False):
-            codec_runtime_mode = gr.Dropdown(["persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"], value="mlx-decode", label="Codec runtime mode")
+            codec_runtime_mode = gr.Dropdown(["mlx"], value="mlx", label="Codec runtime mode")
             codec_artifact_repo = gr.Textbox(label="Codec artifact repo", value=DEFAULT_CODEC_ARTIFACT_REPO)
             codec_artifact_revision = gr.Textbox(label="Codec artifact revision")
             codec_artifact_dir = gr.Textbox(label="Codec artifact directory/archive")

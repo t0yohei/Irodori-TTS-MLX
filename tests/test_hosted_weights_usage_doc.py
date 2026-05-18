@@ -14,7 +14,7 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
         self.assertIn("#78", self.doc)
         self.assertIn("hosted_weights_layout.md", self.doc)
         self.assertIn("preconverted_weights_redistribution_audit.md", self.doc)
-        self.assertIn("MLX RF-DiT inference + upstream PyTorch DACVAE encode/decode bridge", self.doc)
+        self.assertIn("MLX RF-DiT inference + MLX DACVAE codec artifact encode/decode", self.doc)
 
     def test_hosted_quick_path_and_local_layout_are_documented(self):
         required_terms = [
@@ -68,7 +68,7 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
                 self.assertIn("docs/hosted_rf_dit_artifacts.md", text)
                 self.assertIn("--weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign", text)
                 self.assertIn("--weights-repo t0yohei/Irodori-TTS-MLX-500M-v3", text)
-                self.assertIn("upstream PyTorch DACVAE bridge", text)
+                self.assertIn("codec artifact", text)
                 self.assertIn("codec artifact", text)
 
         self.assertIn("local conversion fallback", readme)

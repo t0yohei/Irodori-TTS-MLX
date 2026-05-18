@@ -5,11 +5,11 @@ Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://
 
 This page explains the user-facing v0.2 flow for **hosted pre-converted MLX RF-DiT weights** and the supported fallback when no approved hosted artifact is available. The current family-by-family publication state is tracked in [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md).
 
-Hosted weights are a convenience path, not a new model source or redistribution waiver. The runtime boundary remains:
+Hosted weights are a convenience path, not a new model source or redistribution waiver. The runtime boundary is:
 
-> MLX RF-DiT inference + upstream PyTorch DACVAE encode/decode bridge
+> MLX RF-DiT inference + MLX DACVAE codec artifact encode/decode
 
-That means users still need the runtime dependencies and upstream `irodori_tts` / `DACVAECodec` import path described in [dacvae_bridge.md](dacvae_bridge.md) and [upstream_dependency.md](upstream_dependency.md). Hosted converted weights do **not** bundle upstream source code, Semantic-DACVAE codec weights, reference audio, generated samples, Hugging Face cache snapshots, or unaudited tokenizer/model artifacts.
+That means users need the runtime dependencies and an approved hosted or local DACVAE codec artifact. Hosted converted weights do **not** bundle upstream source code, Semantic-DACVAE codec weights, reference audio, generated samples, Hugging Face cache snapshots, or unaudited tokenizer/model artifacts.
 When an approved DACVAE codec artifact exists, resolve it separately with
 `--codec-artifact-repo` or `--codec-artifact-dir`; RF-DiT `--weights-repo` and
 DACVAE codec artifacts intentionally remain separate contracts.
@@ -37,7 +37,6 @@ actually been published and approved by the v0.2 publication checklist.
 python -m pip install -e ".[runtime]"
 python -m pip install huggingface_hub  # required for Hugging Face repo resolution if not already installed
 
-PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
@@ -54,12 +53,11 @@ Expected behavior:
 - the CLI resolves the repository snapshot;
 - validates `irodori_mlx_manifest.json`, required files, checksum coverage, runtime flags, and approved license review metadata;
 - loads `model_config.json`, `tokenizer_config.json`, and `weights.npz` through the same internal runtime path used by local hosted-layout directories;
-- still uses the upstream PyTorch DACVAE bridge for codec encode/decode.
+- uses the approved hosted DACVAE codec artifact for codec encode/decode unless `--codec-artifact-dir` or `--codec-path` is provided.
 
 An approved public v3 hosted artifact is now recorded in [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md). For v3, use the approved repo id, omit `--caption`, and omit `--seconds` to exercise predicted-duration generation:
 
 ```bash
-PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
@@ -74,10 +72,9 @@ the codec artifact repo explicitly. This is a hosted artifact contract only; do
 not use unpublished or unapproved repos as public examples.
 
 ```bash
-PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
-  --codec-runtime-mode mlx-decode \
+  --codec-runtime-mode mlx \
   --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
   --text "こんにちは。今日は良い天気です。" \
@@ -97,7 +94,6 @@ For VoiceDesign v2 hosted artifacts, `--seconds` can also be omitted for the nor
 Use `--weights-dir` when you have the same v0.2 layout on disk, for example during private staging, CI fixtures, or local-only conversions that cannot be redistributed publicly:
 
 ```bash
-PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
   --weights-dir /models/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
@@ -153,7 +149,6 @@ python scripts/convert_weights.py "$CHECKPOINT" "$WORK/weights.npz" --dry-run --
   > "$WORK/convert-dry-run.json"
 python scripts/convert_weights.py "$CHECKPOINT" "$WORK/weights.npz"
 
-PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 python scripts/generate_wav.py \
   --weights "$WORK/weights.npz" \
   --model-config-json "$WORK/model_config.json" \
@@ -174,7 +169,7 @@ Every hosted converted weights README/model card should make these points clear:
 - the `t0yohei/Irodori-TTS-MLX` converter version or commit SHA and conversion command;
 - the upstream model-card license and ethical-use restrictions, including no impersonation or misleading synthetic speech where applicable;
 - that Semantic-DACVAE codec weights, upstream source code, reference audio, generated audio, and Hugging Face cache snapshots are not bundled;
-- the runtime still requires the upstream PyTorch DACVAE bridge unless a future full-MLX codec is implemented;
+- the runtime uses the approved hosted/local MLX DACVAE codec artifact instead of an upstream PyTorch bridge;
 - a link to the license audit / publication decision, currently [preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md) for the reviewed v0.2 candidate families.
 
 The current audit allows only the explicitly reviewed Irodori-TTS checkpoint families to proceed with conditions. Anything outside that list is **local-conversion-only** until separately audited.

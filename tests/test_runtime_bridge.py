@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import builtins
 import json
-import os
-import sys
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
 from unittest.mock import call, patch
 
 import numpy as np
@@ -23,18 +20,13 @@ try:
         DACVAEBridgeConfig,
         GenerationRequest,
         MLXDACVAEBridge,
-        MLXDACVAEDecodeOnlyBridge,
         MLXDACVAERuntime,
         MLXRuntimeConfig,
         PretrainedTextTokenizer,
-        PyTorchDACVAEBridge,
-        SubprocessDACVAEBridge,
         describe_codec_capabilities,
         inspect_mlx_codec_artifact,
         load_mlx_model,
         load_model_config_json,
-        mlx_to_torch_latents,
-        torch_to_mlx_latents,
     )
 
     HAS_MLX = True
@@ -303,29 +295,6 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertEqual(decoded["artifact_kind"], "linear-fixture")
             self.assertFalse(decoded["is_semantic_dacvae"])
 
-            decode_report = describe_codec_capabilities(
-                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(decode_only)),
-                model_config=ModelConfig(),
-            )
-            self.assertTrue(decode_report["mlx_decode_available"])
-            self.assertFalse(decode_report["mlx_encode_available"])
-            self.assertTrue(decode_report["requires_pytorch_encode"])
-            self.assertIn("reference-audio encode falls back", "\n".join(decode_report["messages"]))
-
-            caption_decode_report = describe_codec_capabilities(
-                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(decode_only)),
-                model_config=ModelConfig(use_caption_condition=True),
-            )
-            self.assertFalse(caption_decode_report["requires_pytorch_encode"])
-            self.assertEqual(caption_decode_report["reference_encode_policy"], "not-required")
-            self.assertIn("reference-audio encode is not used", "\n".join(caption_decode_report["messages"]))
-
-            encode_capable_decode_report = describe_codec_capabilities(
-                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(encode_decode)),
-                model_config=ModelConfig(),
-            )
-            self.assertTrue(encode_capable_decode_report["mlx_encode_available"])
-
             full_report = describe_codec_capabilities(
                 DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(encode_decode)),
                 model_config=ModelConfig(),
@@ -358,7 +327,7 @@ class RuntimeBridgeTests(unittest.TestCase):
 
             artifact = inspect_mlx_codec_artifact(codec_path)
             report = describe_codec_capabilities(
-                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 model_config=ModelConfig(),
             )
 
@@ -441,7 +410,7 @@ class RuntimeBridgeTests(unittest.TestCase):
 
             artifact = inspect_mlx_codec_artifact(codec_path)
             bridge = MLXDACVAEBridge(
-                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 require_encode=False,
             )
             bridge.decode_to_wav(mx.ones((1, 1, 2), dtype=mx.float32), output_path)
@@ -525,14 +494,14 @@ class RuntimeBridgeTests(unittest.TestCase):
     @require_mlx
     def test_codec_capability_report_explains_missing_artifact_fallback(self):
         report = describe_codec_capabilities(
-            DACVAEBridgeConfig(runtime_mode="mlx-decode"),
+            DACVAEBridgeConfig(runtime_mode="mlx"),
             model_config=ModelConfig(use_duration_predictor=True),
         )
 
         self.assertTrue(report["requires_codec_artifact"])
         self.assertFalse(report["mlx_decode_available"])
         self.assertIn("--codec-path", "\n".join(report["messages"]))
-        self.assertIn("PyTorch bridge", "\n".join(report["messages"]))
+        self.assertIn("codec artifact", "\n".join(report["messages"]))
 
     @require_mlx
     def test_mlx_dacvae_bridge_decodes_without_importing_torch_or_upstream_codec(self):
@@ -562,7 +531,7 @@ class RuntimeBridgeTests(unittest.TestCase):
 
             with patch.object(builtins, "__import__", side_effect=guarded_import) as importer:
                 bridge = MLXDACVAEBridge(
-                    config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                    config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                     require_encode=False,
                 )
                 bridge.decode_to_wav(mx.ones((1, 2, 2), dtype=mx.float32), output_path, max_samples=5)
@@ -589,7 +558,7 @@ class RuntimeBridgeTests(unittest.TestCase):
                 encode_bias=np.array([0.0, 0.0], dtype=np.float32),
             )
             bridge = MLXDACVAEBridge(
-                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 require_encode=False,
             )
             cleanup_calls = []
@@ -674,7 +643,7 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertTrue(artifact["has_executable_mlx_decode"])
 
             bridge = MLXDACVAEBridge(
-                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 require_encode=False,
             )
             bridge.decode_to_wav(mx.ones((1, 3, 4), dtype=mx.float32), output_path, max_samples=4)
@@ -769,7 +738,7 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertTrue(artifact["has_executable_mlx_encode"])
 
             decode_only_bridge = MLXDACVAEBridge(
-                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 require_encode=False,
             )
             decode_only_out = Path(td) / "decode-only.wav"
@@ -856,7 +825,7 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
 
             bridge = MLXDACVAEBridge(
-                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 require_encode=False,
             )
             bridge.decode_to_wav(mx.ones((1, 2, 4), dtype=mx.float32), output_path, max_samples=4)
@@ -920,7 +889,7 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertFalse(artifact["has_executable_mlx_decode"])
             with self.assertRaisesRegex(ValueError, "codebook_dim"):
                 MLXDACVAEBridge(
-                    config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                    config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                     require_encode=False,
                 )
 
@@ -946,7 +915,7 @@ class RuntimeBridgeTests(unittest.TestCase):
                 MLXDACVAEBridge(config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)))
 
             bridge = MLXDACVAEBridge(
-                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                config=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 require_encode=False,
             )
             decoded = bridge.decode_to_wav(mx.array([[[1.0, 2.0], [3.0, 4.0]]], dtype=mx.float32), out_path)
@@ -1065,201 +1034,6 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertEqual(runtime.describe_boundaries()["codec"]["implementation"], "MLXDACVAEBridge")
             self.assertEqual(result.codec_backend, "mlx")
             self.assertEqual(result.codec_decode_backend, "mlx")
-
-    @require_mlx
-    def test_runtime_can_select_mlx_decode_only_without_importing_torch_for_no_reference(self):
-        cfg = replace(
-            tiny_config(),
-            use_duration_predictor=True,
-            duration_hidden_dim=8,
-            duration_layers=1,
-            duration_dropout=0.0,
-            duration_attention_heads=2,
-        )
-        with tempfile.TemporaryDirectory() as td:
-            codec_path = Path(td) / "codec.npz"
-            np.savez(
-                codec_path,
-                sample_rate=np.array(8000),
-                hop_length=np.array(2),
-                latent_dim=np.array(4),
-                decode_basis=np.zeros((4, 2), dtype=np.float32),
-                decode_bias=np.zeros((2,), dtype=np.float32),
-            )
-            real_import = builtins.__import__
-
-            def guarded_import(name, *args, **kwargs):
-                if name == "torch" or name.startswith("irodori_tts"):
-                    raise AssertionError(f"unexpected import: {name}")
-                return real_import(name, *args, **kwargs)
-
-            with patch.object(builtins, "__import__", side_effect=guarded_import):
-                runtime = MLXDACVAERuntime(
-                    config=MLXRuntimeConfig(
-                        model_config=cfg,
-                        weights_path="unused.npz",
-                        text_max_length=4,
-                        codec=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
-                    ),
-                    model=FakeModel(cfg),
-                    tokenizer=FakeTokenizer(),
-                )
-                result = runtime.generate(
-                    GenerationRequest(
-                        text="こんにちは",
-                        output_wav=str(Path(td) / "out.wav"),
-                        no_reference=True,
-                        seconds=0.001,
-                        num_steps=1,
-                        cfg_scale_text=0.0,
-                        cfg_scale_speaker=0.0,
-                    )
-                )
-
-            boundaries = runtime.describe_boundaries()
-            self.assertTrue(Path(result.output_wav).exists())
-            self.assertEqual(result.checkpoint_family, "v3")
-            self.assertEqual(result.codec_backend, "mlx")
-            self.assertEqual(result.codec_encode_backend, "not-required")
-            self.assertEqual(result.codec_decode_backend, "mlx")
-            self.assertEqual(boundaries["codec"]["implementation"], "MLXDACVAEDecodeOnlyBridge")
-            self.assertEqual(boundaries["codec"]["encode_backend"], "pytorch-persistent")
-            self.assertEqual(boundaries["codec"]["decode_backend"], "mlx")
-            self.assertTrue(boundaries["codec"]["imports_pytorch"])
-            self.assertTrue(boundaries["codec"]["encode_imports_pytorch"])
-            self.assertFalse(boundaries["codec"]["decode_imports_pytorch"])
-
-    @require_mlx
-    def test_runtime_can_select_mlx_decode_only_without_importing_torch_for_voicedesign(self):
-        cfg = replace(
-            tiny_config(),
-            use_caption_condition=True,
-            caption_vocab_size=32,
-            caption_tokenizer_repo="example/caption-tokenizer",
-            caption_dim=8,
-            caption_layers=1,
-            caption_heads=2,
-            caption_mlp_ratio=1.5,
-        )
-        with tempfile.TemporaryDirectory() as td:
-            codec_path = Path(td) / "codec.npz"
-            np.savez(
-                codec_path,
-                sample_rate=np.array(8000),
-                hop_length=np.array(2),
-                latent_dim=np.array(4),
-                decode_basis=np.zeros((4, 2), dtype=np.float32),
-                decode_bias=np.zeros((2,), dtype=np.float32),
-            )
-            real_import = builtins.__import__
-
-            def guarded_import(name, *args, **kwargs):
-                if name == "torch" or name.startswith("irodori_tts"):
-                    raise AssertionError(f"unexpected import: {name}")
-                return real_import(name, *args, **kwargs)
-
-            with patch.object(builtins, "__import__", side_effect=guarded_import):
-                runtime = MLXDACVAERuntime(
-                    config=MLXRuntimeConfig(
-                        model_config=cfg,
-                        weights_path="unused.npz",
-                        text_max_length=4,
-                        caption_max_length=4,
-                        codec=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
-                    ),
-                    model=FakeModel(cfg),
-                    tokenizer=FakeTokenizer(),
-                    caption_tokenizer=FakeTokenizer(),
-                )
-                result = runtime.generate(
-                    GenerationRequest(
-                        text="こんにちは",
-                        caption="落ち着いた女性の声",
-                        output_wav=str(Path(td) / "out.wav"),
-                        no_reference=True,
-                        seconds=0.001,
-                        num_steps=1,
-                        cfg_scale_text=0.0,
-                        cfg_scale_caption=0.0,
-                    )
-                )
-
-            self.assertTrue(Path(result.output_wav).exists())
-            self.assertEqual(result.checkpoint_family, "voicedesign")
-            self.assertEqual(result.codec_encode_backend, "not-required")
-            self.assertEqual(result.codec_decode_backend, "mlx")
-
-    @require_mlx
-    def test_mlx_decode_only_keeps_reference_encode_on_pytorch_bridge(self):
-        with tempfile.TemporaryDirectory() as td:
-            codec_path = Path(td) / "codec.npz"
-            np.savez(
-                codec_path,
-                sample_rate=np.array(8000),
-                hop_length=np.array(2),
-                latent_dim=np.array(4),
-                decode_basis=np.zeros((4, 2), dtype=np.float32),
-                decode_bias=np.zeros((2,), dtype=np.float32),
-            )
-            fake_encode = FakeBridge()
-            with patch("irodori_mlx.runtime.PyTorchDACVAEBridge", return_value=fake_encode) as bridge_factory:
-                bridge = MLXDACVAEDecodeOnlyBridge(
-                    config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path))
-                )
-                encoded = bridge.encode_reference(
-                    "ref.wav",
-                    max_seconds=1.0,
-                    normalize_db=-16.0,
-                    ensure_max=True,
-                )
-
-            bridge_factory.assert_called_once()
-            self.assertEqual(fake_encode.encoded, [("ref.wav", 1.0, -16.0, True)])
-            self.assertEqual(tuple(encoded.shape), (1, 7, 4))
-
-    @require_mlx
-    def test_mlx_decode_only_timed_decode_falls_back_for_untimed_bridge(self):
-        class UntimedDecodeBridge:
-            sample_rate = 8000
-            hop_length = 2
-            latent_dim = 4
-
-            def __init__(self):
-                self.decoded = []
-
-            def decode_to_wav(self, latents, output_path, *, max_samples=None):
-                self.decoded.append((latents, output_path, max_samples))
-                path = Path(output_path)
-                path.write_bytes(b"fake wav")
-                return path
-
-        decode_bridge = UntimedDecodeBridge()
-        bridge = object.__new__(MLXDACVAEDecodeOnlyBridge)
-        bridge.decode_bridge = decode_bridge
-        with tempfile.TemporaryDirectory() as td:
-            output, timings = bridge.decode_to_wav_timed(
-                mx.zeros((1, 2, 4), dtype=mx.float32),
-                Path(td) / "out.wav",
-                max_samples=4,
-            )
-        self.assertEqual(timings, {})
-        self.assertEqual(len(decode_bridge.decoded), 1)
-        self.assertEqual(output.name, "out.wav")
-
-    @require_mlx
-    def test_mlx_decode_only_timed_decode_preserves_inner_last_timings(self):
-        decode_bridge = FakeBridge()
-        bridge = object.__new__(MLXDACVAEDecodeOnlyBridge)
-        bridge.decode_bridge = decode_bridge
-        bridge.last_decode_timings_ms = {}
-        with tempfile.TemporaryDirectory() as td:
-            _, timings = bridge.decode_to_wav_timed(
-                mx.zeros((1, 2, 4), dtype=mx.float32),
-                Path(td) / "out.wav",
-                max_samples=4,
-            )
-        self.assertEqual(timings, {"decode_dacvae_model": 2.0, "audio_write": 1.0})
-        self.assertEqual(bridge.last_decode_timings_ms, {"decode_dacvae_materialization": 4.0})
 
     @require_mlx
     def test_normalize_text_matches_upstream_ascii_ellipsis_after_nfkc(self):
@@ -1820,44 +1594,6 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(cfg.caption_tokenizer_repo_resolved, cfg.text_tokenizer_repo)
 
     @require_mlx
-    def test_runtime_constructs_subprocess_bridge_when_requested(self):
-        cfg = tiny_config()
-        fake_bridge = FakeBridge()
-        with patch("irodori_mlx.runtime.SubprocessDACVAEBridge", return_value=fake_bridge) as patched:
-            runtime = MLXDACVAERuntime(
-                config=MLXRuntimeConfig(
-                    model_config=cfg,
-                    weights_path="unused.npz",
-                    text_max_length=3,
-                    codec=DACVAEBridgeConfig(runtime_mode="subprocess"),
-                ),
-                model=FakeModel(cfg),
-                tokenizer=FakeTokenizer(),
-            )
-        self.assertIs(runtime.bridge, fake_bridge)
-        patched.assert_called_once()
-
-    @require_mlx
-    def test_pytorch_bridge_reports_upstream_install_options_when_missing(self):
-        real_import = builtins.__import__
-
-        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-            if name == "irodori_tts.codec":
-                raise ImportError("No module named 'irodori_tts'")
-            return real_import(name, globals, locals, fromlist, level)
-
-        with patch("irodori_mlx.runtime._require_torch", return_value=SimpleNamespace()), patch(
-            "builtins.__import__", side_effect=fake_import
-        ):
-            with self.assertRaisesRegex(RuntimeError, "upstream irodori_tts.codec.DACVAECodec") as ctx:
-                PyTorchDACVAEBridge(config=DACVAEBridgeConfig())
-
-        message = str(ctx.exception)
-        self.assertIn("Install the upstream Irodori-TTS package", message)
-        self.assertIn("PYTHONPATH", message)
-        self.assertIn("README.md 'If the quickstart fails'", message)
-
-    @require_mlx
     def test_load_mlx_model_reports_weights_config_mismatch_guidance(self):
         cfg = tiny_config()
         with tempfile.TemporaryDirectory() as td:
@@ -1907,130 +1643,6 @@ class RuntimeBridgeTests(unittest.TestCase):
                 )
 
         self.assertIn("caption-tokenizer", str(ctx.exception))
-
-    @require_mlx
-    def test_pytorch_bridge_passes_enable_watermark_to_upstream_codec(self):
-        calls = []
-
-        class CodecLoader:
-            @classmethod
-            def load(cls, **kwargs):
-                calls.append(dict(kwargs))
-                return SimpleNamespace(
-                    sample_rate=16000,
-                    latent_dim=4,
-                    model=SimpleNamespace(hop_length=320),
-                )
-
-        fake_module = ModuleType("irodori_tts.codec")
-        fake_module.DACVAECodec = CodecLoader
-        with patch("irodori_mlx.runtime._require_torch", return_value=SimpleNamespace()), patch.dict(
-            sys.modules, {"irodori_tts.codec": fake_module}
-        ):
-            bridge = PyTorchDACVAEBridge(config=DACVAEBridgeConfig(normalize_db=None, enable_watermark=True))
-
-        self.assertEqual(bridge.sample_rate, 16000)
-        self.assertEqual(bridge.latent_dim, 4)
-        self.assertEqual(bridge.hop_length, 320)
-        self.assertEqual(len(calls), 1)
-        self.assertIn("enable_watermark", calls[0])
-        self.assertIs(calls[0]["enable_watermark"], True)
-
-    @require_mlx
-    def test_pytorch_bridge_retries_without_disabled_watermark_for_older_upstream_codec(self):
-        calls = []
-
-        class OldCodecLoader:
-            @classmethod
-            def load(cls, **kwargs):
-                calls.append(dict(kwargs))
-                if "enable_watermark" in kwargs:
-                    raise TypeError("DACVAECodec.load() got an unexpected keyword argument 'enable_watermark'")
-                return SimpleNamespace(
-                    sample_rate=16000,
-                    latent_dim=4,
-                    model=SimpleNamespace(hop_length=320),
-                )
-
-        fake_module = ModuleType("irodori_tts.codec")
-        fake_module.DACVAECodec = OldCodecLoader
-        with patch("irodori_mlx.runtime._require_torch", return_value=SimpleNamespace()), patch.dict(
-            sys.modules, {"irodori_tts.codec": fake_module}
-        ):
-            bridge = PyTorchDACVAEBridge(config=DACVAEBridgeConfig(normalize_db=None, enable_watermark=False))
-
-        self.assertEqual(bridge.sample_rate, 16000)
-        self.assertEqual(bridge.latent_dim, 4)
-        self.assertEqual(bridge.hop_length, 320)
-        self.assertEqual(len(calls), 2)
-        self.assertIn("enable_watermark", calls[0])
-        self.assertNotIn("enable_watermark", calls[1])
-
-    @require_mlx
-    def test_pytorch_bridge_rejects_enabled_watermark_without_upstream_support(self):
-        class OldCodecLoader:
-            @classmethod
-            def load(cls, **kwargs):
-                if "enable_watermark" in kwargs:
-                    raise TypeError("DACVAECodec.load() got an unexpected keyword argument 'enable_watermark'")
-                raise AssertionError("enabled watermark must not be silently dropped")
-
-        fake_module = ModuleType("irodori_tts.codec")
-        fake_module.DACVAECodec = OldCodecLoader
-        with patch("irodori_mlx.runtime._require_torch", return_value=SimpleNamespace()), patch.dict(
-            sys.modules, {"irodori_tts.codec": fake_module}
-        ):
-            with self.assertRaisesRegex(RuntimeError, "requires an upstream Irodori-TTS checkout"):
-                PyTorchDACVAEBridge(config=DACVAEBridgeConfig(normalize_db=None, enable_watermark=True))
-
-    @require_mlx
-    def test_subprocess_bridge_normalizes_relative_paths_before_spawning_worker(self):
-        describe_payload = '{"sample_rate":16000,"latent_dim":4,"hop_length":320}'
-        calls = []
-
-        def fake_run_codec_worker(*, action, config, extra_args):
-            calls.append((action, config, list(extra_args)))
-            if action == "describe":
-                return describe_payload
-            if action == "encode":
-                latents_path = Path(extra_args[extra_args.index("--output-latents") + 1])
-                np.save(latents_path, np.zeros((1, 2, 4), dtype=np.float32))
-                return ""
-            if action == "decode":
-                output_path = Path(extra_args[extra_args.index("--output-wav") + 1])
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_bytes(b"fake wav")
-                return ""
-            raise AssertionError(f"unexpected action: {action}")
-
-        with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime._run_codec_worker", side_effect=fake_run_codec_worker):
-            caller_cwd = Path(td) / "caller"
-            caller_cwd.mkdir()
-            codec_dir = caller_cwd / "local-codec"
-            codec_dir.mkdir()
-            old_cwd = Path.cwd()
-            try:
-                os.chdir(caller_cwd)
-                bridge = SubprocessDACVAEBridge(
-                    config=DACVAEBridgeConfig(runtime_mode="subprocess", codec_repo="local-codec")
-                )
-                bridge.encode_reference("ref.wav", max_seconds=None, normalize_db=None, ensure_max=False)
-                output_path = bridge.decode_to_wav(mx.zeros((1, 2, 4), dtype=mx.float32), "out.wav")
-            finally:
-                os.chdir(old_cwd)
-
-        describe_config = next(config for action, config, _args in calls if action == "describe")
-        encode_call = next(args for action, _config, args in calls if action == "encode")
-        encode_config = next(config for action, config, _args in calls if action == "encode")
-        decode_call = next(args for action, _config, args in calls if action == "decode")
-        decode_config = next(config for action, config, _args in calls if action == "decode")
-        expected_codec_repo = str(codec_dir.resolve())
-        self.assertEqual(describe_config.codec_repo, expected_codec_repo)
-        self.assertEqual(encode_config.codec_repo, expected_codec_repo)
-        self.assertEqual(decode_config.codec_repo, expected_codec_repo)
-        self.assertEqual(encode_call[encode_call.index("--reference-wav") + 1], str((caller_cwd / "ref.wav").resolve()))
-        self.assertEqual(decode_call[decode_call.index("--output-wav") + 1], str((caller_cwd / "out.wav").resolve()))
-        self.assertEqual(output_path, (caller_cwd / "out.wav").resolve())
 
     @require_mlx
     def test_load_model_config_json_accepts_inline_object_or_path(self):
@@ -2121,17 +1733,6 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIsNone(captured["ref_latent"])
         self.assertIsNone(captured["ref_mask"])
         self.assertEqual(len(bridge.encoded), 0)
-
-    @require_mlx
-    def test_torch_mlx_latent_conversion_roundtrip_when_torch_is_available(self):
-        try:
-            import torch
-        except ImportError as exc:
-            self.skipTest(f"torch is not available: {exc}")
-        torch_latents = torch.arange(24, dtype=torch.float32).reshape(1, 6, 4)
-        mlx_latents = torch_to_mlx_latents(torch_latents)
-        roundtrip = mlx_to_torch_latents(mlx_latents)
-        np.testing.assert_allclose(roundtrip.numpy(), torch_latents.numpy())
 
 
 if __name__ == "__main__":

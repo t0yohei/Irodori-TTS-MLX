@@ -22,9 +22,9 @@ The project currently supports:
 - generating WAV files through `irodori-tts-generate` / `scripts/generate_wav.py`
 - starting an optional local Gradio Web UI through `irodori-tts-web`
 - using `--config-json`, `--requests-json`, `--cleanup-between-requests`, `--preset ultra-fast|fast|balanced|quality`, JSON metadata output, and runtime reuse for repeated local generation
-- running local benchmarks, parity checks, and hosted Apple Silicon validation workflows
+- running local benchmarks and hosted Apple Silicon validation workflows
 
-The public runtime default uses the approved hosted DACVAE codec artifact and does not require upstream `irodori_tts.codec.DACVAECodec`, `torch`, or `torchaudio`. The upstream PyTorch DACVAE bridge remains available through explicit `persistent` / `subprocess` codec modes for fallback, parity work, and comparison against upstream.
+The public runtime default uses the approved hosted DACVAE codec artifact and does not require upstream `irodori_tts.codec.DACVAECodec`, `torch`, or `torchaudio`. The old PyTorch DACVAE bridge fallback modes have been removed from the generation runtime; public generation now uses `--codec-runtime-mode mlx` with hosted or local codec artifacts.
 
 ## Public API Stability
 
@@ -50,8 +50,8 @@ boundary.
 | v3 hosted RF-DiT artifact | Supported | `--weights-repo t0yohei/Irodori-TTS-MLX-500M-v3` is approved for the documented no-reference predicted-duration quickstart. |
 | Base v2 speaker-conditioned generation | Experimental | Inspection and conversion are supported; generation is a manual reference-audio path and requires user-supplied audio that the user has rights to use. |
 | Standalone MLX DACVAE codec artifact path | Supported default | The normal public runtime uses approved hosted/local codec artifacts with `--codec-runtime-mode mlx`, so it does not require upstream `irodori_tts.codec.DACVAECodec`, `torch`, or `torchaudio`. |
-| PyTorch bridge-backed DACVAE codec path | Supported fallback | Explicit `persistent` / `subprocess` modes use upstream `irodori_tts.codec.DACVAECodec` for codec encode/decode and therefore need the upstream dependency installed or importable. |
-| MLX DACVAE decode for no-reference generation | Supported | Approved codec artifacts can keep decode off the PyTorch bridge for no-reference v3 and VoiceDesign runs. |
+| PyTorch bridge-backed DACVAE codec path | Removed | `persistent`, `subprocess`, and `mlx-decode` are no longer public generation runtime modes. |
+| MLX DACVAE decode for no-reference generation | Supported | Approved codec artifacts keep decode off upstream/PyTorch for no-reference v3 and VoiceDesign runs. |
 | Fully MLX DACVAE encode/decode for reference audio | Experimental | Requires an executable local/hosted codec artifact with both encoder and decoder tensors; reference-audio speaker fidelity is still a maturing validation surface. |
 | Local Web UI | Optional | `irodori-tts-web` is a local Gradio wrapper over the generation CLI for manual runs. It is not a hosted demo or a stable public Python API boundary. |
 | Hosted artifacts outside the approved layouts | Blocked | Repositories without the documented manifest, checksum, provenance, and approved license review are not public support. Use local conversion instead. |
@@ -90,36 +90,16 @@ For package users installing a release artifact instead of contributing from a c
 Install extra tooling only for the workflows that need it:
 
 ```bash
-# PyTorch DACVAE bridge fallback:
-python -m pip install -e ".[pytorch-bridge]"
-
 # benchmark helpers:
 python -m pip install -e ".[bench]"
-
-# upstream parity / comparison helpers:
-python -m pip install -e ".[parity]"
 ```
 
-Only explicit PyTorch bridge and parity workflows need upstream Irodori-TTS in the same environment or on `PYTHONPATH`:
+On Python 3.11, the `runtime`, `bench`, and `dev` extras pin
+`sentencepiece>=0.1.99,<0.2` to stay compatible with the tokenizer ecosystem used by
+the audited artifacts. On Python 3.12 and newer, the extras keep
+`sentencepiece>=0.2,<1` for wheel availability.
 
-```bash
-git clone https://github.com/Aratako/Irodori-TTS.git ../Irodori-TTS
-python -m pip install -e ../Irodori-TTS
-
-# Same command shape when the upstream checkout is elsewhere:
-# python -m pip install -e /path/to/Irodori-TTS
-
-# Alternative for an uninstalled checkout when using bridge/parity modes:
-# export PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}
-```
-
-On Python 3.11, the `runtime`, `bench`, `parity`, and `dev` extras pin
-`sentencepiece>=0.1.99,<0.2` to stay compatible with upstream `irodori-tts`
-when both projects are installed in the same virtual environment. On Python
-3.12 and newer, the extras keep `sentencepiece>=0.2,<1` for wheel availability;
-use Python 3.11 when installing upstream `irodori-tts` into the same venv.
-
-The bridge runtime needs upstream `irodori_tts.codec.DACVAECodec` for explicit `persistent` and `subprocess` codec modes. The default standalone MLX runtime path uses the approved hosted codec artifact instead. For reproducible setup details, see [docs/packaging.md](docs/packaging.md) and [docs/upstream_dependency.md](docs/upstream_dependency.md).
+The default standalone MLX runtime path uses the approved hosted codec artifact. For reproducible setup details, see [docs/packaging.md](docs/packaging.md) and [docs/upstream_dependency.md](docs/upstream_dependency.md).
 
 ## Optional Local Web UI
 
@@ -191,20 +171,7 @@ irodori-tts-generate \
   --metadata-json /tmp/irodori-v3-metadata.json
 ```
 
-By default, these examples use `--codec-runtime-mode mlx` and the approved hosted DACVAE codec artifact. You can pass `--codec-artifact-dir` or `--codec-path` to use a local approved/staged artifact instead. For decode-only artifact experiments, use `mlx-decode`; reference-audio encode in `mlx-decode` falls back to the PyTorch bridge:
-
-```bash
-irodori-tts-generate \
-  --weights /path/to/converted-v3/weights.npz \
-  --model-config-json /path/to/converted-v3/model_config.json \
-  --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3-mlx-decode.wav \
-  --preset balanced \
-  --codec-runtime-mode mlx-decode \
-  --codec-path /path/to/dacvae-codec.npz \
-  --metadata-json /tmp/irodori-v3-mlx-decode-metadata.json
-```
+By default, these examples use `--codec-runtime-mode mlx` and the approved hosted DACVAE codec artifact. You can pass `--codec-artifact-dir` or `--codec-path` to use a local approved/staged artifact instead.
 
 Approved hosted DACVAE codec artifacts use a separate repo/layout from RF-DiT weights. The CLI defaults to this artifact for MLX codec modes, but you can pin it explicitly:
 
@@ -219,7 +186,7 @@ irodori-tts-generate \
   --output /tmp/irodori-v3-hosted-codec.wav
 ```
 
-The metadata for no-reference full-MLX runs reports `codec_decode_backend: "mlx"` and `codec_encode_backend: "not-required"`. Reference-audio generation with `mlx` uses executable Semantic-DACVAE encoder and decoder tensors from the codec artifact and reports both `codec_encode_backend: "mlx"` and `codec_decode_backend: "mlx"`. Reference-audio generation with `mlx-decode` still uses the documented PyTorch encode fallback and reports that fallback in `codec_encode_backend`. If no approved hosted repository is available, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, provenance checklist, `--weights-dir` / `--codec-artifact-dir` examples, and fallback decision rules.
+The metadata for no-reference full-MLX runs reports `codec_decode_backend: "mlx"` and `codec_encode_backend: "not-required"`. Reference-audio generation with `mlx` uses executable Semantic-DACVAE encoder and decoder tensors from the codec artifact and reports both `codec_encode_backend: "mlx"` and `codec_decode_backend: "mlx"`. If no approved hosted repository is available, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, provenance checklist, `--weights-dir` / `--codec-artifact-dir` examples, and fallback decision rules.
 
 ### If the quickstart fails
 
@@ -232,12 +199,11 @@ irodori-tts-generate \
   --json
 ```
 
-Use the first failing surface to choose the fallback:
+Use the first failing surface to choose the next local action:
 
-- upstream import / `DACVAECodec`: only applies to explicit `persistent`, `subprocess`, or `mlx-decode` reference-audio fallback paths; install upstream Irodori-TTS in the active venv or set `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}`
 - tokenizer / Hugging Face cache: check network/cache access for the reported `text_tokenizer_repo` and, for VoiceDesign, `caption_tokenizer_repo`
 - hosted RF-DiT weights: confirm `irodori_mlx_manifest.json`, `model_config.json`, `tokenizer_config.json`, `weights.npz`, `conversion_metadata.json`, `checksums.sha256`, and `license_review.status: "approved"`; otherwise use local conversion with `--weights`
-- hosted DACVAE codec: confirm `irodori_dacvae_codec_manifest.json`, `dacvae-codec.npz`, `codec_metadata.json`, `checksums.sha256`, and `license_review.status: "approved"`; otherwise use a local `--codec-path` / `--codec-artifact-dir` or explicit `--codec-runtime-mode persistent`
+- hosted DACVAE codec: confirm `irodori_dacvae_codec_manifest.json`, `dacvae-codec.npz`, `codec_metadata.json`, `checksums.sha256`, and `license_review.status: "approved"`; otherwise use a local `--codec-path` / `--codec-artifact-dir`
 
 ## Quickstart: Local Conversion Fallback
 

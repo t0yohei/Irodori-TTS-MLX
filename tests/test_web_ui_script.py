@@ -28,7 +28,7 @@ class WebUiScriptTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--preset") + 1], "balanced")
         self.assertIn("--metadata-json", argv)
         self.assertIn("--json", argv)
-        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
+        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx")
         self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], web_ui.DEFAULT_CODEC_ARTIFACT_REPO)
         self.assertNotIn("--cfg-scale-text", argv)
         self.assertNotIn("--cfg-scale-caption", argv)
@@ -80,19 +80,6 @@ class WebUiScriptTests(unittest.TestCase):
         self.assertIn("--codec-path", argv)
         self.assertNotIn("--codec-artifact-repo", argv)
         self.assertNotIn("--codec-artifact-revision", argv)
-
-    def test_pytorch_codec_modes_do_not_inject_hosted_codec_artifact(self):
-        for mode in ("persistent", "subprocess"):
-            with self.subTest(mode=mode):
-                argv = web_ui.build_generate_argv(
-                    web_ui.WebGenerationConfig(codec_runtime_mode=mode, codec_artifact_revision="abc123"),
-                    output_wav="/tmp/out.wav",
-                    metadata_json="/tmp/meta.json",
-                )
-
-                self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], mode)
-                self.assertNotIn("--codec-artifact-repo", argv)
-                self.assertNotIn("--codec-artifact-revision", argv)
 
     def test_mlx_codec_modes_include_hosted_codec_artifact_and_revision(self):
         for mode in web_ui.MLX_CODEC_RUNTIME_MODES:

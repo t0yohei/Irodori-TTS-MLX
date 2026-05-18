@@ -96,24 +96,24 @@ class MlxAudioDACVAEContractDocTests(unittest.TestCase):
     def test_fixture_codec_contract_covers_selected_decode_only_path(self):
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "dacvae-codec.npz"
-            _write_fixture_codec(codec_path, include_encode=False)
+            _write_fixture_codec(codec_path, include_encode=True)
 
             artifact = inspect_mlx_codec_artifact(codec_path)
             self.assertEqual(artifact["sample_rate"], 48000)
             self.assertEqual(artifact["hop_length"], 1920)
             self.assertEqual(artifact["latent_dim"], 32)
             self.assertTrue(artifact["has_mlx_decode"])
-            self.assertFalse(artifact["has_mlx_encode"])
+            self.assertTrue(artifact["has_mlx_encode"])
             self.assertEqual(artifact["metadata"]["large_weight_policy"], "local-only")
 
             report = describe_codec_capabilities(
-                DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path))
+                DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path))
             )
             self.assertTrue(report["requires_codec_artifact"])
-            self.assertTrue(report["mlx_decode_available"])
+            self.assertFalse(report["mlx_decode_available"])
             self.assertFalse(report["mlx_encode_available"])
             self.assertEqual(report["decode_policy"], "mlx-artifact")
-            self.assertEqual(report["reference_encode_policy"], "pytorch-bridge")
+            self.assertEqual(report["reference_encode_policy"], "mlx-artifact")
 
 
 if __name__ == "__main__":

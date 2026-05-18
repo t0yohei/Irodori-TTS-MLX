@@ -84,8 +84,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument(
         "--codec-runtime-mode",
-        choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
-        default="persistent",
+        choices=("mlx",),
+        default="mlx",
     )
     parser.add_argument("--codec-path")
     parser.add_argument("--codec-artifact-dir")
@@ -591,7 +591,7 @@ def run_self_test() -> int:
         RequestResult(3, "measured", "/tmp/3.wav", "three", 3, 12, 170.0, 166.0, 0.2, {"sample_rf": 100.0, "decode_dacvae": 45.0, "decode_dacvae_model": 38.0, "audio_write": 7.0, "total_to_decode": 160.0}, None, "mlx"),
     )
     result = ServingRunResult("python scripts/benchmark_persistent_serving.py ...", "/tmp/repo", 3, 1, 2, "/tmp/requests.json", "/tmp/stderr.log", "passed", 1000.0, 1234, requests)
-    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx-decode", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
+    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
     summary = build_json_summary(result, args=args)
     assert summary["aggregates"]["measured_persistent_request_latency_ms"]["median"] == 150.0
     assert summary["aggregates"]["measured_audio_write_ms"]["median"] == 6.0

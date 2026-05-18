@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import gc
 import json
-import subprocess
-import sys
-import tempfile
 import time
 import wave
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -48,7 +45,7 @@ class DACVAEBridgeConfig:
     codec_repo: str = "Aratako/Semantic-DACVAE-Japanese-32dim"
     codec_path: str | None = None
     codec_device: str = "cpu"
-    runtime_mode: str = "persistent"
+    runtime_mode: str = "mlx"
     deterministic_encode: bool = True
     deterministic_decode: bool = True
     enable_watermark: bool = False
@@ -57,7 +54,7 @@ class DACVAEBridgeConfig:
 
 @dataclass(frozen=True)
 class MLXRuntimeConfig:
-    """Configuration for the first end-to-end MLX + PyTorch bridge runtime."""
+    """Configuration for the end-to-end MLX runtime."""
 
     model_config: ModelConfig
     weights_path: str
@@ -102,23 +99,13 @@ class GenerationResult:
     duration_mode: str
     checkpoint_family: str
     checkpoint_capabilities: tuple[str, ...]
-    codec_backend: str = "pytorch"
-    codec_encode_backend: str = "pytorch"
-    codec_decode_backend: str = "pytorch"
+    codec_backend: str = "mlx"
+    codec_encode_backend: str = "mlx"
+    codec_decode_backend: str = "mlx"
     requested_seconds: float | None = None
     resolved_seconds: float | None = None
     timings_ms: dict[str, float] | None = None
     messages: tuple[str, ...] = ()
-
-
-def _require_torch():
-    try:
-        import torch
-    except ImportError as exc:  # pragma: no cover - depends on optional runtime deps.
-        raise RuntimeError(
-            "PyTorch is required for the DACVAE bridge. Install torch and the DACVAE runtime dependencies."
-        ) from exc
-    return torch
 
 
 def _as_numpy(value: mx.array):
@@ -127,18 +114,6 @@ def _as_numpy(value: mx.array):
     except ImportError as exc:  # pragma: no cover - numpy is normally present with MLX.
         raise RuntimeError("numpy is required for MLX/PyTorch tensor conversion.") from exc
     return np.array(value)
-
-
-def _release_torch_runtime_memory(torch_module, device: str) -> None:
-    gc.collect()
-    device_name = str(device).lower()
-    try:
-        if device_name.startswith("mps") and hasattr(torch_module, "mps") and hasattr(torch_module.mps, "empty_cache"):
-            torch_module.mps.empty_cache()
-        elif device_name.startswith("cuda") and hasattr(torch_module, "cuda") and hasattr(torch_module.cuda, "empty_cache"):
-            torch_module.cuda.empty_cache()
-    except Exception:
-        pass
 
 
 def release_mlx_runtime_memory() -> None:
@@ -155,25 +130,6 @@ def release_mlx_runtime_memory() -> None:
             mx.clear_cache()
     except Exception:
         pass
-
-
-def torch_to_mlx_latents(tensor) -> mx.array:
-    """Convert a PyTorch latent tensor to an MLX array through an explicit CPU boundary."""
-
-    torch = _require_torch()
-    if tensor.ndim != 3:
-        raise ValueError(f"Expected latent tensor shape (B,T,D), got {tuple(tensor.shape)}")
-    return mx.array(tensor.detach().to(device="cpu", dtype=torch.float32).numpy())
-
-
-def mlx_to_torch_latents(latents: mx.array, *, device: str = "cpu"):
-    """Convert an MLX latent array to a PyTorch tensor through an explicit CPU boundary."""
-
-    torch = _require_torch()
-    if len(latents.shape) != 3:
-        raise ValueError(f"Expected MLX latents with shape (B,T,D), got {latents.shape}")
-    return torch.from_numpy(_as_numpy(latents)).to(device=device, dtype=torch.float32)
-
 
 def load_model_config_json(value: str | Path | None) -> ModelConfig:
     """Load `ModelConfig` from a JSON file path or an inline JSON object string."""
@@ -294,223 +250,6 @@ class PretrainedTextTokenizer:
             ids[:n] = token_ids[:n]
             mask[:n] = [True] * n
         return mx.array([ids], dtype=mx.int32), mx.array([mask], dtype=mx.bool_)
-
-
-class PyTorchDACVAEBridge:
-    """PyTorch DACVAE encode/decode boundary used by the v0 MLX prototype."""
-
-    def __init__(self, *, config: DACVAEBridgeConfig) -> None:
-        self.config = config
-        self.torch = _require_torch()
-        try:
-            from irodori_tts.codec import DACVAECodec
-        except ImportError as exc:  # pragma: no cover - optional runtime dependency.
-            raise RuntimeError(
-                "The PyTorch DACVAE bridge currently reuses upstream irodori_tts.codec.DACVAECodec. "
-                "Install the upstream Irodori-TTS package in the active venv, for example "
-                "`python -m pip install -e /path/to/Irodori-TTS`, or add its checkout to PYTHONPATH "
-                "(`PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}`). This repo intentionally still uses "
-                f"upstream for DACVAE encode/decode in v0.1. {QUICKSTART_TROUBLESHOOTING}"
-            ) from exc
-        load_kwargs = dict(
-            repo_id=config.codec_repo,
-            device=config.codec_device,
-            deterministic_encode=config.deterministic_encode,
-            deterministic_decode=config.deterministic_decode,
-            enable_watermark=config.enable_watermark,
-            normalize_db=config.normalize_db,
-        )
-        try:
-            self.codec = DACVAECodec.load(**load_kwargs)
-        except TypeError as exc:
-            if "unexpected keyword argument 'enable_watermark'" in str(exc) and not config.enable_watermark:
-                retry_kwargs = dict(load_kwargs)
-                retry_kwargs.pop("enable_watermark")
-                self.codec = DACVAECodec.load(**retry_kwargs)
-            elif "enable_watermark" not in str(exc) and "normalize_db" not in str(exc):
-                raise
-            else:
-                raise RuntimeError(
-                    "The PyTorch DACVAE bridge requires an upstream Irodori-TTS checkout whose "
-                    "irodori_tts.codec.DACVAECodec.load accepts the requested codec keyword arguments "
-                    "(enable_watermark and normalize_db). Update the upstream checkout installed in "
-                    f"the active environment, then retry. {QUICKSTART_TROUBLESHOOTING}"
-                ) from exc
-        self.sample_rate = int(self.codec.sample_rate)
-        self.latent_dim = int(self.codec.latent_dim)
-        self.hop_length = int(getattr(self.codec.model, "hop_length"))
-
-    def encode_reference(
-        self,
-        path: str | Path,
-        *,
-        max_seconds: float | None,
-        normalize_db: float | None,
-        ensure_max: bool,
-    ) -> mx.array:
-        wav, sample_rate = _load_audio_torch(path)
-        latent = None
-        if max_seconds is not None and float(max_seconds) > 0:
-            max_samples = max(1, int(float(max_seconds) * float(sample_rate)))
-            if wav.shape[-1] > max_samples:
-                wav = wav[..., :max_samples]
-        try:
-            latent = self.codec.encode_waveform(
-                wav.unsqueeze(0),
-                sample_rate=int(sample_rate),
-                normalize_db=normalize_db,
-                ensure_max=ensure_max,
-            ).cpu()
-            return torch_to_mlx_latents(latent)
-        finally:
-            del wav
-            if latent is not None:
-                del latent
-            _release_torch_runtime_memory(self.torch, str(self.codec.device))
-
-    def decode_to_wav_timed(
-        self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None
-    ) -> tuple[Path, dict[str, float]]:
-        self.last_decode_timings_ms = {}
-        started = time.perf_counter()
-        z = mlx_to_torch_latents(latents, device=str(self.codec.device))
-        convert_ms = (time.perf_counter() - started) * 1000.0
-        audio = None
-        try:
-            started = time.perf_counter()
-            audio = self.codec.decode_latent(z).detach().cpu()[0]
-            decode_model_ms = (time.perf_counter() - started) * 1000.0
-            if max_samples is not None:
-                audio = audio[:, : int(max_samples)]
-            started = time.perf_counter()
-            output = save_wav(output_path, audio, self.sample_rate)
-            write_ms = (time.perf_counter() - started) * 1000.0
-            timings = {
-                "decode_dacvae_latent_conversion": convert_ms,
-                "decode_dacvae_model": decode_model_ms,
-                "audio_write": write_ms,
-                "audio_write_wav": write_ms,
-            }
-            self.last_decode_timings_ms = dict(timings)
-            return output, timings
-        finally:
-            del z
-            if audio is not None:
-                del audio
-            _release_torch_runtime_memory(self.torch, str(self.codec.device))
-
-    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
-        output, _ = self.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
-        return output
-
-
-def _run_codec_worker(*, action: str, config: DACVAEBridgeConfig, extra_args: list[str]) -> str:
-    repo_root = Path(__file__).resolve().parents[1]
-    argv = [
-        sys.executable,
-        "-m",
-        "irodori_mlx.codec_worker",
-        action,
-        "--config-json",
-        json.dumps(asdict(config), sort_keys=True),
-        *extra_args,
-    ]
-    completed = subprocess.run(
-        argv,
-        cwd=str(repo_root),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or f"codec worker failed: {action}")
-    return completed.stdout
-
-
-class SubprocessDACVAEBridge:
-    """PyTorch DACVAE boundary that isolates encode/decode work in short-lived subprocesses."""
-
-    def __init__(self, *, config: DACVAEBridgeConfig) -> None:
-        self.config = config
-        raw = _run_codec_worker(action="describe", config=self._worker_config(config), extra_args=[])
-        json_line = next((line for line in reversed(raw.splitlines()) if line.strip().startswith("{")), "")
-        if not json_line:
-            raise RuntimeError("codec worker describe did not return JSON metadata")
-        payload = json.loads(json_line)
-        self.sample_rate = int(payload["sample_rate"])
-        self.latent_dim = int(payload["latent_dim"])
-        self.hop_length = int(payload["hop_length"])
-
-    @staticmethod
-    def _caller_absolute_path(path: str | Path) -> Path:
-        return Path(path).expanduser().resolve(strict=False)
-
-    @classmethod
-    def _caller_resolved_codec_repo(cls, codec_repo: str) -> str:
-        candidate = Path(codec_repo).expanduser()
-        if candidate.is_absolute() or codec_repo.startswith((".", "~")):
-            return str(candidate.resolve(strict=False))
-        caller_candidate = Path.cwd() / candidate
-        if caller_candidate.exists():
-            return str(caller_candidate.resolve(strict=False))
-        return codec_repo
-
-    @classmethod
-    def _worker_config(cls, config: DACVAEBridgeConfig) -> DACVAEBridgeConfig:
-        return replace(config, codec_repo=cls._caller_resolved_codec_repo(config.codec_repo))
-
-    def encode_reference(
-        self,
-        path: str | Path,
-        *,
-        max_seconds: float | None,
-        normalize_db: float | None,
-        ensure_max: bool,
-    ) -> mx.array:
-        with tempfile.NamedTemporaryFile(prefix="irodori-ref-", suffix=".npy", delete=False) as fh:
-            latents_path = Path(fh.name)
-        try:
-            extra_args = [
-                "--reference-wav",
-                str(self._caller_absolute_path(path)),
-                "--output-latents",
-                str(latents_path),
-            ]
-            if max_seconds is not None:
-                extra_args.extend(["--max-seconds", str(max_seconds)])
-            if normalize_db is not None:
-                extra_args.extend(["--normalize-db", str(normalize_db)])
-            if ensure_max:
-                extra_args.append("--ensure-max")
-            _run_codec_worker(action="encode", config=self._worker_config(self.config), extra_args=extra_args)
-            import numpy as np
-
-            return mx.array(np.load(latents_path).astype("float32", copy=False))
-        finally:
-            latents_path.unlink(missing_ok=True)
-
-    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
-        self.last_decode_timings_ms = {}
-        import numpy as np
-
-        resolved_output_path = self._caller_absolute_path(output_path)
-        with tempfile.NamedTemporaryFile(prefix="irodori-latents-", suffix=".npy", delete=False) as fh:
-            latents_path = Path(fh.name)
-        try:
-            np.save(latents_path, _as_numpy(latents).astype("float32", copy=False))
-            extra_args = [
-                "--input-latents",
-                str(latents_path),
-                "--output-wav",
-                str(resolved_output_path),
-            ]
-            if max_samples is not None:
-                extra_args.extend(["--max-samples", str(max_samples)])
-            _run_codec_worker(action="decode", config=self._worker_config(self.config), extra_args=extra_args)
-            return resolved_output_path
-        finally:
-            latents_path.unlink(missing_ok=True)
-
 
 def _load_npz_scalar_string(archive, name: str) -> str | None:
     if name not in archive.files:
@@ -666,40 +405,24 @@ def describe_codec_capabilities(
     family = model_config.checkpoint_family if model_config is not None else None
     uses_speaker = bool(model_config.use_speaker_condition) if model_config is not None else None
     needs_reference_encode = uses_speaker is not False
-    uses_pytorch_encode = mode in {"persistent", "subprocess", "mlx-decode", "mlx-decode-subprocess"}
     report: dict[str, object] = {
         "runtime_mode": mode,
         "checkpoint_family": family,
         "codec_path": codec.codec_path,
         "mlx_decode_available": False,
         "mlx_encode_available": False,
-        "requires_codec_artifact": mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"},
-        "requires_pytorch_decode": mode in {"persistent", "subprocess"},
-        "requires_pytorch_encode": uses_pytorch_encode and needs_reference_encode,
+        "requires_codec_artifact": mode == "mlx",
+        "requires_pytorch_decode": False,
+        "requires_pytorch_encode": False,
         "reference_encode_policy": "not-required"
         if uses_speaker is False
-        else "pytorch-bridge"
-        if mode != "mlx"
         else "mlx-artifact",
-        "decode_policy": "mlx-artifact" if mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"} else "pytorch-bridge",
+        "decode_policy": "mlx-artifact",
         "messages": [],
     }
     messages: list[str] = []
-    if mode in {"persistent", "subprocess"}:
-        if uses_speaker is False:
-            messages.append("PyTorch bridge required for DACVAE decode; reference-audio encode is not used.")
-        else:
-            messages.append("PyTorch bridge required for both DACVAE encode and decode.")
-    elif mode in {"mlx-decode", "mlx-decode-subprocess"}:
-        if uses_speaker is False:
-            messages.append("MLX codec artifact is used for decode; reference-audio encode is not used.")
-        else:
-            messages.append("MLX codec artifact is used for decode; reference-audio encode falls back to the PyTorch bridge.")
-        if uses_speaker:
-            messages.append("Use --no-reference to avoid PyTorch encode, or install upstream Irodori-TTS for reference-audio requests.")
-    elif mode == "mlx":
+    if mode == "mlx":
         messages.append("MLX codec artifact is used for both encode and decode; artifact must include encode tensors.")
-        report["requires_pytorch_encode"] = False
     else:
         messages.append(f"Unsupported codec runtime mode: {mode!r}.")
 
@@ -712,12 +435,8 @@ def describe_codec_capabilities(
                 messages.append(str(exc))
             else:
                 report["artifact"] = artifact
-                if mode == "mlx":
-                    report["mlx_decode_available"] = bool(artifact["has_executable_mlx_decode"])
-                    report["mlx_encode_available"] = bool(artifact["has_executable_mlx_encode"])
-                else:
-                    report["mlx_decode_available"] = bool(artifact["has_mlx_decode"])
-                    report["mlx_encode_available"] = bool(artifact["has_mlx_encode"])
+                report["mlx_decode_available"] = bool(artifact["has_executable_mlx_decode"])
+                report["mlx_encode_available"] = bool(artifact["has_executable_mlx_encode"])
                 if artifact.get("has_executable_mlx_encode"):
                     messages.append(
                         "Codec artifact contains executable Semantic-DACVAE encoder tensors for MLX reference-audio encode; "
@@ -736,19 +455,13 @@ def describe_codec_capabilities(
                 elif not artifact["has_mlx_decode"]:
                     messages.append("Codec artifact is missing decode_basis/decode_bias, so MLX decode is unavailable.")
                 if mode == "mlx" and not artifact["has_executable_mlx_decode"]:
-                    messages.append(
-                        "codec_runtime_mode='mlx' requires executable Semantic-DACVAE decoder tensors; "
-                        "use mlx-decode for decode-only artifacts or PyTorch bridge modes as fallback."
-                    )
+                    messages.append("codec_runtime_mode='mlx' requires executable Semantic-DACVAE decoder tensors.")
                 if mode == "mlx" and not artifact["has_executable_mlx_encode"]:
-                    messages.append(
-                        "codec_runtime_mode='mlx' requires executable Semantic-DACVAE encoder tensors; "
-                        "use mlx-decode for decode-only artifacts."
-                    )
+                    messages.append("codec_runtime_mode='mlx' requires executable Semantic-DACVAE encoder tensors.")
         else:
             messages.append(
                 "MLX codec modes require --codec-path pointing to a local DACVAE codec .npz; "
-                "use --codec-runtime-mode persistent to fall back to the PyTorch bridge."
+                "or use --codec-artifact-repo / --codec-artifact-dir for a hosted/local codec layout."
             )
     report["messages"] = tuple(messages)
     return report
@@ -769,8 +482,8 @@ class MLXDACVAEBridge:
         if not config.codec_path:
             raise ValueError(
                 f"codec_runtime_mode={config.runtime_mode!r} requires --codec-path pointing to a local MLX "
-                "DACVAE codec artifact .npz. Use --codec-runtime-mode persistent or subprocess for the "
-                "PyTorch bridge fallback, or use mlx-decode for decode-only artifacts."
+                "DACVAE codec artifact .npz, or use --codec-artifact-repo / --codec-artifact-dir for a "
+                "hosted/local codec layout."
             )
         self.config = config
         self.codec_path = Path(config.codec_path).expanduser()
@@ -838,8 +551,7 @@ class MLXDACVAEBridge:
                     raise ValueError(
                         "codec_runtime_mode='mlx' requires executable Semantic-DACVAE "
                         + " and ".join(missing)
-                        + " tensors in the codec artifact. Use codec_runtime_mode='mlx-decode' for decode-only "
-                        "artifacts, or persistent/subprocess for the PyTorch bridge fallback."
+                        + " tensors in the codec artifact."
                     )
                 if has_executable_decode:
                     self.semantic_decoder = load_semantic_dacvae_decoder_artifact(self.codec_path)
@@ -850,7 +562,7 @@ class MLXDACVAEBridge:
                         raise NotImplementedError(
                             "This artifact contains converted real Semantic-DACVAE decoder tensors, but no "
                             "executable MLX decoder tensor layout. Re-run scripts/convert_dacvae_decoder.py "
-                            "from this version, or keep PyTorch bridge modes as fallback for waveform decoding."
+                            "from this version."
                         )
                     self.decode_basis = mx.array(archive["decode_basis"].astype("float32", copy=False))
                     self.decode_bias = mx.array(archive["decode_bias"].astype("float32", copy=False))
@@ -886,8 +598,7 @@ class MLXDACVAEBridge:
         if require_encode and self.semantic_encoder is None and (self.encode_basis is None or self.encode_bias is None):
             raise ValueError(
                 f"Converted MLX DACVAE codec artifact {self.codec_path} is missing executable encoder tensors or encode_basis/encode_bias; "
-                "use codec_runtime_mode='mlx-decode' for decode-only artifacts, or use persistent/subprocess "
-                "when you need the PyTorch bridge fallback for both encode and decode."
+                "codec_runtime_mode='mlx' requires an encode-capable codec artifact."
             )
         if self.encode_basis is not None and tuple(self.encode_basis.shape) != (self.hop_length, self.latent_dim):
             raise ValueError(
@@ -1000,83 +711,6 @@ class MLXDACVAEBridge:
         return output
 
 
-class MLXDACVAEDecodeOnlyBridge:
-    """Use an MLX codec artifact for decode while keeping reference encode on the PyTorch bridge."""
-
-    def __init__(self, *, config: DACVAEBridgeConfig) -> None:
-        self.config = config
-        self.decode_bridge = MLXDACVAEBridge(config=config, require_encode=False)
-        self.sample_rate = self.decode_bridge.sample_rate
-        self.latent_dim = self.decode_bridge.latent_dim
-        self.hop_length = self.decode_bridge.hop_length
-        self.last_decode_timings_ms: dict[str, float] = {}
-        self._encode_bridge: PyTorchDACVAEBridge | SubprocessDACVAEBridge | None = None
-
-    @property
-    def encode_backend(self) -> str:
-        if self.config.runtime_mode == "mlx-decode-subprocess":
-            return "pytorch-subprocess"
-        return "pytorch-persistent"
-
-    @property
-    def decode_backend(self) -> str:
-        return "mlx"
-
-    def _get_encode_bridge(self) -> PyTorchDACVAEBridge | SubprocessDACVAEBridge:
-        if self._encode_bridge is None:
-            mode = "subprocess" if self.config.runtime_mode == "mlx-decode-subprocess" else "persistent"
-            py_config = replace(self.config, runtime_mode=mode, codec_path=None)
-            try:
-                if mode == "subprocess":
-                    self._encode_bridge = SubprocessDACVAEBridge(config=py_config)
-                else:
-                    self._encode_bridge = PyTorchDACVAEBridge(config=py_config)
-            except RuntimeError as exc:
-                raise RuntimeError(
-                    "codec_runtime_mode='mlx-decode' can decode with the local MLX codec artifact, but "
-                    "reference-audio encode still requires the upstream PyTorch DACVAE bridge. Use "
-                    "--no-reference when the checkpoint family supports it, switch to "
-                    "--codec-runtime-mode mlx with an encode-capable codec artifact, or install upstream "
-                    f"Irodori-TTS. {exc}"
-                ) from exc
-            if int(self._encode_bridge.latent_dim) != int(self.latent_dim):
-                raise ValueError(
-                    "PyTorch DACVAE encode fallback latent_dim does not match MLX decode artifact: "
-                    f"encode={self._encode_bridge.latent_dim}, decode={self.latent_dim}"
-                )
-        return self._encode_bridge
-
-    def encode_reference(
-        self,
-        path: str | Path,
-        *,
-        max_seconds: float | None,
-        normalize_db: float | None,
-        ensure_max: bool,
-    ) -> mx.array:
-        return self._get_encode_bridge().encode_reference(
-            path,
-            max_seconds=max_seconds,
-            normalize_db=normalize_db,
-            ensure_max=ensure_max,
-        )
-
-    def decode_to_wav_timed(
-        self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None
-    ) -> tuple[Path, dict[str, float]]:
-        if hasattr(self.decode_bridge, "decode_to_wav_timed"):
-            output, timings = self.decode_bridge.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
-            self.last_decode_timings_ms = dict(getattr(self.decode_bridge, "last_decode_timings_ms", timings))
-            return output, timings
-        output = self.decode_bridge.decode_to_wav(latents, output_path, max_samples=max_samples)
-        self.last_decode_timings_ms = dict(getattr(self.decode_bridge, "last_decode_timings_ms", {}))
-        return output, {}
-
-    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
-        output, _ = self.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
-        return output
-
-
 def _load_audio_numpy(path: str | Path) -> tuple["object", int]:
     import numpy as np
 
@@ -1164,59 +798,6 @@ def _normalize_audio_db(samples, *, target_db: float):
     return _ensure_audio_peak(samples * (target_rms / rms))
 
 
-def _load_audio_torch(path: str | Path):
-    torch = _require_torch()
-    try:
-        import torchaudio
-
-        return torchaudio.load(str(path))
-    except Exception:
-        try:
-            import soundfile as sf
-        except ImportError as exc:  # pragma: no cover - optional runtime dependency.
-            raise RuntimeError("Loading audio requires torchaudio or soundfile.") from exc
-        data, sample_rate = sf.read(str(path), dtype="float32")
-        wav = torch.from_numpy(data)
-        if wav.ndim == 1:
-            wav = wav.unsqueeze(0)
-        else:
-            wav = wav.T
-        return wav, int(sample_rate)
-
-
-def save_wav(path: str | Path, audio, sample_rate: int) -> Path:
-    """Save mono audio with torchaudio/soundfile, falling back to stdlib PCM16."""
-
-    out = Path(path).expanduser()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        import torchaudio
-
-        torchaudio.save(str(out), audio, int(sample_rate))
-        return out
-    except Exception:
-        pass
-    try:
-        import soundfile as sf
-
-        sf.write(str(out), audio.squeeze(0).numpy(), int(sample_rate))
-        return out
-    except Exception:
-        pass
-
-    import numpy as np
-
-    samples = audio.squeeze(0).numpy().astype("float32")
-    samples = np.clip(samples, -1.0, 1.0)
-    pcm = (samples * 32767.0).astype("<i2")
-    with wave.open(str(out), "wb") as fh:
-        fh.setnchannels(1)
-        fh.setsampwidth(2)
-        fh.setframerate(int(sample_rate))
-        fh.writeframes(pcm.tobytes())
-    return out
-
-
 def save_wav_numpy(path: str | Path, samples, sample_rate: int) -> Path:
     """Save mono float32 audio without importing PyTorch."""
 
@@ -1250,21 +831,15 @@ class MLXDACVAERuntime:
         *,
         config: MLXRuntimeConfig,
         model: TextToLatentRFDiT | None = None,
-        bridge: PyTorchDACVAEBridge | None = None,
+        bridge: MLXDACVAEBridge | None = None,
         tokenizer: PretrainedTextTokenizer | None = None,
         caption_tokenizer: PretrainedTextTokenizer | None = None,
     ) -> None:
         self.config = config
         self.model = model or load_mlx_model(config.model_config, config.weights_path)
         if bridge is None:
-            if config.codec.runtime_mode == "persistent":
-                bridge = PyTorchDACVAEBridge(config=config.codec)
-            elif config.codec.runtime_mode == "subprocess":
-                bridge = SubprocessDACVAEBridge(config=config.codec)
-            elif config.codec.runtime_mode == "mlx":
+            if config.codec.runtime_mode == "mlx":
                 bridge = MLXDACVAEBridge(config=config.codec)
-            elif config.codec.runtime_mode in {"mlx-decode", "mlx-decode-subprocess"}:
-                bridge = MLXDACVAEDecodeOnlyBridge(config=config.codec)
             else:
                 raise ValueError(f"Unsupported codec runtime_mode={config.codec.runtime_mode!r}")
         self.bridge = bridge
@@ -1523,7 +1098,7 @@ class MLXDACVAERuntime:
                 "weights_path": self.config.weights_path,
                 "latent_layout": "(batch, time, latent_dim)",
             },
-            "pytorch": {
+            "codec_artifact": {
                 "codec_repo": self.config.codec.codec_repo,
                 "codec_device": self.config.codec.codec_device,
                 "codec_runtime_mode": self.config.codec.runtime_mode,
@@ -1533,25 +1108,15 @@ class MLXDACVAERuntime:
             },
             "codec": {
                 "implementation": self.bridge.__class__.__name__,
-                "imports_pytorch": isinstance(
-                    self.bridge,
-                    (PyTorchDACVAEBridge, SubprocessDACVAEBridge, MLXDACVAEDecodeOnlyBridge),
-                ),
-                "encode_imports_pytorch": isinstance(
-                    self.bridge,
-                    (PyTorchDACVAEBridge, SubprocessDACVAEBridge, MLXDACVAEDecodeOnlyBridge),
-                ),
-                "decode_imports_pytorch": isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge)),
+                "imports_pytorch": False,
+                "encode_imports_pytorch": False,
+                "decode_imports_pytorch": False,
                 "encode_backend": getattr(self.bridge, "encode_backend", self.config.codec.runtime_mode),
                 "decode_backend": getattr(self.bridge, "decode_backend", self.config.codec.runtime_mode),
                 "capabilities": describe_codec_capabilities(self.config.codec, model_config=self.config.model_config),
             },
             "conversion": (
-                "PyTorch tensor -> CPU NumPy -> MLX array, and reverse for DACVAE decode"
-                if isinstance(self.bridge, (PyTorchDACVAEBridge, SubprocessDACVAEBridge))
-                else "PyTorch bridge encode for reference audio; MLX codec artifact decode"
-                if isinstance(self.bridge, MLXDACVAEDecodeOnlyBridge)
-                else "MLX codec artifact encode/decode; WAV IO crosses through NumPy"
+                "MLX codec artifact encode/decode; WAV IO crosses through NumPy"
             ),
             "config": asdict(self.config),
             "checkpoint_family": self.config.model_config.checkpoint_family,

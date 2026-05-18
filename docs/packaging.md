@@ -26,17 +26,14 @@ The project defines these install targets:
 
 - base install: core MLX package modules (`irodori_mlx.layers`, encoders, model, sampler, weights)
 - `.[runtime]`: standalone MLX runtime WAV generation with hosted/local DACVAE codec artifacts; does not install `torch` or `torchaudio`
-- `.[pytorch-bridge]`: explicit PyTorch DACVAE bridge fallback dependencies for `persistent` / `subprocess` modes
 - `.[bench]`: benchmark-oriented environment for MLX artifact benchmarks and checkpoint conversion helpers
-- `.[parity]`: upstream comparison and parity environment, including PyTorch bridge dependencies
 - `.[dev]`: local contributor environment for tests plus packaging validation helpers
 
-On Python 3.11, the `runtime`, `bench`, `parity`, and `dev` extras intentionally use the
-upstream-compatible `sentencepiece>=0.1.99,<0.2` range so a single venv can
-install both this package and upstream `irodori-tts` without a resolver
-conflict. On Python 3.12 and newer, those extras use `sentencepiece>=0.2,<1`
-because `sentencepiece==0.1.99` does not publish wheels for the advertised
-newer Python packaging targets; use Python 3.11 for same-venv upstream installs.
+On Python 3.11, the `runtime`, `bench`, and `dev` extras intentionally use the
+`sentencepiece>=0.1.99,<0.2` range used by the audited artifacts. On Python
+Python 3.12 and newer use `sentencepiece>=0.2,<1` because
+`sentencepiece==0.1.99` does not publish wheels for the advertised newer
+Python packaging targets.
 
 The standalone MLX runtime path is artifact-driven through the default approved hosted DACVAE codec artifact, `--codec-artifact-dir`, or `--codec-path`. Keep PyTorch bridge dependencies out of `.[runtime]` so clean public installs can generate with approved hosted artifacts without upstream `irodori-tts`.
 
@@ -91,22 +88,10 @@ python -m pip install -e .
 python -m pip install -e ".[runtime]"
 ```
 
-#### PyTorch bridge fallback environment
-
-```bash
-python -m pip install -e ".[pytorch-bridge]"
-```
-
 #### Benchmark environment
 
 ```bash
 python -m pip install -e ".[bench]"
-```
-
-#### Upstream parity environment
-
-```bash
-python -m pip install -e ".[parity]"
 ```
 
 #### Development environment
@@ -118,28 +103,11 @@ python -m pip install -e ".[dev]"
 ## Upstream dependency boundary
 
 The v0.2 public runtime defaults to full-MLX codec artifact mode and does not require upstream `irodori_tts.codec.DACVAECodec`.
-The local environment must be able to import upstream `irodori_tts` only for explicit PyTorch bridge fallback, reference-audio encode fallback in `mlx-decode`, or upstream parity/comparison workflows.
-This is intentional: this MLX repo owns the text/caption conditioning, RF-DiT, converted-weight runtime, duration handling, sampler path, and artifact-backed DACVAE runtime, while upstream remains the reference implementation for bridge/parity workflows.
+The old PyTorch bridge fallback modes are no longer public generation runtime modes.
+This is intentional: this MLX repo owns the text/caption conditioning, RF-DiT, converted-weight runtime, duration handling, sampler path, and artifact-backed DACVAE runtime.
 
 The v0.2 `--codec-runtime-mode mlx` path is artifact-driven: package users can use the default approved hosted codec artifact, `--codec-artifact-dir`, or `--codec-path /path/to/dacvae-codec.npz`. The repository does not ship Semantic-DACVAE codec weights.
 See [upstream_dependency.md](upstream_dependency.md) for the full responsibility split and import-failure guidance.
-
-Supported ways to provide upstream:
-
-### Option A: install the upstream checkout into the same venv (recommended)
-
-```bash
-git clone https://github.com/Aratako/Irodori-TTS.git /path/to/Irodori-TTS
-python -m pip install -e /path/to/Irodori-TTS
-```
-
-### Option B: leave upstream uninstalled and expose it with `PYTHONPATH`
-
-```bash
-export PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}
-```
-
-The local benchmark harness already supports this pattern through `--upstream-root`.
 
 ## Reproducible runtime setup
 
@@ -174,17 +142,14 @@ python scripts/generate_wav.py --help
 
 ## Reproducible benchmark setup
 
-A benchmark-oriented environment should include the benchmark extra plus an accessible upstream checkout. The example keeps Python 3.11 because that is the benchmark reference environment used by the current reports, even though packaging support now extends through Python 3.14.
+A benchmark-oriented environment should include the benchmark extra. The example keeps Python 3.11 because that is the benchmark reference environment used by the current reports, even though packaging support now extends through Python 3.14.
 
 ```bash
 python3.11 -m venv .venv-bench311
 . .venv-bench311/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[bench]"
-python -m pip install -e /path/to/Irodori-TTS
 ```
-
-If you prefer not to install upstream into the venv, you can instead keep it on `PYTHONPATH` and still pass `--upstream-root` to the benchmark harness.
 
 Smoke-check the packaging surface with:
 

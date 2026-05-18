@@ -30,7 +30,7 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
             weights_revision="abc",
             codec_device="cpu",
             codec_repo="codec-repo",
-            codec_runtime_mode="mlx-decode",
+            codec_runtime_mode="mlx",
             codec_path=None,
             codec_artifact_dir=None,
             codec_artifact_repo="owner/codec",
@@ -57,13 +57,13 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
         argv, env = bench.build_worker_command(args, Path.cwd())
         self.assertEqual(argv[:2], ["python3", "scripts/benchmark_persistent_serving.py"])
         self.assertIn("--worker", argv)
-        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
+        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx")
         self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], "owner/codec")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
 
-    def test_parse_args_defaults_to_runnable_pytorch_codec_mode(self):
+    def test_parse_args_defaults_to_standalone_mlx_codec_mode(self):
         args = bench.parse_args(["--weights-repo", "owner/repo"])
-        self.assertEqual(args.codec_runtime_mode, "persistent")
+        self.assertEqual(args.codec_runtime_mode, "mlx")
 
     def test_script_adds_repo_root_to_import_path_for_worker_mode(self):
         self.assertEqual(bench.ROOT, Path(bench.__file__).resolve().parents[1])

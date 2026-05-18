@@ -48,7 +48,7 @@ class MLXDACVAEParityFixtureTests(unittest.TestCase):
     def test_mlx_codec_matches_upstream_generated_decode_fixture(self):
         bridge = MLXDACVAEBridge(
             config=DACVAEBridgeConfig(
-                runtime_mode="mlx-decode",
+                runtime_mode="mlx",
                 codec_path=os.environ["IRODORI_MLX_DACVAE_CODEC_NPZ"],
             ),
             require_encode=False,
