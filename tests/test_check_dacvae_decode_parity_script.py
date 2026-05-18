@@ -61,6 +61,10 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
                     str(root / "out"),
                     "--max-samples",
                     "4",
+                    "--expected-sample-rate",
+                    "8000",
+                    "--expected-hop-length",
+                    "4",
                     "--expected-latent-dim",
                     "2",
                 ]
@@ -88,8 +92,51 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
         self.assertEqual(report["latents"]["shape"], [1, 2, 2])
         self.assertEqual(report["codec"]["expected_latent_dim"], 2)
         self.assertTrue(report["codec"]["metadata_checks"]["sample_rate"])
+        self.assertTrue(report["codec"]["metadata_checks"]["hop_length"])
+        self.assertTrue(report["codec"]["metadata_checks"]["latent_dim"])
         self.assertEqual(report["comparison"]["metrics"]["mlx"]["samples"], 4)
         self.assertEqual(report["outputs"]["mlx_wav"].split("/")[-1], "mlx-decode.wav")
+
+    def test_decode_pair_fails_when_codec_metadata_mismatches_expected_values(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            latents_path = root / "latents.npy"
+            codec_path = root / "codec.npz"
+            np.save(latents_path, np.array([[[0.1, -0.2], [0.3, -0.4]]], dtype=np.float32))
+            codec_path.write_bytes(b"fake codec")
+            args = check_dacvae_decode_parity.parse_args(
+                [
+                    "--latents-npy",
+                    str(latents_path),
+                    "--codec-path",
+                    str(codec_path),
+                    "--output-dir",
+                    str(root / "out"),
+                    "--expected-sample-rate",
+                    "48000",
+                    "--expected-hop-length",
+                    "1920",
+                    "--expected-latent-dim",
+                    "2",
+                ]
+            )
+
+            def fake_audio(path):
+                return np.load(Path(path).with_suffix(Path(path).suffix + ".npy")), 8000
+
+            with mock.patch.object(
+                check_dacvae_decode_parity, "DACVAEBridgeConfig", side_effect=lambda **kwargs: kwargs
+            ), mock.patch.object(
+                check_dacvae_decode_parity, "_load_runtime_decode_dependencies"
+            ), mock.patch.object(
+                check_dacvae_decode_parity, "MLXDACVAEBridge", return_value=FakeDecodeBridge(offset=0.0)
+            ), mock.patch.object(check_dacvae_decode_parity, "_load_audio_numpy", side_effect=fake_audio):
+                report = check_dacvae_decode_parity.decode_pair(args)
+
+        self.assertEqual(report["comparison"]["status"], "failed")
+        self.assertFalse(report["codec"]["metadata_checks"]["sample_rate"])
+        self.assertFalse(report["codec"]["metadata_checks"]["hop_length"])
+        self.assertTrue(report["codec"]["metadata_checks"]["latent_dim"])
 
     def test_decode_pair_rejects_latent_channel_drift_before_decode(self):
         with tempfile.TemporaryDirectory() as td:
@@ -106,6 +153,10 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
                     str(codec_path),
                     "--output-dir",
                     str(root / "out"),
+                    "--expected-sample-rate",
+                    "8000",
+                    "--expected-hop-length",
+                    "4",
                     "--expected-latent-dim",
                     "2",
                 ]
@@ -130,6 +181,10 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
                     str(codec_path),
                     "--output-dir",
                     str(root / "out"),
+                    "--expected-sample-rate",
+                    "8000",
+                    "--expected-hop-length",
+                    "4",
                     "--expected-latent-dim",
                     "2",
                 ]
@@ -148,7 +203,8 @@ class DACVAEDecodeParityScriptTests(unittest.TestCase):
                 report = check_dacvae_decode_parity.decode_pair(args)
 
         self.assertEqual(report["comparison"]["status"], "failed")
-        self.assertFalse(report["comparison"]["checks"]["sample_rate"])
+        self.assertTrue(report["comparison"]["checks"]["sample_rate"])
+        self.assertFalse(report["comparison"]["checks"]["decoded_wav_sample_rate"])
 
     def test_main_returns_nonzero_for_metric_failure_and_persists_json(self):
         with tempfile.TemporaryDirectory() as td:

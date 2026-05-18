@@ -20,6 +20,8 @@ SCHEMA_VERSION = 2
 SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/185"
 PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169"
 DEFAULT_EXPECTED_LATENT_DIM = 32
+DEFAULT_EXPECTED_SAMPLE_RATE = 48_000
+DEFAULT_EXPECTED_HOP_LENGTH = 1_920
 
 DACVAEBridgeConfig: Any = None
 MLXDACVAEBridge: Any = None
@@ -124,10 +126,16 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
         normalize_db=normalize_db,
     )
     mlx_bridge = MLXDACVAEBridge(config=mlx_config)
-    if int(mlx_bridge.latent_dim) != int(args.expected_latent_dim):
+    expected_sample_rate = int(args.expected_sample_rate)
+    expected_hop_length = int(args.expected_hop_length)
+    expected_latent_dim = int(args.expected_latent_dim)
+    sample_rate_check = int(mlx_bridge.sample_rate) == expected_sample_rate
+    hop_length_check = int(mlx_bridge.hop_length) == expected_hop_length
+    latent_dim_check = int(mlx_bridge.latent_dim) == expected_latent_dim
+    if not latent_dim_check:
         raise ValueError(
             "Encode check expected Semantic-DACVAE runtime-layout latents shaped "
-            f"(1,T,{int(args.expected_latent_dim)}), got latent_dim={mlx_bridge.latent_dim}"
+            f"(1,T,{expected_latent_dim}), got latent_dim={mlx_bridge.latent_dim}"
         )
 
     mlx_latents = mlx_bridge.encode_reference(
@@ -141,9 +149,11 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
     np.save(mlx_path, mlx_np)
     stats = _latent_stats(mlx_np)
     checks = {
+        "sample_rate": bool(sample_rate_check),
+        "hop_length": bool(hop_length_check),
         "rank": mlx_np.ndim == 3,
         "batch": mlx_np.ndim == 3 and int(mlx_np.shape[0]) == 1,
-        "latent_dim": mlx_np.ndim == 3 and int(mlx_np.shape[2]) == int(args.expected_latent_dim),
+        "latent_dim": bool(latent_dim_check) and mlx_np.ndim == 3 and int(mlx_np.shape[2]) == expected_latent_dim,
         "finite": bool(stats["finite"]),
     }
     comparison = {
@@ -169,14 +179,16 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "repo": args.codec_repo,
             "device": args.codec_device,
             "mlx_codec_path": str(Path(args.codec_path).expanduser()),
+            "expected_sample_rate": expected_sample_rate,
+            "expected_hop_length": expected_hop_length,
+            "expected_latent_dim": expected_latent_dim,
             "sample_rate": int(mlx_bridge.sample_rate),
             "hop_length": int(mlx_bridge.hop_length),
             "latent_dim": int(mlx_bridge.latent_dim),
-            "expected_latent_dim": int(args.expected_latent_dim),
             "metadata_checks": {
-                "sample_rate": True,
-                "hop_length": True,
-                "latent_dim": True,
+                "sample_rate": bool(sample_rate_check),
+                "hop_length": bool(hop_length_check),
+                "latent_dim": bool(latent_dim_check),
             },
             "watermark": "disabled",
             "normalize_db": normalize_db,
@@ -209,6 +221,8 @@ def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[st
             "repo": args.codec_repo,
             "device": args.codec_device,
             "mlx_codec": _path_metadata(args.codec_path),
+            "expected_sample_rate": int(args.expected_sample_rate),
+            "expected_hop_length": int(args.expected_hop_length),
             "expected_latent_dim": int(args.expected_latent_dim),
             "watermark": "disabled",
             "normalize_db": None if args.normalize_db is None else float(args.normalize_db),
@@ -238,6 +252,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-seconds", type=float)
     parser.add_argument("--normalize-db", type=float, default=None)
     parser.add_argument("--ensure-max", action="store_true")
+    parser.add_argument(
+        "--expected-sample-rate",
+        type=int,
+        default=DEFAULT_EXPECTED_SAMPLE_RATE,
+        help="Expected codec sample rate. Defaults to 48000 for Semantic-DACVAE.",
+    )
+    parser.add_argument(
+        "--expected-hop-length",
+        type=int,
+        default=DEFAULT_EXPECTED_HOP_LENGTH,
+        help="Expected codec hop length. Defaults to 1920 for Semantic-DACVAE.",
+    )
     parser.add_argument(
         "--expected-latent-dim",
         type=int,

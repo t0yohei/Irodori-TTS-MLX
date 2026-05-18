@@ -84,6 +84,8 @@ python scripts/check_dacvae_encode_parity.py \
   --output-dir /tmp/irodori-dacvae-encode-fixtures/parity \
   --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim \
   --codec-device cpu \
+  --expected-sample-rate 48000 \
+  --expected-hop-length 1920 \
   --expected-latent-dim 32
 ```
 

@@ -45,8 +45,9 @@ the upstream PyTorch DACVAE bridge as a fallback path, so this script does not
 import `irodori_tts.codec` or `torch`.
 
 The fixture must use runtime latent layout `(1, T, 32)` by default. The script
-accepts `--expected-latent-dim` for synthetic tests, but real Semantic-DACVAE
-decode evidence should leave the default `32` in place.
+accepts `--expected-sample-rate`, `--expected-hop-length`, and
+`--expected-latent-dim` for synthetic tests, but real Semantic-DACVAE decode
+evidence should leave the defaults `48000`, `1920`, and `32` in place.
 
 ## Local real-artifact command
 
@@ -74,6 +75,8 @@ python scripts/check_dacvae_decode_parity.py \
   --output-dir /tmp/irodori-dacvae-decode-fixtures/parity \
   --codec-repo Aratako/Semantic-DACVAE-Japanese-32dim \
   --codec-device cpu \
+  --expected-sample-rate 48000 \
+  --expected-hop-length 1920 \
   --expected-latent-dim 32
 ```
 

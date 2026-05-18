@@ -20,6 +20,8 @@ SCHEMA_VERSION = 3
 SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/184"
 PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169"
 DEFAULT_EXPECTED_LATENT_DIM = 32
+DEFAULT_EXPECTED_SAMPLE_RATE = 48_000
+DEFAULT_EXPECTED_HOP_LENGTH = 1_920
 
 DACVAEBridgeConfig: Any = None
 MLXDACVAEBridge: Any = None
@@ -108,6 +110,8 @@ def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[st
         "codec": {
             "repo": args.codec_repo,
             "device": args.codec_device,
+            "expected_sample_rate": int(args.expected_sample_rate),
+            "expected_hop_length": int(args.expected_hop_length),
             "expected_latent_dim": int(args.expected_latent_dim),
             "mlx_codec": _path_metadata(args.codec_path),
             "watermark": "disabled",
@@ -160,18 +164,28 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
         normalize_db=None,
     )
     mlx_bridge = MLXDACVAEBridge(config=mlx_config, require_encode=False)
-    if int(mlx_bridge.latent_dim) != int(args.expected_latent_dim):
+    expected_sample_rate = int(args.expected_sample_rate)
+    expected_hop_length = int(args.expected_hop_length)
+    expected_latent_dim = int(args.expected_latent_dim)
+    sample_rate_check = int(mlx_bridge.sample_rate) == expected_sample_rate
+    hop_length_check = int(mlx_bridge.hop_length) == expected_hop_length
+    latent_dim_check = int(mlx_bridge.latent_dim) == expected_latent_dim
+    if not latent_dim_check:
         raise ValueError(
             "Decode check expected Semantic-DACVAE runtime-layout latents shaped "
-            f"(1,T,{int(args.expected_latent_dim)}), got latent_dim={mlx_bridge.latent_dim}"
+            f"(1,T,{expected_latent_dim}), got latent_dim={mlx_bridge.latent_dim}"
         )
 
     mlx_wav = output_dir / "mlx-decode.wav"
     mlx_bridge.decode_to_wav(latents, mlx_wav, max_samples=max_samples)
     mlx_audio, mlx_sr = _load_audio_numpy(mlx_wav)
     stats = _audio_stats(mlx_audio, int(mlx_sr))
+    decoded_wav_sample_rate_check = int(mlx_sr) == int(mlx_bridge.sample_rate)
     checks = {
-        "sample_rate": int(mlx_sr) == int(mlx_bridge.sample_rate),
+        "sample_rate": bool(sample_rate_check),
+        "hop_length": bool(hop_length_check),
+        "latent_dim": bool(latent_dim_check),
+        "decoded_wav_sample_rate": bool(decoded_wav_sample_rate_check),
         "finite": bool(stats["finite"]),
         "range": bool(stats["within_unit_range"]),
     }
@@ -198,15 +212,17 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "repo": args.codec_repo,
             "device": args.codec_device,
             "mlx_codec_path": str(codec_path),
-            "expected_latent_dim": int(args.expected_latent_dim),
+            "expected_sample_rate": expected_sample_rate,
+            "expected_hop_length": expected_hop_length,
+            "expected_latent_dim": expected_latent_dim,
             "sample_rate": int(mlx_bridge.sample_rate),
             "hop_length": int(mlx_bridge.hop_length),
             "latent_dim": int(mlx_bridge.latent_dim),
             "metadata_checks": {
-                "sample_rate": True,
-                "hop_length": True,
-                "latent_dim": True,
-                "decoded_wav_sample_rate": True,
+                "sample_rate": bool(sample_rate_check),
+                "hop_length": bool(hop_length_check),
+                "latent_dim": bool(latent_dim_check),
+                "decoded_wav_sample_rate": bool(decoded_wav_sample_rate_check),
             },
             "watermark": "disabled",
         },
@@ -226,6 +242,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--codec-repo", default="Aratako/Semantic-DACVAE-Japanese-32dim")
     parser.add_argument("--codec-device", default="cpu")
     parser.add_argument("--max-samples", type=int)
+    parser.add_argument(
+        "--expected-sample-rate",
+        type=int,
+        default=DEFAULT_EXPECTED_SAMPLE_RATE,
+        help="Expected codec sample rate. Defaults to 48000 for Semantic-DACVAE.",
+    )
+    parser.add_argument(
+        "--expected-hop-length",
+        type=int,
+        default=DEFAULT_EXPECTED_HOP_LENGTH,
+        help="Expected codec hop length. Defaults to 1920 for Semantic-DACVAE.",
+    )
     parser.add_argument(
         "--expected-latent-dim",
         type=int,
