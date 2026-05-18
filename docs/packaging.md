@@ -4,7 +4,10 @@ Issue: [#31 Package the project for reproducible runtime and benchmark environme
 
 The repository now exposes a project-level `pyproject.toml` so package users and contributors can install dependencies by use case instead of guessing from ad hoc notes.
 
-The next package release candidate is `0.2.0a1`. It is still alpha software: the CLI surface is intended for v0.2 consumers, while the public Python module API remains conservative and may change before a stable release.
+The next package release candidate is `0.2.0a1`. It is still alpha software:
+the installed console scripts are intended for v0.2 consumers, while the
+`irodori_mlx` modules, top-level exports, and `scripts.*` imports are internal
+implementation details and are not a stable public Python API.
 
 ## Supported Python
 
@@ -39,6 +42,11 @@ python -m pip install --upgrade pip
 python -m pip install /path/to/irodori_tts_mlx-0.2.0a1-py3-none-any.whl
 irodori-tts-generate --help
 ```
+
+Package users should not import `irodori_mlx` modules or `scripts.*` modules as
+a supported integration boundary yet. Those imports are for the CLI, tests, and
+repository-local development, and may change without deprecation while the
+project is alpha. See [public_api_stability.md](public_api_stability.md).
 
 Repository contributors should install from a checkout in editable mode so tests and script changes are exercised directly:
 
@@ -200,6 +208,7 @@ They continue to work with the packaged dependency layout because the repo is in
 ## Current limitations
 
 - The packaging surface is still prototype-grade; there is no stable API guarantee yet.
+- The supported alpha user surface is the installed console scripts and documented artifact contracts, not Python module imports.
 - Python 3.11 through 3.14 are the currently supported packaged environments; newer Python versions should stay unsupported until they are validated.
 - The repository's packaging smoke test workflow exercises metadata checks, wheel/sdist builds, clean wheel installation, installed console-script help checks, and editable-install resolution across Python 3.11, 3.12, 3.13, and 3.14 on GitHub Actions macOS runners.
 - Benchmark reproducibility still depends on access to upstream `irodori_tts`, model weights, and Apple Silicon hardware.

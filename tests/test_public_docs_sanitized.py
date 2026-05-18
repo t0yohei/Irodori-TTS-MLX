@@ -60,6 +60,29 @@ class PublicDocsSanitizedTests(unittest.TestCase):
             with self.subTest(term=term):
                 self.assertIn(term, readme)
 
+    def test_public_api_boundary_is_cli_only_for_alpha(self):
+        readme = (self.root / "README.md").read_text(encoding="utf-8")
+        readme_ja = (self.root / "README.ja.md").read_text(encoding="utf-8")
+        api_doc = (self.root / "docs" / "public_api_stability.md").read_text(encoding="utf-8")
+        packaging_doc = (self.root / "docs" / "packaging.md").read_text(encoding="utf-8")
+        architecture_doc = (self.root / "docs" / "architecture.md").read_text(encoding="utf-8")
+
+        for text in (readme, api_doc, packaging_doc):
+            self.assertIn("installed console scripts", text)
+            self.assertIn("stable public Python API", text)
+            self.assertIn("irodori-tts-generate", text)
+            self.assertIn("irodori-tts-adapt-mlx-audio", text)
+
+        self.assertIn("stable-ish な user contract", readme_ja)
+        self.assertIn("stable public Python API としてはまだ support しません", readme_ja)
+        self.assertIn("No `irodori_mlx` module, class, function, dataclass", api_doc)
+        self.assertIn("treat them as internal implementation details", api_doc)
+        self.assertIn("documented artifact layouts", api_doc)
+        self.assertIn("not Python module imports", architecture_doc)
+        self.assertIn("internal reusable Python modules", architecture_doc)
+        self.assertIn("not a stable public Python API", (self.root / "docs" / "dacvae_bridge.md").read_text(encoding="utf-8"))
+        self.assertNotIn("IrodoriGenerator.from_pretrained", architecture_doc)
+
     def test_readme_first_run_troubleshooting_documents_preflight(self):
         readme = (self.root / "README.md").read_text(encoding="utf-8")
 
