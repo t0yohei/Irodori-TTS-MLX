@@ -184,6 +184,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             max_reference_seconds=30.0,
             no_context_kv_cache=False,
             print_boundaries=False,
+            preflight=False,
             config_json=None,
             requests_json=None,
             metadata_json=None,
@@ -832,6 +833,83 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             generate_wav.parse_args(["--model", "org/repo", "--output", "out.wav", "--text", "hello"])
+
+    def test_parse_args_preflight_does_not_require_text_or_output(self):
+        args = generate_wav.parse_args(["--weights", "weights.npz", "--preflight"])
+
+        self.assertTrue(args.preflight)
+        self.assertIsNone(args.text)
+        self.assertIsNone(args.output)
+
+    def test_main_preflight_reports_runtime_without_generation(self):
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "preflight.json"
+            args = self._args("")
+            args.output = None
+            args.text = None
+            args.preflight = True
+            args.json_output = True
+            args.metadata_json = str(metadata_path)
+            args.model_config_json = '{"use_duration_predictor": true, "text_tokenizer_repo": "example/text"}'
+            stdout = StringIO()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "_ensure_runtime_imports", side_effect=AssertionError("preflight must not import runtime")
+            ), patch.object(
+                generate_wav, "MLXDACVAERuntime", side_effect=AssertionError("preflight must not construct runtime")
+            ), redirect_stdout(stdout):
+                rc = generate_wav.main()
+
+            payload = json.loads(stdout.getvalue())
+            metadata_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload, metadata_payload)
+        self.assertFalse(payload["preflight"]["generation_will_run"])
+        self.assertIn("tokenizer download/load", payload["preflight"]["skipped"])
+        self.assertEqual(payload["runtime"]["checkpoint_family"], "v3")
+        self.assertEqual(payload["runtime"]["text_tokenizer_repo"], "example/text")
+        self.assertEqual(payload["weights"]["source_kind"], "file")
+        self.assertEqual(payload["codec"]["source_kind"], "pytorch-bridge")
+        self.assertEqual(payload["codec_capabilities"]["runtime_mode"], "subprocess")
+
+    def test_main_preflight_reports_resolved_layout_and_codec_paths(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            weights_root = root / "weights"
+            codec_root = root / "codec"
+            weights_root.mkdir()
+            codec_root.mkdir()
+            self._write_hosted_layout(weights_root, license_status="pending")
+            self._write_codec_artifact_layout(codec_root, license_status="pending")
+            args = generate_wav.parse_args(
+                [
+                    "--weights-dir",
+                    str(weights_root),
+                    "--codec-runtime-mode",
+                    "mlx-decode",
+                    "--codec-artifact-dir",
+                    str(codec_root),
+                    "--preflight",
+                    "--json",
+                ]
+            )
+            stdout = StringIO()
+            with patch.object(
+                generate_wav, "_ensure_runtime_imports", side_effect=AssertionError("preflight must not import runtime")
+            ), patch.object(
+                generate_wav, "MLXDACVAERuntime", side_effect=AssertionError("preflight must not construct runtime")
+            ), redirect_stdout(stdout):
+                with patch.object(generate_wav, "parse_args", return_value=args):
+                    rc = generate_wav.main()
+
+            payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["weights"]["source_kind"], "local")
+        self.assertTrue(payload["weights"]["weights_path"].endswith("weights.npz"))
+        self.assertEqual(payload["codec"]["source_kind"], "local")
+        self.assertTrue(payload["codec"]["codec_path"].endswith("dacvae-codec.npz"))
+        self.assertEqual(payload["codec_capabilities"]["runtime_mode"], "mlx-decode")
 
     def test_resolve_preconverted_weights_dir_supplies_weights_and_model_config(self):
         with tempfile.TemporaryDirectory() as td:
