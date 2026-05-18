@@ -20,7 +20,7 @@ The project currently supports:
 - loading direct local `.npz` weights, local hosted-layout directories/archives, or approved Hugging Face hosted-layout repositories
 - adapting unquantized `mlx-audio` Irodori artifact directories into this project's hosted weights layout
 - generating WAV files through `irodori-tts-generate` / `scripts/generate_wav.py`
-- using `--config-json`, `--requests-json`, `--preset fast|balanced|quality`, JSON metadata output, and persistent runtime reuse for repeated local generation
+- using `--config-json`, `--requests-json`, `--cleanup-between-requests`, `--preset fast|balanced|quality`, JSON metadata output, and persistent runtime reuse for repeated local generation
 - running local benchmarks, parity checks, and hosted Apple Silicon validation workflows
 
 The default audio codec path still imports upstream `irodori_tts.codec.DACVAECodec`. Experimental local MLX codec artifact modes exist for v0.2 codec-port work, but this repository does not bundle codec weights or claim broad acoustic parity for arbitrary codec artifacts.
@@ -266,6 +266,8 @@ The adapter currently supports unquantized v2/base and VoiceDesign layouts. Quan
 
 For VoiceDesign v2, omitting `--seconds` uses `duration_mode: "estimated"`: the runtime estimates duration primarily from `--text` and applies only small caption style-hint adjustments. Use `--seconds` for an exact duration or `--duration-scale` when a prompt clips or leaves too much tail.
 
+For repeated local generation, put request objects in `--requests-json` to reuse one initialized runtime. Add `--cleanup-between-requests` when memory residency matters more than maximum throughput.
+
 ## Main Commands
 
 ```bash
@@ -273,6 +275,7 @@ irodori-tts-inspect /path/to/model.safetensors --all-tensors
 irodori-tts-convert /path/to/model.safetensors /path/to/weights.npz
 irodori-tts-convert /path/to/model.safetensors --dry-run --json
 irodori-tts-generate --help
+irodori-tts-generate --config-json config.json --requests-json requests.json
 irodori-tts-adapt-mlx-audio --help
 python scripts/benchmark.py --self-test
 ```
