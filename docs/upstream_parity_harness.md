@@ -25,6 +25,12 @@ reports pass for the supported v3 and VoiceDesign scenarios, while real
 upstream-vs-MLX audio execution remains partial on machines without an upstream
 checkout and converted MLX checkpoint artifacts.
 
+The current real-checkpoint Apple Silicon evidence is recorded in
+[baseline-reports/2026-05-18-real-upstream-mlx-generation-parity.md](baseline-reports/2026-05-18-real-upstream-mlx-generation-parity.md).
+That report summarizes v3 no-reference, VoiceDesign caption-conditioned, and v3
+reference-audio generation with pinned RF-DiT artifacts plus a local DACVAE MLX
+codec artifact.
+
 ## Setup Matrix
 
 The harness has three useful setup levels:
@@ -129,6 +135,8 @@ uv run python scripts/run_upstream_parity.py \
   --mlx-weights /tmp/irodori-quickstart/irodori-v3.npz \
   --mlx-model-config-json /tmp/irodori-quickstart/v3-model-config.json \
   --reference-wav /tmp/irodori-parity/v3-reference.wav \
+  --codec-runtime-mode mlx \
+  --codec-path /path/to/dacvae-codec.npz \
   --output-dir parity-runs/v3-real \
   --codec-device cpu \
   --num-steps 8 \
@@ -173,6 +181,8 @@ uv run python scripts/run_upstream_parity.py \
   --upstream-root external/Irodori-TTS \
   --mlx-weights /tmp/irodori-voicedesign/irodori-voicedesign.npz \
   --mlx-model-config-json /tmp/irodori-voicedesign/voicedesign-model-config.json \
+  --codec-runtime-mode mlx-decode \
+  --codec-path /path/to/dacvae-codec.npz \
   --output-dir parity-runs/voicedesign-real \
   --codec-device cpu \
   --seconds 2.0 \

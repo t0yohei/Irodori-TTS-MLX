@@ -240,6 +240,16 @@ def _mlx_command(scenario: Scenario, args: argparse.Namespace, output_wav: Path,
         str(metadata_json),
         "--json",
     ]
+    if args.codec_runtime_mode:
+        command.extend(["--codec-runtime-mode", args.codec_runtime_mode])
+    if args.codec_path:
+        command.extend(["--codec-path", str(Path(args.codec_path).expanduser().resolve())])
+    if args.codec_artifact_dir:
+        command.extend(["--codec-artifact-dir", str(Path(args.codec_artifact_dir).expanduser().resolve())])
+    if args.codec_artifact_repo:
+        command.extend(["--codec-artifact-repo", args.codec_artifact_repo])
+    if args.codec_artifact_revision and args.codec_artifact_repo:
+        command.extend(["--codec-artifact-revision", args.codec_artifact_revision])
     model_config = args.mlx_model_config_json or ("/path/to/model-config.json" if not args.mlx_weights else None)
     if model_config:
         command.extend(["--model-config-json", str(Path(model_config).expanduser()) if args.mlx_model_config_json else model_config])
@@ -804,6 +814,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--model-device", default="mps")
     parser.add_argument("--codec-device", default="cpu")
+    parser.add_argument("--codec-runtime-mode")
+    parser.add_argument("--codec-path")
+    parser.add_argument("--codec-artifact-dir")
+    parser.add_argument("--codec-artifact-repo")
+    parser.add_argument("--codec-artifact-revision")
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument("--text-tokenizer-repo")
     parser.add_argument("--caption-tokenizer-repo")

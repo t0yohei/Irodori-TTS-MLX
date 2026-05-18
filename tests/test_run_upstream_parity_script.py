@@ -221,6 +221,67 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
         self.assertIn("generate_wav.py", " ".join(report["mlx"]["command"]["argv"]))
         self.assertIn("--model-config-json", report["mlx"]["command"]["argv"])
 
+    def test_local_mlx_codec_runtime_options_are_recorded_in_rerunnable_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            old_cwd = os.getcwd()
+            self.addCleanup(os.chdir, old_cwd)
+            os.chdir(td)
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "v3-reference-predicted",
+                    "--output-dir",
+                    td,
+                    "--reference-wav",
+                    "/tmp/reference.wav",
+                    "--mlx-weights",
+                    "/tmp/irodori-v3.npz",
+                    "--mlx-model-config-json",
+                    "/tmp/v3-model-config.json",
+                    "--codec-runtime-mode",
+                    "mlx",
+                    "--codec-path",
+                    "local/dacvae-codec.npz",
+                    "--codec-artifact-revision",
+                    "16d64e0978afe79c46b971405bba4f464cc743f8",
+                ]
+            )
+            report = run_upstream_parity.build_report(args)
+
+        argv = report["mlx"]["command"]["argv"]
+        self.assertIn("--codec-runtime-mode", argv)
+        self.assertIn("mlx", argv)
+        self.assertIn("--codec-path", argv)
+        self.assertIn(str(Path(td).resolve() / "local" / "dacvae-codec.npz"), argv)
+        self.assertNotIn("--codec-artifact-revision", argv)
+
+    def test_hosted_mlx_codec_revision_is_recorded_with_repo(self):
+        with tempfile.TemporaryDirectory() as td:
+            args = run_upstream_parity.parse_args(
+                [
+                    "--scenario",
+                    "v3-no-reference",
+                    "--output-dir",
+                    td,
+                    "--mlx-weights",
+                    "/tmp/irodori-v3.npz",
+                    "--mlx-model-config-json",
+                    "/tmp/v3-model-config.json",
+                    "--codec-runtime-mode",
+                    "mlx-decode",
+                    "--codec-artifact-repo",
+                    "t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
+                    "--codec-artifact-revision",
+                    "16d64e0978afe79c46b971405bba4f464cc743f8",
+                ]
+            )
+            report = run_upstream_parity.build_report(args)
+
+        argv = report["mlx"]["command"]["argv"]
+        self.assertIn("--codec-artifact-repo", argv)
+        self.assertIn("t0yohei/Irodori-TTS-MLX-DACVAE-Codec", argv)
+        self.assertIn("--codec-artifact-revision", argv)
+
     def test_run_upstream_resolves_relative_output_dir_before_changing_cwd(self):
         with tempfile.TemporaryDirectory() as td:
             old_cwd = os.getcwd()
