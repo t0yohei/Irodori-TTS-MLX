@@ -134,6 +134,22 @@ def _release_torch_runtime_memory(torch_module, device: str) -> None:
         pass
 
 
+def release_mlx_runtime_memory() -> None:
+    """End pending MLX work and release reusable cache memory when supported."""
+
+    try:
+        if hasattr(mx, "synchronize"):
+            mx.synchronize()
+    except Exception:
+        pass
+    gc.collect()
+    try:
+        if hasattr(mx, "clear_cache"):
+            mx.clear_cache()
+    except Exception:
+        pass
+
+
 def torch_to_mlx_latents(tensor) -> mx.array:
     """Convert a PyTorch latent tensor to an MLX array through an explicit CPU boundary."""
 

@@ -19,6 +19,7 @@ We now have both:
 - the real hosted/pre-converted weights loading measurement from [docs/benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md](benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md)
 - the codec runtime mode comparison from [docs/benchmark-reports/2026-05-18-apple-silicon-codec-runtime-modes.md](benchmark-reports/2026-05-18-apple-silicon-codec-runtime-modes.md)
 - the persistent batch generation measurement from [docs/benchmark-reports/2026-05-18-apple-silicon-persistent-batch.md](benchmark-reports/2026-05-18-apple-silicon-persistent-batch.md)
+- the persistent batch cleanup comparison from [docs/benchmark-reports/2026-05-18-apple-silicon-persistent-batch-cleanup-comparison.md](benchmark-reports/2026-05-18-apple-silicon-persistent-batch-cleanup-comparison.md)
 - persistent batch generation is now documented in [dacvae_bridge.md](dacvae_bridge.md); the old one-off persistent-batch report was removed because no current summary or test referenced it
 
 Current read:
@@ -43,7 +44,7 @@ The v0.2 hosted weights measurement shows that hosted loading is a setup/UX impr
 
 The v0.2 codec runtime mode measurement shows a similar split: MLX codec artifacts do not change RF sampling time, but they can reduce PyTorch dependency surface and peak RSS. In the measured v3 reference-audio run, full `mlx` encode/decode reduced warm max RSS from about 4.33 GiB to 3.08 GiB versus the PyTorch bridge and lowered codec encode/decode timings. Treat this as a deployment and memory-pressure improvement first; larger repeated runs are still needed before claiming a broad codec-speed win.
 
-The persistent batch measurement shows that simply reusing one runtime is not yet enough to claim a server/worker speed win. A five-request `mlx-decode` batch amortized setup modestly at the process level, but request-level `decode_dacvae` drifted upward after the first request. The next optimization should target per-request MLX codec cleanup or decode residency behavior inside the persistent process.
+The persistent batch measurement shows that simply reusing one runtime is not enough by itself to claim a server/worker speed win. A five-request `mlx-decode` batch amortized setup modestly at the process level, but request-level `decode_dacvae` drifted upward after the first request. A follow-up cleanup comparison found that `--cleanup-between-requests` stabilized measured `decode_dacvae` from a 717.4-1231.2 ms range to a 712.8-745.2 ms range and improved measured generation throughput from 0.522 req/s to 0.624 req/s in that run. Keep it opt-in for persistent workers and diagnostics because the same run reported higher max RSS with cleanup enabled.
 
 ## Existing upstream baseline numbers
 
@@ -174,6 +175,8 @@ Use `scripts/benchmark.py` to run a reproducible benchmark harness with repeated
 For environment setup, use the packaged benchmark flow in [docs/packaging.md](packaging.md): Python 3.11 through 3.14 are supported for packaging, while the benchmark examples continue to use Python 3.11 as the reference environment. Create a venv, install `-e ".[bench]"`, and make upstream `irodori_tts` importable from the same environment.
 
 Use scripts/benchmark_persistent_batch.py when the question is repeated generation through one initialized runtime. It wraps scripts/generate_wav.py --requests-json, records one process-level wall clock and max RSS, and summarizes first-request, warmup, measured steady-state, and throughput metrics. This is the right harness for estimating the benefit of a future persistent server or worker because model, tokenizer, hosted artifact, and codec setup are paid once for the whole batch instead of once per output.
+
+Add `--cleanup-between-requests` to the persistent batch benchmark to forward an explicit MLX request boundary into `scripts/generate_wav.py`. The boundary synchronizes MLX, runs Python garbage collection, and clears reusable MLX cache memory after each generated request. Use it to test whether repeated-request latency drift is caused by request-local MLX residency; do not treat it as the default unless the target deployment accepts the observed RSS tradeoff.
 
 ### Self-test
 

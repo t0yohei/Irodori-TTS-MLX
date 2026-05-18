@@ -187,6 +187,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             preflight=False,
             config_json=None,
             requests_json=None,
+            cleanup_between_requests=False,
             metadata_json=None,
             json_output=False,
         )
@@ -1188,6 +1189,58 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(runtime.requests[1].num_steps, 7)
         self.assertEqual(payload["batch"]["count"], 2)
         self.assertEqual(len(payload["results"]), 2)
+
+    def test_main_batch_requests_can_cleanup_between_requests(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            requests_path = Path(td) / "requests.json"
+            first_wav = str(Path(td) / "first.wav")
+            second_wav = str(Path(td) / "second.wav")
+            requests_path.write_text(
+                json.dumps(
+                    [
+                        {"text": "first", "output": first_wav},
+                        {"text": "second", "output": second_wav},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            args = self._args("")
+            args.output = None
+            args.text = None
+            args.requests_json = str(requests_path)
+            args.cleanup_between_requests = True
+            args.json_output = True
+            cleanup_calls = []
+            stdout = StringIO()
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "release_mlx_runtime_memory", side_effect=lambda: cleanup_calls.append("cleanup")
+            ), redirect_stdout(stdout):
+                rc = generate_wav.main()
+
+            payload = json.loads(stdout.getvalue())
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(runtime_holder["runtime"].requests), 2)
+        self.assertEqual(cleanup_calls, ["cleanup", "cleanup"])
+        self.assertTrue(payload["cli"]["cleanup_between_requests"])
+
+    def test_parse_args_can_disable_configured_cleanup_between_requests(self):
+        args = generate_wav.parse_args(
+            [
+                "--config-json",
+                '{"weights":"weights.npz","output":"out.wav","text":"hello","cleanup_between_requests":true}',
+                "--no-cleanup-between-requests",
+            ]
+        )
+        self.assertFalse(args.cleanup_between_requests)
 
     def test_main_single_batch_request_keeps_batch_envelope(self):
         runtime_holder = {}

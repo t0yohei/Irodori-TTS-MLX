@@ -35,6 +35,7 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
             codec_artifact_dir=None,
             codec_artifact_repo="owner/codec",
             codec_artifact_revision="def",
+            cleanup_between_requests=False,
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -60,6 +61,12 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
         self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], "owner/codec")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
+
+    def test_build_command_forwards_cleanup_between_requests(self):
+        args = self._args()
+        args.cleanup_between_requests = True
+        argv, _ = bench.build_command(args, Path("/tmp/requests.json"), Path("/tmp/metadata.json"))
+        self.assertIn("--cleanup-between-requests", argv)
 
     def test_parse_batch_metadata_labels_warmup(self):
         metadata = {
@@ -115,4 +122,3 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -21,12 +21,13 @@ MLXRuntimeConfig = None
 describe_codec_capabilities = None
 iter_messages = None
 load_model_config_json = None
+release_mlx_runtime_memory = None
 resolve_weights_layout_source = None
 
 
 def _ensure_runtime_imports() -> None:
     """Import runtime dependencies lazily so --help works before optional setup is complete."""
-    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, describe_codec_capabilities, iter_messages, load_model_config_json, resolve_weights_layout_source
+    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, describe_codec_capabilities, iter_messages, load_model_config_json, release_mlx_runtime_memory, resolve_weights_layout_source
     from irodori_mlx import runtime as runtime_module
     from irodori_mlx.hosted_weights import resolve_weights_layout_source as resolve_layout
 
@@ -44,6 +45,8 @@ def _ensure_runtime_imports() -> None:
         iter_messages = runtime_module.iter_messages
     if load_model_config_json is None:
         load_model_config_json = runtime_module.load_model_config_json
+    if release_mlx_runtime_memory is None:
+        release_mlx_runtime_memory = runtime_module.release_mlx_runtime_memory
     if resolve_weights_layout_source is None:
         resolve_weights_layout_source = resolve_layout
 
@@ -90,6 +93,7 @@ CONFIG_KEYS = {
     "metadata_json",
     "json_output",
     "requests_json",
+    "cleanup_between_requests",
 }
 
 REQUEST_KEYS = {
@@ -140,6 +144,7 @@ BOOL_KEYS = {
     "print_boundaries",
     "preflight",
     "json_output",
+    "cleanup_between_requests",
 }
 INT_KEYS = {"text_max_length", "caption_max_length", "num_steps", "seed"}
 FLOAT_KEYS = {
@@ -302,6 +307,14 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     )
     parser.add_argument("--config-json", help="Optional inline JSON object or path with common generation/runtime defaults.")
     parser.add_argument("--requests-json", default=config.get("requests_json"), help="Optional inline JSON array or path with repeated generation requests. Reuses one initialized runtime.")
+    _add_configurable_bool(
+        parser,
+        dest="cleanup_between_requests",
+        config=config,
+        enable_flag="--cleanup-between-requests",
+        disable_flag="--no-cleanup-between-requests",
+        help_text="Synchronize MLX and clear reusable MLX cache memory after each --requests-json item.",
+    )
     weights_group = parser.add_mutually_exclusive_group(required=not any(config.get(key) for key in ("weights", "weights_dir", "weights_repo")))
     weights_group.add_argument(
         "--weights",
@@ -862,6 +875,7 @@ def build_result_payload(
             "json_output": bool(args.json_output),
             "print_boundaries": bool(args.print_boundaries),
             "preset": args.preset,
+            "cleanup_between_requests": bool(args.cleanup_between_requests),
         },
     }
 
@@ -1074,6 +1088,9 @@ def main() -> int:
         payload = build_result_payload(result=result, request=request, runtime=runtime, args=args)
         payload["batch"] = {"index": index, "count": len(request_overrides), "overrides": dict(overrides)}
         payloads.append(payload)
+        if args.cleanup_between_requests:
+            assert release_mlx_runtime_memory is not None
+            release_mlx_runtime_memory()
 
     output_payload: dict[str, Any] | list[dict[str, Any]] = payloads[0] if len(payloads) == 1 and not args.requests_json else {
         "results": payloads,
