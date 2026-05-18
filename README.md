@@ -21,7 +21,7 @@ The project currently supports:
 - adapting unquantized `mlx-audio` Irodori artifact directories into this project's hosted weights layout
 - generating WAV files through `irodori-tts-generate` / `scripts/generate_wav.py`
 - starting an optional local Gradio Web UI through `irodori-tts-web`
-- using `--config-json`, `--requests-json`, `--cleanup-between-requests`, `--preset fast|balanced|quality`, JSON metadata output, and persistent runtime reuse for repeated local generation
+- using `--config-json`, `--requests-json`, `--cleanup-between-requests`, `--preset ultra-fast|fast|balanced|quality`, JSON metadata output, and persistent runtime reuse for repeated local generation
 - running local benchmarks, parity checks, and hosted Apple Silicon validation workflows
 
 The default audio codec path still imports upstream `irodori_tts.codec.DACVAECodec`. Experimental local MLX codec artifact modes exist for v0.2 codec-port work, but this repository does not bundle codec weights or claim broad acoustic parity for arbitrary codec artifacts.

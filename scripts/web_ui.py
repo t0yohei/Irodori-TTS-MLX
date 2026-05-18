@@ -92,6 +92,14 @@ def _optional_int(value: object) -> int | None:
     return int(text)
 
 
+def _float_or_default(value: object, default: float) -> float:
+    return default if value is None else float(value)
+
+
+def _int_or_default(value: object, default: int) -> int:
+    return default if value is None else int(value)
+
+
 def _with_artifact_preset(config: WebGenerationConfig) -> WebGenerationConfig:
     preset = ARTIFACT_PRESETS.get(config.artifact_preset)
     if preset is None:
@@ -177,6 +185,7 @@ def run_generation(config: WebGenerationConfig) -> tuple[str | None, str, str]:
     output_root.mkdir(parents=True, exist_ok=True)
     output_wav = str(output_root / "irodori-web-output.wav")
     metadata_path = output_root / "irodori-web-metadata.json"
+    metadata_path.unlink(missing_ok=True)
     try:
         argv = build_generate_argv(config, output_wav=output_wav, metadata_json=str(metadata_path))
     except Exception as exc:
@@ -238,7 +247,7 @@ def build_ui() -> Any:
             reference_wav = gr.Audio(label="Reference audio", type="filepath")
             no_reference = gr.Checkbox(label="No reference", value=True)
         with gr.Row():
-            preset = gr.Dropdown(["fast", "balanced", "quality"], value="balanced", label="Generation preset")
+            preset = gr.Dropdown(["ultra-fast", "fast", "balanced", "quality"], value="balanced", label="Generation preset")
             num_steps = gr.Textbox(label="Override num steps")
             seed = gr.Number(label="Seed", value=0, precision=0)
             seconds = gr.Textbox(label="Seconds")
@@ -276,21 +285,21 @@ def build_ui() -> Any:
                 no_reference=bool(values[8]),
                 preset=_clean_text(values[9]),
                 num_steps=_optional_int(values[10]),
-                seed=int(values[11] or 0),
+                seed=_int_or_default(values[11], 0),
                 seconds=_optional_float(values[12]),
-                duration_scale=float(values[13] or 1.0),
+                duration_scale=_float_or_default(values[13], 1.0),
                 codec_runtime_mode=str(values[14]),
                 codec_artifact_repo=_clean_text(values[15]),
                 codec_artifact_revision=_clean_text(values[16]),
                 codec_artifact_dir=_clean_text(values[17]),
                 codec_path=_clean_text(values[18]),
                 codec_device=str(values[19]),
-                cfg_scale_text=float(values[20] or 3.0),
-                cfg_scale_caption=float(values[21] or 3.0),
-                cfg_scale_speaker=float(values[22] or 5.0),
+                cfg_scale_text=_float_or_default(values[20], 3.0),
+                cfg_scale_caption=_float_or_default(values[21], 3.0),
+                cfg_scale_speaker=_float_or_default(values[22], 5.0),
                 cfg_guidance_mode=str(values[23]),
-                cfg_min_t=float(values[24] or 0.5),
-                cfg_max_t=float(values[25] or 1.0),
+                cfg_min_t=_float_or_default(values[24], 0.5),
+                cfg_max_t=_float_or_default(values[25], 1.0),
                 output_dir=_clean_text(values[26]),
             )
             return run_generation(config)

@@ -91,6 +91,18 @@ class WebUiScriptTests(unittest.TestCase):
         self.assertIsNone(audio)
         self.assertIn("generation failed with exit code 2", logs)
 
+    def test_run_generation_clears_stale_metadata_before_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "irodori-web-metadata.json"
+            metadata_path.write_text(json.dumps({"stale": True}), encoding="utf-8")
+
+            with patch.object(web_ui.generate_wav, "cli_main", return_value=2):
+                audio, metadata, logs = web_ui.run_generation(web_ui.WebGenerationConfig(output_dir=td))
+
+        self.assertIsNone(audio)
+        self.assertEqual(metadata, "")
+        self.assertIn("generation failed with exit code 2", logs)
+
     def test_run_generation_preserves_system_exit_message(self):
         with patch.object(web_ui.generate_wav, "cli_main", side_effect=SystemExit("bad request")):
             audio, _metadata, logs = web_ui.run_generation(web_ui.WebGenerationConfig())
@@ -98,6 +110,10 @@ class WebUiScriptTests(unittest.TestCase):
         self.assertIsNone(audio)
         self.assertIn("generation failed with exit code 1", logs)
         self.assertIn("bad request", logs)
+
+    def test_zero_numeric_values_do_not_fall_back_to_defaults(self):
+        self.assertEqual(web_ui._int_or_default(0, 1), 0)
+        self.assertEqual(web_ui._float_or_default(0, 1.0), 0.0)
 
     def test_gradio_is_lazy_optional(self):
         parsed = web_ui.build_parser().parse_args(["--host", "0.0.0.0", "--port", "9999"])

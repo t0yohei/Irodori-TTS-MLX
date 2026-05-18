@@ -158,15 +158,29 @@ FLOAT_KEYS = {
 }
 NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
-    "preset": {"fast", "balanced", "quality"},
+    "preset": {"ultra-fast", "fast", "balanced", "quality"},
     "codec_runtime_mode": {"persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
 }
 
-PRESET_NUM_STEPS = {
-    "fast": 12,
-    "balanced": 24,
-    "quality": 40,
+PRESET_DEFAULTS = {
+    "ultra-fast": {
+        "num_steps": 6,
+        "cfg_guidance_mode": "joint",
+        "cfg_scale_text": 1.0,
+        "cfg_scale_caption": 0.0,
+        "cfg_scale_speaker": 0.0,
+    },
+    "fast": {"num_steps": 12},
+    "balanced": {"num_steps": 24},
+    "quality": {"num_steps": 40},
+}
+PRESET_NUM_STEPS = {name: int(defaults["num_steps"]) for name, defaults in PRESET_DEFAULTS.items()}
+BASELINE_CFG_DEFAULTS = {
+    "cfg_guidance_mode": "independent",
+    "cfg_scale_text": 3.0,
+    "cfg_scale_caption": 3.0,
+    "cfg_scale_speaker": 5.0,
 }
 
 
@@ -271,14 +285,65 @@ def _has_cli_override(argv: list[str], option: str) -> bool:
     return any(token == option or token.startswith(f"{option}=") for token in argv)
 
 
-def _resolve_num_steps(*, preset: str | None, current_num_steps: int, config: dict[str, Any], argv: list[str]) -> int:
+def _resolve_preset_default(
+    *,
+    preset: str | None,
+    key: str,
+    current_value: Any,
+    config: dict[str, Any],
+    argv: list[str],
+    option: str,
+) -> Any:
     if not preset:
-        return current_num_steps
-    if _has_cli_override(argv, "--num-steps"):
-        return current_num_steps
-    if "num_steps" in config and not _has_cli_override(argv, "--preset"):
-        return current_num_steps
-    return PRESET_NUM_STEPS[preset]
+        return current_value
+    if key not in PRESET_DEFAULTS[preset]:
+        return current_value
+    if _has_cli_override(argv, option):
+        return current_value
+    if key in config and not _has_cli_override(argv, "--preset"):
+        return current_value
+    return PRESET_DEFAULTS[preset][key]
+
+
+def _apply_preset_defaults(args: argparse.Namespace, *, config: dict[str, Any], argv: list[str]) -> None:
+    preset = args.preset
+    args.num_steps = int(
+        _resolve_preset_default(
+            preset=preset,
+            key="num_steps",
+            current_value=args.num_steps,
+            config=config,
+            argv=argv,
+            option="--num-steps",
+        )
+    )
+    args.cfg_guidance_mode = _resolve_preset_default(
+        preset=preset,
+        key="cfg_guidance_mode",
+        current_value=args.cfg_guidance_mode,
+        config=config,
+        argv=argv,
+        option="--cfg-guidance-mode",
+    )
+    for key, option in (
+        ("cfg_scale_text", "--cfg-scale-text"),
+        ("cfg_scale_caption", "--cfg-scale-caption"),
+        ("cfg_scale_speaker", "--cfg-scale-speaker"),
+    ):
+        setattr(
+            args,
+            key,
+            float(
+                _resolve_preset_default(
+                    preset=preset,
+                    key=key,
+                    current_value=getattr(args, key),
+                    config=config,
+                    argv=argv,
+                    option=option,
+                )
+            ),
+        )
 
 
 def _add_configurable_bool(
@@ -350,8 +415,8 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         default=config.get("preset"),
         choices=tuple(PRESET_NUM_STEPS),
         help=(
-            "Local generation preset: fast=12 steps, balanced=24 steps, quality=40 steps. "
-            "Explicit --num-steps still wins when provided."
+            "Local generation preset: ultra-fast=experimental 6-step latency-first CFG, "
+            "fast=12 steps, balanced=24 steps, quality=40 steps. Explicit sampling flags still win."
         ),
     )
     parser.add_argument("--reference-wav", default=config.get("reference_wav"), help="Speaker/reference audio path for DACVAE encoding.")
@@ -434,7 +499,7 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         "--num-steps",
         type=int,
         default=int(_default(config, "num_steps", 40)),
-        help="RF sampling steps. Defaults to 40 unless a preset supplies 12/24/40 first.",
+        help="RF sampling steps. Defaults to 40 unless a preset supplies a sampling default first.",
     )
     parser.add_argument("--cfg-scale-text", type=float, default=float(_default(config, "cfg_scale_text", 3.0)), help="Classifier-free guidance scale for text conditioning.")
     parser.add_argument("--cfg-scale-caption", type=float, default=float(_default(config, "cfg_scale_caption", 3.0)), help="Classifier-free guidance scale for caption conditioning.")
@@ -529,12 +594,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             setattr(args, name, None)
         if not _has_cli_override(argv, "--codec-artifact-revision"):
             args.codec_artifact_revision = None
-    args.num_steps = _resolve_num_steps(
-        preset=args.preset,
-        current_num_steps=int(args.num_steps),
-        config=config,
-        argv=argv,
-    )
+    _apply_preset_defaults(args, config=config, argv=argv)
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
     selected_weights = [value for value in (args.weights, args.weights_dir, args.weights_repo) if value is not None and str(value).strip()]
@@ -887,6 +947,26 @@ def _merged_request_value(args: argparse.Namespace, overrides: dict[str, Any], k
     return overrides[key] if key in overrides else getattr(args, key)
 
 
+def _merged_request_preset_value(
+    args: argparse.Namespace,
+    overrides: dict[str, Any],
+    preset_defaults: dict[str, Any],
+    preset: str | None,
+    key: str,
+) -> Any:
+    if "preset" in overrides and key not in overrides:
+        if key in preset_defaults:
+            return preset_defaults[key]
+        if (
+            preset in {"fast", "balanced", "quality"}
+            and key in BASELINE_CFG_DEFAULTS
+            and args.preset == "ultra-fast"
+            and getattr(args, key) == PRESET_DEFAULTS["ultra-fast"][key]
+        ):
+            return BASELINE_CFG_DEFAULTS[key]
+    return _merged_request_value(args, overrides, key)
+
+
 def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any] | None = None) -> GenerationRequest:
     _ensure_runtime_imports()
     overrides = dict(overrides or {})
@@ -901,9 +981,12 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
     if reference_wav and no_reference:
         raise ValueError("generation request cannot set both reference_wav and no_reference")
     preset = _merged_request_value(args, overrides, "preset")
-    num_steps = int(_merged_request_value(args, overrides, "num_steps"))
-    if "preset" in overrides and "num_steps" not in overrides and preset:
-        num_steps = PRESET_NUM_STEPS[preset]
+    preset_defaults = PRESET_DEFAULTS.get(preset, {}) if preset else {}
+    num_steps = int(_merged_request_preset_value(args, overrides, preset_defaults, preset, "num_steps"))
+    cfg_guidance_mode = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_guidance_mode")
+    cfg_scale_text = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_text")
+    cfg_scale_caption = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_caption")
+    cfg_scale_speaker = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_speaker")
     seconds = _merged_request_value(args, overrides, "seconds")
     duration_scale = float(_merged_request_value(args, overrides, "duration_scale"))
     max_reference_seconds = _merged_request_value(args, overrides, "max_reference_seconds")
@@ -924,10 +1007,10 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         seconds=None if seconds is None else float(seconds),
         duration_scale=duration_scale,
         num_steps=num_steps,
-        cfg_scale_text=float(_merged_request_value(args, overrides, "cfg_scale_text")),
-        cfg_scale_caption=float(_merged_request_value(args, overrides, "cfg_scale_caption")),
-        cfg_scale_speaker=float(_merged_request_value(args, overrides, "cfg_scale_speaker")),
-        cfg_guidance_mode=_merged_request_value(args, overrides, "cfg_guidance_mode"),
+        cfg_scale_text=float(cfg_scale_text),
+        cfg_scale_caption=float(cfg_scale_caption),
+        cfg_scale_speaker=float(cfg_scale_speaker),
+        cfg_guidance_mode=cfg_guidance_mode,
         cfg_min_t=float(_merged_request_value(args, overrides, "cfg_min_t")),
         cfg_max_t=float(_merged_request_value(args, overrides, "cfg_max_t")),
         seed=int(_merged_request_value(args, overrides, "seed")),

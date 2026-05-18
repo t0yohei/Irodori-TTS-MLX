@@ -43,6 +43,8 @@ For day-to-day local generation defaults, the later `num_steps` sweep now sugges
 - `--num-steps 24` for balanced local usage
 - keep `--num-steps 40` as the higher-quality comparison/default anchor when latency matters less
 
+The `--preset ultra-fast` mode is intentionally experimental: it maps to a 6-step, joint-guidance, text-CFG-1 profile with caption/speaker CFG set to 0. That setting is useful for latency-first candidate generation after #217/#218/#221/#222, but it is not a replacement for the public `fast`, `balanced`, or `quality` defaults until real candidate WAVs have listening/parity evidence.
+
 The v0.2 hosted weights measurement shows that hosted loading is a setup/UX improvement rather than a generation-latency optimization: the first hosted run is dominated by the artifact download, while warm hosted repo, local hosted-layout directory, and direct local `.npz` fallback all produce similar `sample_rf` and `total_to_decode` timings.
 
 The v0.2 codec runtime mode measurement shows a similar split: MLX codec artifacts do not change RF sampling time, but they can reduce PyTorch dependency surface and peak RSS. In the measured v3 reference-audio run, full `mlx` encode/decode reduced warm max RSS from about 4.33 GiB to 3.08 GiB versus the PyTorch bridge and lowered codec encode/decode timings. Treat this as a deployment and memory-pressure improvement first; larger repeated runs are still needed before claiming a broad codec-speed win.
