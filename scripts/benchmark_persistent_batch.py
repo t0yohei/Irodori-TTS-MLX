@@ -398,6 +398,16 @@ def request_metric_summary(result: BatchRunResult, metric: str, *, phase: str = 
     return summarize_numeric([item.timings_ms[metric] for item in result.requests if item.phase == phase and metric in item.timings_ms])
 
 
+DECODE_SUBPHASE_LABELS = (
+    ("decode_dacvae_model_compute", "model compute/schedule"),
+    ("decode_dacvae_materialization", "materialization/sync"),
+    ("decode_dacvae_host_transfer", "host transfer"),
+    ("decode_dacvae_postprocess", "postprocess"),
+    ("decode_dacvae_wav_serialization", "WAV serialization"),
+    ("decode_dacvae_cleanup", "cleanup"),
+)
+
+
 def build_json_summary(result: BatchRunResult, *, args: argparse.Namespace) -> dict[str, Any]:
     measured_sum_ms = sum(item.timings_ms.get("total_to_decode", 0.0) for item in result.requests if item.phase == "measured")
     return {
@@ -518,11 +528,36 @@ def build_report(result: BatchRunResult, *, args: argparse.Namespace) -> str:
         f"| audio_write_wav | {format_ms(first.timings_ms.get('audio_write_wav') if first else None)} | {format_ms(float(audio_write['median'])) if audio_write else ''} | {metric_range(audio_write)} |",
         f"| output_duration_seconds | {format_seconds(first.output_duration_seconds if first else None)} | {format_seconds(float(output_duration['median'])) if output_duration else ''} | {'' if not output_duration else format_seconds(float(output_duration['min'])) + ' / ' + format_seconds(float(output_duration['max']))} |",
         "",
-        "## Raw requests",
-        "",
-        "| # | Phase | Seed | Steps | CFG mode | CFG text | Duration | total_to_decode | sample_rf | encode_dacvae | decode_dacvae | decode_model | audio_write | Output |",
-        "| ---: | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
+    decode_subphase_rows = []
+    for key, label in DECODE_SUBPHASE_LABELS:
+        subphase = request_metric_summary(result, key)
+        if subphase:
+            decode_subphase_rows.append(
+                f"| {label} | {format_ms(first.timings_ms.get(key) if first else None)} | "
+                f"{format_ms(float(subphase['median']))} | {metric_range(subphase)} |"
+            )
+    if decode_subphase_rows:
+        lines.extend(
+            [
+                "## MLX decode subphase aggregates",
+                "",
+                "These rows are emitted by the MLX codec bridge when codec runtime mode uses MLX decode.",
+                "",
+                "| Scope | first request | measured median | measured min/max |",
+                "| --- | ---: | ---: | --- |",
+                *decode_subphase_rows,
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Raw requests",
+            "",
+            "| # | Phase | Seed | Steps | CFG mode | CFG text | Duration | total_to_decode | sample_rf | encode_dacvae | decode_dacvae | decode_model | audio_write | Output |",
+            "| ---: | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
     for item in result.requests:
         lines.append(
             "| {index} | {phase} | {seed} | {steps} | {cfg_mode} | {cfg_text} | {duration} | {total} | {sample} | {encode} | {decode} | {decode_model} | {audio_write} | {output} |".format(

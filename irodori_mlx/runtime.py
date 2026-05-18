@@ -762,6 +762,7 @@ class MLXDACVAEBridge:
         self.codec_path = Path(config.codec_path).expanduser()
         self.semantic_decoder = None
         self.semantic_encoder = None
+        self.last_decode_timings_ms: dict[str, float] = {}
         try:
             import numpy as np
 
@@ -922,31 +923,55 @@ class MLXDACVAEBridge:
         waveform = None
         frames = None
         samples = None
+        output: Path | None = None
+        timings_ms: dict[str, float] = {}
         try:
             started = time.perf_counter()
             if self.semantic_decoder is not None:
                 waveform = self.semantic_decoder(latents.astype(mx.float32))
+                timings_ms["decode_dacvae_model_compute"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 mx.eval(waveform)
+                timings_ms["decode_dacvae_materialization"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 samples = _as_numpy(waveform[0, :, 0]).astype("float32", copy=False)
+                timings_ms["decode_dacvae_host_transfer"] = (time.perf_counter() - started) * 1000.0
             else:
                 frames = latents[0].astype(mx.float32) @ self.decode_basis + self.decode_bias
+                timings_ms["decode_dacvae_model_compute"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 mx.eval(frames)
+                timings_ms["decode_dacvae_materialization"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 samples = _as_numpy(frames.reshape((-1,))).astype("float32", copy=False)
-            decode_model_ms = (time.perf_counter() - started) * 1000.0
+                timings_ms["decode_dacvae_host_transfer"] = (time.perf_counter() - started) * 1000.0
+            started = time.perf_counter()
             if max_samples is not None:
                 samples = samples[: int(max_samples)]
+            timings_ms["decode_dacvae_postprocess"] = (time.perf_counter() - started) * 1000.0
             started = time.perf_counter()
-            path = save_wav_numpy(output_path, samples, self.sample_rate)
-            self.last_decode_timings_ms = {
-                "decode_dacvae_model": decode_model_ms,
-                "audio_write_wav": (time.perf_counter() - started) * 1000.0,
-            }
-            return path
+            output = save_wav_numpy(output_path, samples, self.sample_rate)
+            timings_ms["decode_dacvae_wav_serialization"] = (time.perf_counter() - started) * 1000.0
+            return output
         finally:
             del waveform
             del frames
             del samples
+            started = time.perf_counter()
             release_mlx_runtime_memory()
+            timings_ms["decode_dacvae_cleanup"] = (time.perf_counter() - started) * 1000.0
+            timings_ms["audio_write_wav"] = timings_ms.get("decode_dacvae_wav_serialization", 0.0)
+            timings_ms["decode_dacvae_model"] = sum(
+                float(timings_ms.get(key, 0.0))
+                for key in (
+                    "decode_dacvae_model_compute",
+                    "decode_dacvae_materialization",
+                    "decode_dacvae_host_transfer",
+                    "decode_dacvae_postprocess",
+                    "decode_dacvae_cleanup",
+                )
+            )
+            self.last_decode_timings_ms = timings_ms
 
 
 class MLXDACVAEDecodeOnlyBridge:
