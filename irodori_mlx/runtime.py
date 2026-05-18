@@ -366,19 +366,36 @@ class PyTorchDACVAEBridge:
                 del latent
             _release_torch_runtime_memory(self.torch, str(self.codec.device))
 
-    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
+    def decode_to_wav_timed(
+        self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None
+    ) -> tuple[Path, dict[str, float]]:
+        started = time.perf_counter()
         z = mlx_to_torch_latents(latents, device=str(self.codec.device))
+        convert_ms = (time.perf_counter() - started) * 1000.0
         audio = None
         try:
+            started = time.perf_counter()
             audio = self.codec.decode_latent(z).detach().cpu()[0]
             if max_samples is not None:
                 audio = audio[:, : int(max_samples)]
-            return save_wav(output_path, audio, self.sample_rate)
+            decode_ms = (time.perf_counter() - started) * 1000.0
+            started = time.perf_counter()
+            output = save_wav(output_path, audio, self.sample_rate)
+            write_ms = (time.perf_counter() - started) * 1000.0
+            return output, {
+                "decode_dacvae_latent_conversion": convert_ms,
+                "decode_dacvae_model": decode_ms,
+                "audio_write": write_ms,
+            }
         finally:
             del z
             if audio is not None:
                 del audio
             _release_torch_runtime_memory(self.torch, str(self.codec.device))
+
+    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
+        output, _ = self.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
+        return output
 
 
 def _run_codec_worker(*, action: str, config: DACVAEBridgeConfig, extra_args: list[str]) -> str:
@@ -901,7 +918,9 @@ class MLXDACVAEBridge:
         mx.eval(latents)
         return latents[None, :, :]
 
-    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
+    def decode_to_wav_timed(
+        self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None
+    ) -> tuple[Path, dict[str, float]]:
         if len(latents.shape) != 3:
             raise ValueError(f"Expected MLX latents with shape (B,T,D), got {latents.shape}")
         if int(latents.shape[0]) != 1:
@@ -912,6 +931,7 @@ class MLXDACVAEBridge:
         frames = None
         samples = None
         try:
+            started = time.perf_counter()
             if self.semantic_decoder is not None:
                 waveform = self.semantic_decoder(latents.astype(mx.float32))
                 mx.eval(waveform)
@@ -922,12 +942,23 @@ class MLXDACVAEBridge:
                 samples = _as_numpy(frames.reshape((-1,))).astype("float32", copy=False)
             if max_samples is not None:
                 samples = samples[: int(max_samples)]
-            return save_wav_numpy(output_path, samples, self.sample_rate)
+            decode_ms = (time.perf_counter() - started) * 1000.0
+            started = time.perf_counter()
+            output = save_wav_numpy(output_path, samples, self.sample_rate)
+            write_ms = (time.perf_counter() - started) * 1000.0
+            return output, {
+                "decode_dacvae_model": decode_ms,
+                "audio_write": write_ms,
+            }
         finally:
             del waveform
             del frames
             del samples
             release_mlx_runtime_memory()
+
+    def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
+        output, _ = self.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
+        return output
 
 
 class MLXDACVAEDecodeOnlyBridge:
@@ -990,8 +1021,14 @@ class MLXDACVAEDecodeOnlyBridge:
             ensure_max=ensure_max,
         )
 
+    def decode_to_wav_timed(
+        self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None
+    ) -> tuple[Path, dict[str, float]]:
+        return self.decode_bridge.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
+
     def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
-        return self.decode_bridge.decode_to_wav(latents, output_path, max_samples=max_samples)
+        output, _ = self.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
+        return output
 
 
 def _load_audio_numpy(path: str | Path) -> tuple["object", int]:
@@ -1369,7 +1406,12 @@ class MLXDACVAERuntime:
         mx.eval(z)
         timings_ms["sample_rf"] = (time.perf_counter() - started) * 1000.0
         started = time.perf_counter()
-        output = self.bridge.decode_to_wav(z, request.output_wav, max_samples=target_samples)
+        if hasattr(self.bridge, "decode_to_wav_timed"):
+            output, decode_timings = self.bridge.decode_to_wav_timed(z, request.output_wav, max_samples=target_samples)
+            for key, value in decode_timings.items():
+                timings_ms[key] = float(value)
+        else:
+            output = self.bridge.decode_to_wav(z, request.output_wav, max_samples=target_samples)
         timings_ms["decode_dacvae"] = (time.perf_counter() - started) * 1000.0
         timings_ms["total_to_decode"] = (time.perf_counter() - total_started) * 1000.0
         codec_boundaries = self.describe_boundaries()["codec"]

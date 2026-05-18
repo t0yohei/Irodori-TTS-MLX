@@ -113,11 +113,15 @@ class FakeBridge:
         self.encoded.append((str(path), max_seconds, normalize_db, ensure_max))
         return mx.ones((1, 7, self.latent_dim), dtype=mx.float32)
 
-    def decode_to_wav(self, latents, output_path, *, max_samples=None):
+    def decode_to_wav_timed(self, latents, output_path, *, max_samples=None):
         self.decoded.append((latents, output_path, max_samples))
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"fake wav")
+        return path, {"decode_dacvae_model": 2.0, "audio_write": 1.0}
+
+    def decode_to_wav(self, latents, output_path, *, max_samples=None):
+        path, _ = self.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
         return path
 
 
@@ -1343,6 +1347,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIn("prepare_reference_condition", result.timings_ms)
         self.assertIn("sample_rf", result.timings_ms)
         self.assertIn("decode_dacvae", result.timings_ms)
+        self.assertEqual(result.timings_ms["decode_dacvae_model"], 2.0)
+        self.assertEqual(result.timings_ms["audio_write"], 1.0)
         self.assertIn("total_to_decode", result.timings_ms)
         self.assertEqual(result.duration_mode, "manual")
         self.assertAlmostEqual(result.requested_seconds, 0.04)
