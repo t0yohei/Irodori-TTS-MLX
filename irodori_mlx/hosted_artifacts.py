@@ -92,8 +92,8 @@ HOSTED_RF_DIT_ARTIFACTS: dict[str, HostedRfDitArtifact] = {
 HOSTED_DACVAE_CODEC_ARTIFACT = HostedDacvaeCodecArtifact(
     source_repo="Aratako/Semantic-DACVAE-Japanese-32dim",
     repo_id="t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
-    revision=None,
-    publication_status="hf-pr-open",
+    revision="bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78",
+    publication_status="approved-public",
     license_review_status="approved",
     review_reference="https://github.com/t0yohei/Irodori-TTS-MLX/issues/188",
     issue_url="https://github.com/t0yohei/Irodori-TTS-MLX/issues/188",
@@ -101,7 +101,6 @@ HOSTED_DACVAE_CODEC_ARTIFACT = HostedDacvaeCodecArtifact(
     supports_mlx_decode=True,
     supports_mlx_encode=True,
     requires_pytorch_fallback=False,
-    blocker="Hugging Face artifact PR #1 must be merged before this repo can publish a pinned revision.",
 )
 
 

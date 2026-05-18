@@ -30,7 +30,7 @@ class HostedWeightsUsageDocTests(unittest.TestCase):
             "weights.npz",
             "huggingface_hub",
             "--codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
-            "--codec-artifact-revision <approved-hf-commit>",
+            "--codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78",
             "irodori_dacvae_codec_manifest.json",
             "dacvae-codec.npz",
             "codec_metadata.json",
