@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -59,6 +60,52 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
         self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], "owner/codec")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
+
+    def test_parse_args_defaults_to_runnable_pytorch_codec_mode(self):
+        args = bench.parse_args(["--weights-repo", "owner/repo"])
+        self.assertEqual(args.codec_runtime_mode, "persistent")
+
+    def test_script_adds_repo_root_to_import_path_for_worker_mode(self):
+        self.assertEqual(bench.ROOT, Path(bench.__file__).resolve().parents[1])
+        self.assertIn(str(bench.ROOT), sys.path)
+
+    def test_validate_worker_request_reuses_layout_constraints(self):
+        class FakeGen:
+            @staticmethod
+            def validate_checkpoint_family_request(**kwargs):
+                raise AssertionError("family validation should not run after layout rejection")
+
+        args = argparse.Namespace(reference_wav=None, no_reference=False, caption=None)
+        with self.assertRaises(SystemExit):
+            bench.validate_worker_request(
+                FakeGen,
+                model_config=object(),
+                gen_args=args,
+                layout_runtime={"supports_no_reference": False},
+                overrides={"no_reference": True},
+                index=1,
+            )
+
+    def test_validate_worker_request_calls_family_validation(self):
+        calls = []
+
+        class FakeGen:
+            @staticmethod
+            def validate_checkpoint_family_request(**kwargs):
+                calls.append(kwargs)
+
+        args = argparse.Namespace(reference_wav=None, no_reference=True, caption=None)
+        model_config = object()
+        bench.validate_worker_request(
+            FakeGen,
+            model_config=model_config,
+            gen_args=args,
+            layout_runtime={"supports_no_reference": True},
+            overrides={"no_reference": True},
+            index=2,
+        )
+        self.assertEqual(calls[0]["model_config"], model_config)
+        self.assertEqual(calls[0]["index"], 2)
 
     def test_parse_response_records_persistent_latency_and_timing_split(self):
         payload = {

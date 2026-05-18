@@ -16,6 +16,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 DEFAULT_TEXT = "今日はいい天気ですね。"
 DEFAULT_CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
 
@@ -81,7 +85,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--codec-runtime-mode",
         choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
-        default="mlx-decode",
+        default="persistent",
     )
     parser.add_argument("--codec-path")
     parser.add_argument("--codec-artifact-dir")
@@ -210,6 +214,38 @@ def _generate_wav_argv(args: argparse.Namespace) -> list[str]:
     return argv
 
 
+def validate_worker_request(
+    gen: Any,
+    *,
+    model_config: Any,
+    gen_args: argparse.Namespace,
+    layout_runtime: dict[str, Any] | None,
+    overrides: dict[str, Any],
+    index: int,
+) -> None:
+    request_reference = overrides.get("reference_wav", gen_args.reference_wav)
+    request_no_reference = bool(overrides.get("no_reference", gen_args.no_reference))
+    request_caption = overrides.get("caption", gen_args.caption)
+    if layout_runtime is not None:
+        if layout_runtime.get("requires_reference_audio") and not request_reference:
+            raise SystemExit(f"error: generation request #{index}: selected weights layout requires reference_wav")
+        if not layout_runtime.get("supports_no_reference", False) and request_no_reference:
+            raise SystemExit(f"error: generation request #{index}: selected weights layout does not support no_reference")
+        if (
+            "supports_caption" in layout_runtime
+            and not layout_runtime.get("supports_caption", False)
+            and request_caption is not None
+            and str(request_caption).strip()
+        ):
+            raise SystemExit(f"error: generation request #{index}: selected weights layout does not support caption conditioning")
+    gen.validate_checkpoint_family_request(
+        model_config=model_config,
+        args=gen_args,
+        overrides=overrides,
+        index=index,
+    )
+
+
 def run_worker(args: argparse.Namespace) -> int:
     import scripts.generate_wav as gen
 
@@ -223,8 +259,10 @@ def run_worker(args: argparse.Namespace) -> int:
     if layout is not None:
         gen_args.weights = str(layout.weights_path)
         model_config = layout.model_config
+        layout_runtime = dict(layout.manifest.get("runtime", {}))
     else:
         model_config = gen.load_model_config_json(gen_args.model_config_json)
+        layout_runtime = None
     gen.resolve_codec_artifact_args(gen_args)
     runtime = gen.MLXDACVAERuntime(config=gen.build_runtime_config(gen_args, model_config))
     print(json.dumps({"type": "ready", "boundaries": runtime.describe_boundaries()}, ensure_ascii=False), flush=True)
@@ -240,7 +278,16 @@ def run_worker(args: argparse.Namespace) -> int:
             print(json.dumps({"type": "error", "error": "unknown message type"}), flush=True)
             continue
         started = time.perf_counter()
-        request = gen.build_generation_request(gen_args, payload.get("request") or {})
+        overrides = payload.get("request") or {}
+        validate_worker_request(
+            gen,
+            model_config=model_config,
+            gen_args=gen_args,
+            layout_runtime=layout_runtime,
+            overrides=overrides,
+            index=int(payload.get("index") or 1),
+        )
+        request = gen.build_generation_request(gen_args, overrides)
         result = runtime.generate(request)
         generate_latency_ms = (time.perf_counter() - started) * 1000.0
         response = gen.build_result_payload(result=result, request=request, runtime=runtime, args=gen_args)
@@ -256,10 +303,18 @@ def run_worker(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ru_maxrss_value_to_bytes(value: int, *, platform: str = sys.platform) -> int | None:
+    if not value:
+        return None
+    if platform == "darwin":
+        return int(value)
+    return int(value) * 1024
+
+
 def _child_max_rss_bytes() -> int | None:
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     value = int(getattr(usage, "ru_maxrss", 0) or 0)
-    return value or None
+    return _ru_maxrss_value_to_bytes(value)
 
 
 def parse_response(payload: dict[str, Any], *, index: int, phase: str, latency_ms: float) -> RequestResult:
@@ -335,7 +390,7 @@ def run_serving(args: argparse.Namespace, repo_root: Path, output_dir: Path) -> 
         parsed: list[RequestResult] = []
         for index, overrides in enumerate(requests, start=1):
             phase = "warmup" if index <= int(args.warmup_requests) else "measured"
-            line = json.dumps({"type": "request", "request": overrides}, ensure_ascii=False)
+            line = json.dumps({"type": "request", "index": index, "request": overrides}, ensure_ascii=False)
             started = time.perf_counter()
             proc.stdin.write(line + "\n")
             proc.stdin.flush()
@@ -540,6 +595,8 @@ def run_self_test() -> int:
     summary = build_json_summary(result, args=args)
     assert summary["aggregates"]["measured_persistent_request_latency_ms"]["median"] == 150.0
     assert summary["aggregates"]["measured_audio_write_ms"]["median"] == 6.0
+    assert _ru_maxrss_value_to_bytes(1234, platform="linux") == 1263616
+    assert _ru_maxrss_value_to_bytes(1234, platform="darwin") == 1234
     report = build_report(result, args=args)
     assert "Persistent Local Serving Benchmark Report" in report
     assert "audio_write" in report
@@ -553,7 +610,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_self_test()
     if args.worker:
         return run_worker(args)
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = ROOT
     output_dir = ensure_directory((repo_root / args.output_dir).resolve())
     result = run_serving(args, repo_root, output_dir)
     summary = build_json_summary(result, args=args)

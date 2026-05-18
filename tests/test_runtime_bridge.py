@@ -108,6 +108,7 @@ class FakeBridge:
     def __init__(self):
         self.encoded = []
         self.decoded = []
+        self.last_decode_timings_ms = {}
 
     def encode_reference(self, path, *, max_seconds, normalize_db, ensure_max):
         self.encoded.append((str(path), max_seconds, normalize_db, ensure_max))
@@ -115,6 +116,7 @@ class FakeBridge:
 
     def decode_to_wav_timed(self, latents, output_path, *, max_samples=None):
         self.decoded.append((latents, output_path, max_samples))
+        self.last_decode_timings_ms = {"decode_dacvae_materialization": 4.0}
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"fake wav")
@@ -597,6 +599,20 @@ class RuntimeBridgeTests(unittest.TestCase):
 
             self.assertTrue(output_path.exists())
             self.assertEqual(cleanup_calls, ["cleanup"])
+            self.assertEqual(
+                set(bridge.last_decode_timings_ms),
+                {
+                    "decode_dacvae_model_compute",
+                    "decode_dacvae_materialization",
+                    "decode_dacvae_host_transfer",
+                    "decode_dacvae_postprocess",
+                    "decode_dacvae_wav_serialization",
+                    "decode_dacvae_model",
+                    "audio_write",
+                    "decode_dacvae_cleanup",
+                },
+            )
+            self.assertTrue(all(value >= 0.0 for value in bridge.last_decode_timings_ms.values()))
 
     @require_mlx
     def test_mlx_dacvae_bridge_loads_executable_semantic_decoder_artifact(self):
@@ -1200,6 +1216,50 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertEqual(tuple(encoded.shape), (1, 7, 4))
 
     @require_mlx
+    def test_mlx_decode_only_timed_decode_falls_back_for_untimed_bridge(self):
+        class UntimedDecodeBridge:
+            sample_rate = 8000
+            hop_length = 2
+            latent_dim = 4
+
+            def __init__(self):
+                self.decoded = []
+
+            def decode_to_wav(self, latents, output_path, *, max_samples=None):
+                self.decoded.append((latents, output_path, max_samples))
+                path = Path(output_path)
+                path.write_bytes(b"fake wav")
+                return path
+
+        decode_bridge = UntimedDecodeBridge()
+        bridge = object.__new__(MLXDACVAEDecodeOnlyBridge)
+        bridge.decode_bridge = decode_bridge
+        with tempfile.TemporaryDirectory() as td:
+            output, timings = bridge.decode_to_wav_timed(
+                mx.zeros((1, 2, 4), dtype=mx.float32),
+                Path(td) / "out.wav",
+                max_samples=4,
+            )
+        self.assertEqual(timings, {})
+        self.assertEqual(len(decode_bridge.decoded), 1)
+        self.assertEqual(output.name, "out.wav")
+
+    @require_mlx
+    def test_mlx_decode_only_timed_decode_preserves_inner_last_timings(self):
+        decode_bridge = FakeBridge()
+        bridge = object.__new__(MLXDACVAEDecodeOnlyBridge)
+        bridge.decode_bridge = decode_bridge
+        bridge.last_decode_timings_ms = {}
+        with tempfile.TemporaryDirectory() as td:
+            _, timings = bridge.decode_to_wav_timed(
+                mx.zeros((1, 2, 4), dtype=mx.float32),
+                Path(td) / "out.wav",
+                max_samples=4,
+            )
+        self.assertEqual(timings, {"decode_dacvae_model": 2.0, "audio_write": 1.0})
+        self.assertEqual(bridge.last_decode_timings_ms, {"decode_dacvae_materialization": 4.0})
+
+    @require_mlx
     def test_normalize_text_matches_upstream_ascii_ellipsis_after_nfkc(self):
         self.assertEqual(normalize_text("待って........."), "待って………")
         self.assertEqual(normalize_text("待って......."), "待って…….")
@@ -1349,6 +1409,7 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIn("decode_dacvae", result.timings_ms)
         self.assertEqual(result.timings_ms["decode_dacvae_model"], 2.0)
         self.assertEqual(result.timings_ms["audio_write"], 1.0)
+        self.assertEqual(result.timings_ms["decode_dacvae_materialization"], 4.0)
         self.assertIn("total_to_decode", result.timings_ms)
         self.assertEqual(result.duration_mode, "manual")
         self.assertAlmostEqual(result.requested_seconds, 0.04)
