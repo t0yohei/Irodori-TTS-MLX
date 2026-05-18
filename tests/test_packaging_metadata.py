@@ -175,9 +175,8 @@ class PackagingMetadataTests(unittest.TestCase):
         dependency_doc = (root / "docs" / "upstream_dependency.md").read_text(encoding="utf-8")
         packaging_doc = (root / "docs" / "packaging.md").read_text(encoding="utf-8")
         dacvae_doc = (root / "docs" / "dacvae_bridge.md").read_text(encoding="utf-8")
-        readme = (root / "README.md").read_text(encoding="utf-8")
 
-        for doc in (dependency_doc, packaging_doc, dacvae_doc, readme):
+        for doc in (dependency_doc, packaging_doc, dacvae_doc):
             self.assertIn("irodori_tts.codec.DACVAECodec", doc)
             self.assertIn("does not require upstream", doc)
             self.assertIn("--codec-runtime-mode mlx", doc)

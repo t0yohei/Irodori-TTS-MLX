@@ -37,31 +37,29 @@ class PublicDocsSanitizedTests(unittest.TestCase):
 
         self.assertEqual([], violations)
 
-    def test_readme_support_matrix_states_alpha_boundaries(self):
+    def test_readme_keeps_concise_support_boundaries(self):
         readme = (self.root / "README.md").read_text(encoding="utf-8")
 
         required_terms = [
-            "## Current Support Matrix",
-            "| Surface | Status | Public support boundary |",
-            "Project maturity | Alpha",
-            "VoiceDesign v2 hosted RF-DiT artifact | Supported",
-            "v3 hosted RF-DiT artifact | Supported",
-            "Base v2 speaker-conditioned generation | Experimental",
-            "Standalone MLX DACVAE codec artifact path | Supported default",
-            "PyTorch bridge-backed DACVAE codec path | Removed",
-            "MLX DACVAE decode for no-reference generation | Supported",
-            "Fully MLX DACVAE encode/decode for reference audio | Experimental",
-            "Local Web UI | Optional",
-            "Hosted artifacts outside the approved layouts | Blocked",
-            "Unsupported upstream product features | Non-goal",
-            "Training, LoRA fine-tuning, hosted demo operation, watermark guarantees, arbitrary checkpoint compatibility, and stable public Python API guarantees",
-            "not a hosted demo or a stable public Python API boundary",
-            "not references to private caches, local maintainer machines, or unpublished public artifacts",
-            "Local conversion is a user-managed fallback",
+            "## What Works Now",
+            "## Install",
+            "## Quickstart",
+            "## Support Boundary",
+            "alpha, CLI-first inference prototype",
+            "VoiceDesign v2",
+            "v3",
+            "t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
+            "--codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78",
+            "local Gradio UI",
+            "local conversion",
+            "stable public Python API",
+            "arbitrary third-party, fine-tuned, quantized, LoRA, renamed, or architecture-modified checkpoints",
         ]
         for term in required_terms:
             with self.subTest(term=term):
                 self.assertIn(term, readme)
+
+        self.assertLess(readme.count("\n"), 240)
 
     def test_public_api_boundary_is_cli_only_for_alpha(self):
         readme = (self.root / "README.md").read_text(encoding="utf-8")
@@ -76,8 +74,8 @@ class PublicDocsSanitizedTests(unittest.TestCase):
             self.assertIn("irodori-tts-generate", text)
             self.assertIn("irodori-tts-adapt-mlx-audio", text)
 
-        self.assertIn("stable-ish な user contract", readme_ja)
-        self.assertIn("stable public Python API としてはまだ support しません", readme_ja)
+        self.assertIn("alpha 期間中に stable-ish な対象", readme_ja)
+        self.assertIn("public Python API として使うこと", readme_ja)
         self.assertIn("No `irodori_mlx` module, class, function, dataclass", api_doc)
         self.assertIn("treat them as internal implementation details", api_doc)
         self.assertIn("documented artifact layouts", api_doc)
@@ -90,16 +88,16 @@ class PublicDocsSanitizedTests(unittest.TestCase):
         readme = (self.root / "README.md").read_text(encoding="utf-8")
 
         required_terms = [
-            "### If the quickstart fails",
+            "## If It Fails",
             "--preflight",
-            "skips tokenizer loading, MLX weight loading, DACVAE bridge construction, and WAV generation",
+            "exits before tokenizer loading, MLX weight loading, DACVAE bridge construction, or WAV generation",
             "text_tokenizer_repo",
             "caption_tokenizer_repo",
             "irodori_mlx_manifest.json",
             "license_review.status: \"approved\"",
             "irodori_dacvae_codec_manifest.json",
-            "default approved hosted DACVAE codec artifact",
-            "--codec-runtime-mode mlx",
+            "approved hosted DACVAE codec artifact",
+            "codec runtime mode",
         ]
         for term in required_terms:
             with self.subTest(term=term):

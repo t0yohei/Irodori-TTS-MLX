@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a WAV with MLX RF-DiT latents and the PyTorch DACVAE bridge."""
+"""Generate a WAV with MLX RF-DiT latents and an MLX DACVAE codec artifact."""
 
 from __future__ import annotations
 
@@ -358,7 +358,7 @@ def _add_configurable_bool(
 def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParser:
     config = config or {}
     parser = argparse.ArgumentParser(
-        description="Generate a WAV using MLX Irodori-TTS RF-DiT and the upstream/PyTorch DACVAE bridge.",
+        description="Generate a WAV using MLX Irodori-TTS RF-DiT and an MLX DACVAE codec artifact.",
         epilog=(
             "Use --config-json with an inline JSON object or file path for repeatable runs, "
             "then override individual flags on the CLI when needed. Use --json or --metadata-json "
@@ -453,7 +453,11 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         ),
     )
     parser.add_argument("--codec-artifact-revision", default=config.get("codec_artifact_revision"), help="Optional Hugging Face revision for --codec-artifact-repo.")
-    parser.add_argument("--codec-device", default=_default(config, "codec_device", "cpu"), help="PyTorch codec device: cpu, mps, or cuda.")
+    parser.add_argument(
+        "--codec-device",
+        default=_default(config, "codec_device", "cpu"),
+        help="Legacy compatibility field for metadata/configs. The public codec runtime is MLX artifact-backed.",
+    )
     parser.add_argument(
         "--codec-runtime-mode",
         default=_default(config, "codec_runtime_mode", DEFAULT_CODEC_RUNTIME_MODE),
