@@ -243,7 +243,6 @@ def adapt_mlx_audio_layout(
             },
             "runtime": {
                 "minimum_irodori_tts_mlx_version": "0.2.0",
-                "requires_upstream_dacvae_bridge": False,
                 "requires_reference_audio": not caption,
                 "supports_no_reference": caption,
                 "supports_caption": caption,

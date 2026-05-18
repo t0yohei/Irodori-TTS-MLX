@@ -140,7 +140,6 @@ The manifest is the loader source of truth. Required shape:
   },
   "runtime": {
     "minimum_irodori_tts_mlx_version": "0.2.0",
-    "requires_upstream_dacvae_bridge": false,
     "requires_reference_audio": false,
     "supports_no_reference": true,
     "supports_caption": false,

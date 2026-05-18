@@ -39,7 +39,6 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
             '"family": "v3"',
             '"upstream_checkpoint": "Aratako/Irodori-TTS-500M-v3"',
             '"minimum_irodori_tts_mlx_version": "0.2.0"',
-            '"requires_upstream_dacvae_bridge": false',
             '"supports_predicted_duration": true',
             '"license_review"',
             "names every loader-required artifact plus the checksum file",
