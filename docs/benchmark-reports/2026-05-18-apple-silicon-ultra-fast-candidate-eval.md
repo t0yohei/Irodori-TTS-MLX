@@ -7,8 +7,9 @@ Parent: [#220](https://github.com/t0yohei/Irodori-TTS-MLX/issues/220)
 
 This is the first real Apple Silicon candidate run after adding the
 experimental `--preset ultra-fast` switch. It measures the four candidates
-identified in the earlier [low-step/CFG sweep plan](2026-05-18-apple-silicon-ultra-fast-low-step-cfg-sweep.md)
-with real v3 hosted weights and the hosted MLX DACVAE decode artifact.
+identified by the low-step/CFG sweep with real v3 hosted weights and the hosted
+MLX DACVAE decode artifact. The intermediate sweep report was removed after
+the final candidate evaluation captured the decision.
 
 - Fastest measured request latency: `issue-220-ultra-fast-steps-6-reduced-cfg-1` at 1168.7 ms.
 - Implemented `--preset ultra-fast` equivalent: `issue-220-ultra-fast-steps-6-joint-cfg-1` at 1198.2 ms.
@@ -16,7 +17,7 @@ with real v3 hosted weights and the hosted MLX DACVAE decode artifact.
 - The remaining latency floor is still DACVAE decode/materialization: measured audio write is only 1-2 ms median across these runs.
 - A manual-duration follow-up with `--seconds 2.5` removed the Chinese-like artifact in listening. The implemented `6/joint/1` shape measured 768.3 ms median `total_to_decode`, and the `8/reduced/1` control measured 848.0 ms. Human listening preferred `8/reduced/1 --seconds 2.5` when accounting for audio quality.
 - A later focused CFG comparison at 8 steps and `--seconds 2.5` measured `8/reduced/CFG1/0/0` at 894.6 ms median `total_to_decode` and `8/independent/default CFG 3/3/5` at 934.4 ms. Because the reduced-CFG win was only about 40 ms on complete-WAV latency, the preset keeps normal CFG defaults and only changes steps plus short-prompt duration policy.
-- Baselines: [#64 v3 one-shot](2026-05-14-apple-silicon-num-steps-v3-text.md) and [persistent mlx-decode baseline](2026-05-18-apple-silicon-persistent-batch-runtime-cleanup.md).
+- Baselines: [#64 v3 one-shot](2026-05-14-apple-silicon-num-steps-v3-text.md) and the persistent mlx-decode baseline summarized in [the runtime cleanup comparison](2026-05-18-apple-silicon-persistent-batch-runtime-cleanup-comparison.md).
 
 ## Environment
 

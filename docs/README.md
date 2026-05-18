@@ -44,8 +44,6 @@ The current user-facing entry points are:
 - [benchmark.md](benchmark.md): benchmark workflow and current decision baseline.
 - [baseline.md](baseline.md): upstream PyTorch baseline workflow.
 - [upstream_parity_harness.md](upstream_parity_harness.md): upstream-vs-MLX parity harness and report schema.
-- [v0_1_release_gate.md](v0_1_release_gate.md): historical release-gate workflow retained for reproducibility.
-- [v0_2_delivery_plan.md](v0_2_delivery_plan.md): historical v0.2 delivery plan and downstream consumer handoff boundary.
 
 Raw measured reports live under [benchmark-reports/](benchmark-reports/) and
 [baseline-reports/](baseline-reports/). Keep only reports that are linked from

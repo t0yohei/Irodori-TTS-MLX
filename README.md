@@ -303,7 +303,6 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 - Packaging: [docs/packaging.md](docs/packaging.md)
 - Public API stability boundary: [docs/public_api_stability.md](docs/public_api_stability.md)
 - License and distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
-- Historical v0.2 cross-repository delivery plan and downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 
 ## Non-goals
 
