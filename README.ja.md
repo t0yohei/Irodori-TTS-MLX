@@ -20,7 +20,7 @@
 - local `.npz`、local hosted-layout directory/archive、承認済み Hugging Face hosted-layout repo の読み込み
 - unquantized `mlx-audio` Irodori artifact directory から、この repo の hosted weights layout への adaptation
 - `irodori-tts-generate` / `scripts/generate_wav.py` による WAV 生成
-- `--config-json`、`--requests-json`、`--cleanup-between-requests`、`--preset fast|balanced|quality`、JSON metadata 出力、persistent runtime reuse
+- `--config-json`、`--requests-json`、`--cleanup-between-requests`、`--preset ultra-fast|fast|balanced|quality`、JSON metadata 出力、persistent runtime reuse
 - benchmark、parity check、hosted Apple Silicon validation workflow
 
 デフォルトの codec path は upstream `irodori_tts.codec.DACVAECodec` に依存します。v0.2 codec-port 用の local MLX codec artifact mode はありますが、この repo は codec weights を同梱せず、任意 codec artifact の acoustic parity も保証しません。

@@ -52,14 +52,15 @@ python3 scripts/generate_wav.py \
 
 The user-facing preset surface is intentionally small:
 
+- `--preset ultra-fast` → experimental latency-first `--num-steps 6 --cfg-guidance-mode joint --cfg-scale-text 1 --cfg-scale-caption 0 --cfg-scale-speaker 0`
 - `--preset fast` → `--num-steps 12`
 - `--preset balanced` → `--num-steps 24`
 - `--preset quality` → `--num-steps 40`
 
 These mappings come from the Apple Silicon local sweep in
 [docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md).
-Right now the preset only adjusts `num_steps`, because that is the knob this repo has benchmarked directly across base/v3, reference-audio, and VoiceDesign flows.
-If you need exact control, pass `--num-steps` explicitly and it will override the preset.
+`ultra-fast` is the exception: it is deliberately experimental and follows the latency-first candidate from the #217/#220 sweep contract rather than a quality-validated default.
+If you need exact control, pass `--num-steps` or the CFG flags explicitly and they will override the preset.
 
 For repeatable local workflows, put common arguments in a JSON preset and only
 override the per-run fields on the CLI:

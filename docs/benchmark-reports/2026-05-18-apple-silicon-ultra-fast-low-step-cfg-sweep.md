@@ -90,7 +90,14 @@ The first plausible candidates to review by ear are:
 | 3 | 8 | reduced | 1 | safer quality anchor against the known 8-step baseline |
 | 4 | 8 | independent | 2 | conservative low-step comparison against current default guidance |
 
-## Public Preset Recommendation
+## Experimental Preset Decision
 
-Do not ship a public ultra-fast preset from this branch. The repo now has the measurement path needed to decide it, but the setting should remain experimental until the full Apple Silicon sweep produces real candidate WAVs and a lightweight listening/parity review marks at least one low-step/CFG combination as intelligible and stable.
+Issue #219 defines `--preset ultra-fast` as an experimental latency-first preset:
 
+- `num_steps=6`
+- `cfg_guidance_mode=joint`
+- `cfg_scale_text=1.0`
+- `cfg_scale_caption=0.0`
+- `cfg_scale_speaker=0.0`
+
+This intentionally does not change the existing public defaults: `fast`, `balanced`, and `quality` remain the quality-safer presets. Treat `ultra-fast` as a candidate-generation switch until the full Apple Silicon sweep produces real candidate WAVs and a lightweight listening/parity review marks the low-step/CFG profile as intelligible and stable.

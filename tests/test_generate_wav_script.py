@@ -645,6 +645,57 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.preset, "balanced")
         self.assertEqual(args.num_steps, 16)
 
+    def test_parse_args_applies_experimental_ultra_fast_preset_defaults(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--preset",
+                "ultra-fast",
+            ]
+        )
+
+        self.assertEqual(args.preset, "ultra-fast")
+        self.assertEqual(args.num_steps, 6)
+        self.assertEqual(args.cfg_guidance_mode, "joint")
+        self.assertEqual(args.cfg_scale_text, 1.0)
+        self.assertEqual(args.cfg_scale_caption, 0.0)
+        self.assertEqual(args.cfg_scale_speaker, 0.0)
+
+    def test_parse_args_manual_cfg_overrides_ultra_fast_preset(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--preset",
+                "ultra-fast",
+                "--num-steps",
+                "8",
+                "--cfg-guidance-mode",
+                "reduced",
+                "--cfg-scale-text",
+                "2",
+                "--cfg-scale-caption",
+                "3",
+                "--cfg-scale-speaker",
+                "4",
+            ]
+        )
+
+        self.assertEqual(args.num_steps, 8)
+        self.assertEqual(args.cfg_guidance_mode, "reduced")
+        self.assertEqual(args.cfg_scale_text, 2.0)
+        self.assertEqual(args.cfg_scale_caption, 3.0)
+        self.assertEqual(args.cfg_scale_speaker, 4.0)
+
     def test_parse_args_config_preset_supplies_default_num_steps(self):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
@@ -716,6 +767,30 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(request.num_steps, 12)
         self.assertEqual(request.seed, 123)
         self.assertFalse(request.use_context_kv_cache)
+
+    def test_build_generation_request_applies_ultra_fast_request_preset_defaults(self):
+        args = self._args("default.wav")
+        args.num_steps = 40
+        args.cfg_guidance_mode = "independent"
+        args.cfg_scale_text = 3.0
+        args.cfg_scale_caption = 3.0
+        args.cfg_scale_speaker = 5.0
+
+        request = generate_wav.build_generation_request(
+            args,
+            {
+                "text": "override",
+                "output": "override.wav",
+                "preset": "ultra-fast",
+                "seed": 123,
+            },
+        )
+
+        self.assertEqual(request.num_steps, 6)
+        self.assertEqual(request.cfg_guidance_mode, "joint")
+        self.assertEqual(request.cfg_scale_text, 1.0)
+        self.assertEqual(request.cfg_scale_caption, 0.0)
+        self.assertEqual(request.cfg_scale_speaker, 0.0)
 
     def test_parse_args_allows_omitted_seconds_for_auto_duration(self):
         with tempfile.TemporaryDirectory() as td:
