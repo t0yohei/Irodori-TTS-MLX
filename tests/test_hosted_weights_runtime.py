@@ -102,7 +102,7 @@ def _write_layout(
             "checksums": f"{prefix}checksums.sha256",
         },
         "runtime": {
-            "minimum_irodori_tts_mlx_version": "0.2.0",
+            "minimum_irodori_tts_mlx_version": "0.3.0",
             "requires_reference_audio": False,
             "supports_no_reference": True,
             "supports_caption": caption,
