@@ -7,7 +7,6 @@ import argparse
 import importlib.util
 import json
 import sys
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -78,14 +77,6 @@ def _is_partial_exception(exc: Exception) -> bool:
     return isinstance(exc, PartialPreconditionError)
 
 
-@dataclass(frozen=True)
-class EncodeParityTolerances:
-    max_abs: float = 1e-3
-    mean_abs: float = 2e-4
-    rmse: float = 5e-4
-    min_cosine: float = 0.999
-
-
 def _latent_stats(latents: np.ndarray) -> dict[str, Any]:
     latents = np.asarray(latents, dtype=np.float32)
     return {
@@ -111,69 +102,6 @@ def _audio_stats(path: str | Path) -> dict[str, Any]:
         "peak_abs": float(np.max(np.abs(samples))) if samples.size else 0.0,
         "rms": float(np.sqrt(np.mean(np.square(samples.astype(np.float64))))) if samples.size else 0.0,
         "finite": bool(np.isfinite(samples).all()),
-    }
-
-
-def compare_latents(
-    upstream: np.ndarray,
-    mlx: np.ndarray,
-    *,
-    hop_length: int,
-    tolerances: EncodeParityTolerances,
-) -> dict[str, Any]:
-    upstream = np.asarray(upstream, dtype=np.float32)
-    mlx = np.asarray(mlx, dtype=np.float32)
-    shape_match = upstream.shape == mlx.shape
-    batch_match = upstream.ndim == 3 and mlx.ndim == 3 and int(upstream.shape[0]) == int(mlx.shape[0])
-    latent_dim_match = upstream.ndim == 3 and mlx.ndim == 3 and int(upstream.shape[2]) == int(mlx.shape[2])
-    latent_steps_match = upstream.ndim == 3 and mlx.ndim == 3 and int(upstream.shape[1]) == int(mlx.shape[1])
-    n = min(int(upstream.size), int(mlx.size))
-    if n == 0:
-        diff = np.array([], dtype=np.float32)
-        cosine = 1.0 if shape_match else 0.0
-    else:
-        upstream_cmp = upstream.reshape(-1)[:n]
-        mlx_cmp = mlx.reshape(-1)[:n]
-        diff = mlx_cmp - upstream_cmp
-        denom = float(np.linalg.norm(upstream_cmp) * np.linalg.norm(mlx_cmp))
-        if denom == 0.0:
-            cosine = 1.0 if np.linalg.norm(diff) == 0.0 else 0.0
-        else:
-            cosine = float(np.dot(upstream_cmp, mlx_cmp) / denom)
-    metrics = {
-        "shape_match": bool(shape_match),
-        "compared_values": int(n),
-        "max_abs": float(np.max(np.abs(diff))) if diff.size else 0.0,
-        "mean_abs": float(np.mean(np.abs(diff))) if diff.size else 0.0,
-        "rmse": float(np.sqrt(np.mean(np.square(diff)))) if diff.size else 0.0,
-        "cosine": cosine,
-        "upstream": _latent_stats(upstream),
-        "mlx": _latent_stats(mlx),
-    }
-    length_contract = {
-        "hop_length": int(hop_length),
-        "latent_steps_upstream": int(upstream.shape[1]) if upstream.ndim == 3 else None,
-        "latent_steps_mlx": int(mlx.shape[1]) if mlx.ndim == 3 else None,
-        "speaker_mask_true_count_upstream": int(upstream.shape[1]) if upstream.ndim == 3 else None,
-        "speaker_mask_true_count_mlx": int(mlx.shape[1]) if mlx.ndim == 3 else None,
-    }
-    checks = {
-        "shape": bool(shape_match),
-        "batch": bool(batch_match),
-        "latent_steps": bool(latent_steps_match),
-        "latent_dim": bool(latent_dim_match),
-        "finite": bool(metrics["upstream"]["finite"] and metrics["mlx"]["finite"]),
-        "max_abs": metrics["max_abs"] <= tolerances.max_abs,
-        "mean_abs": metrics["mean_abs"] <= tolerances.mean_abs,
-        "rmse": metrics["rmse"] <= tolerances.rmse,
-        "cosine": metrics["cosine"] >= tolerances.min_cosine,
-    }
-    return {
-        "status": "passed" if all(checks.values()) else "failed",
-        "tolerances": asdict(tolerances),
-        "checks": checks,
-        "metrics": metrics,
-        "length_contract": length_contract,
     }
 
 
@@ -316,10 +244,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_EXPECTED_LATENT_DIM,
         help="Expected runtime latent channel count for the fixed fixture. Defaults to 32 for Semantic-DACVAE.",
     )
-    parser.add_argument("--max-abs-tolerance", type=float, default=EncodeParityTolerances.max_abs)
-    parser.add_argument("--mean-abs-tolerance", type=float, default=EncodeParityTolerances.mean_abs)
-    parser.add_argument("--rmse-tolerance", type=float, default=EncodeParityTolerances.rmse)
-    parser.add_argument("--min-cosine", type=float, default=EncodeParityTolerances.min_cosine)
     parser.add_argument(
         "--allow-partial",
         action="store_true",

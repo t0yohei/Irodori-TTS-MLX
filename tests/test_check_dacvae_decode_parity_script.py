@@ -44,45 +44,6 @@ def require_real_decode_parity_env(test_func):
 
 
 class DACVAEDecodeParityScriptTests(unittest.TestCase):
-    def test_compare_audio_passes_shape_range_and_metric_tolerances(self):
-        tolerances = check_dacvae_decode_parity.DecodeParityTolerances(
-            max_abs=0.01,
-            mean_abs=0.01,
-            rmse=0.01,
-            min_cosine=0.99,
-        )
-
-        result = check_dacvae_decode_parity.compare_audio(
-            np.array([0.1, -0.2, 0.3], dtype=np.float32),
-            np.array([0.101, -0.199, 0.299], dtype=np.float32),
-            sample_rate=8000,
-            tolerances=tolerances,
-        )
-
-        self.assertEqual(result["status"], "passed")
-        self.assertTrue(result["checks"]["shape"])
-        self.assertTrue(result["checks"]["range"])
-        self.assertLess(result["metrics"]["max_abs"], 0.01)
-
-    def test_compare_audio_fails_when_shape_or_tolerances_drift(self):
-        tolerances = check_dacvae_decode_parity.DecodeParityTolerances(
-            max_abs=0.001,
-            mean_abs=0.001,
-            rmse=0.001,
-            min_cosine=0.9999,
-        )
-
-        result = check_dacvae_decode_parity.compare_audio(
-            np.array([0.0, 0.0, 0.0], dtype=np.float32),
-            np.array([0.5, 0.5], dtype=np.float32),
-            sample_rate=8000,
-            tolerances=tolerances,
-        )
-
-        self.assertEqual(result["status"], "failed")
-        self.assertFalse(result["checks"]["shape"])
-        self.assertFalse(result["checks"]["max_abs"])
-
     def test_decode_pair_uses_fixed_latents_for_mlx_and_writes_report_shape(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

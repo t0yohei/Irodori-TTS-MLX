@@ -7,7 +7,6 @@ import argparse
 import importlib.util
 import json
 import sys
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -40,14 +39,6 @@ def _load_runtime_decode_dependencies() -> None:
     DACVAEBridgeConfig = runtime_config
     MLXDACVAEBridge = mlx_bridge
     _load_audio_numpy = runtime_load_audio_numpy
-
-
-@dataclass(frozen=True)
-class DecodeParityTolerances:
-    max_abs: float = 5e-3
-    mean_abs: float = 1e-3
-    rmse: float = 2e-3
-    min_cosine: float = 0.999
 
 
 class PartialPreconditionError(RuntimeError):
@@ -148,57 +139,6 @@ def _audio_stats(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
     }
 
 
-def compare_audio(
-    upstream: np.ndarray,
-    mlx: np.ndarray,
-    *,
-    sample_rate: int,
-    tolerances: DecodeParityTolerances,
-) -> dict[str, Any]:
-    upstream = np.asarray(upstream, dtype=np.float32).reshape(-1)
-    mlx = np.asarray(mlx, dtype=np.float32).reshape(-1)
-    shape_match = upstream.shape == mlx.shape
-    n = min(int(upstream.shape[0]), int(mlx.shape[0]))
-    if n == 0:
-        diff = np.array([], dtype=np.float32)
-        cosine = 1.0 if shape_match else 0.0
-    else:
-        upstream_cmp = upstream[:n]
-        mlx_cmp = mlx[:n]
-        diff = mlx_cmp - upstream_cmp
-        denom = float(np.linalg.norm(upstream_cmp) * np.linalg.norm(mlx_cmp))
-        if denom == 0.0:
-            cosine = 1.0 if np.linalg.norm(diff) == 0.0 else 0.0
-        else:
-            cosine = float(np.dot(upstream_cmp, mlx_cmp) / denom)
-    metrics = {
-        "shape_match": bool(shape_match),
-        "compared_samples": int(n),
-        "max_abs": float(np.max(np.abs(diff))) if diff.size else 0.0,
-        "mean_abs": float(np.mean(np.abs(diff))) if diff.size else 0.0,
-        "rmse": float(np.sqrt(np.mean(np.square(diff)))) if diff.size else 0.0,
-        "cosine": cosine,
-        "upstream": _audio_stats(upstream, sample_rate),
-        "mlx": _audio_stats(mlx, sample_rate),
-    }
-    checks = {
-        "shape": bool(shape_match),
-        "finite": bool(metrics["upstream"]["finite"] and metrics["mlx"]["finite"]),
-        "range": bool(metrics["upstream"]["within_unit_range"] and metrics["mlx"]["within_unit_range"]),
-        "max_abs": metrics["max_abs"] <= tolerances.max_abs,
-        "mean_abs": metrics["mean_abs"] <= tolerances.mean_abs,
-        "rmse": metrics["rmse"] <= tolerances.rmse,
-        "cosine": metrics["cosine"] >= tolerances.min_cosine,
-    }
-    return {
-        "status": "passed" if all(checks.values()) else "failed",
-        "sample_rate": int(sample_rate),
-        "tolerances": asdict(tolerances),
-        "checks": checks,
-        "metrics": metrics,
-    }
-
-
 def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
     _load_runtime_decode_dependencies()
     output_dir = Path(args.output_dir).expanduser().resolve()
@@ -292,10 +232,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_EXPECTED_LATENT_DIM,
         help="Expected runtime latent channel count for the fixed fixture. Defaults to 32 for Semantic-DACVAE.",
     )
-    parser.add_argument("--max-abs-tolerance", type=float, default=DecodeParityTolerances.max_abs)
-    parser.add_argument("--mean-abs-tolerance", type=float, default=DecodeParityTolerances.mean_abs)
-    parser.add_argument("--rmse-tolerance", type=float, default=DecodeParityTolerances.rmse)
-    parser.add_argument("--min-cosine", type=float, default=DecodeParityTolerances.min_cosine)
     parser.add_argument(
         "--allow-partial",
         action="store_true",

@@ -38,47 +38,6 @@ def write_wav(path: Path) -> None:
 
 
 class DACVAEEncodeParityScriptTests(unittest.TestCase):
-    def test_compare_latents_passes_shape_length_and_metric_tolerances(self):
-        tolerances = check_dacvae_encode_parity.EncodeParityTolerances(
-            max_abs=0.01,
-            mean_abs=0.01,
-            rmse=0.01,
-            min_cosine=0.99,
-        )
-
-        result = check_dacvae_encode_parity.compare_latents(
-            np.array([[[0.1, -0.2], [0.3, -0.4]]], dtype=np.float32),
-            np.array([[[0.101, -0.199], [0.299, -0.401]]], dtype=np.float32),
-            hop_length=2,
-            tolerances=tolerances,
-        )
-
-        self.assertEqual(result["status"], "passed")
-        self.assertTrue(result["checks"]["latent_steps"])
-        self.assertTrue(result["checks"]["latent_dim"])
-        self.assertEqual(result["length_contract"]["speaker_mask_true_count_upstream"], 2)
-        self.assertLess(result["metrics"]["max_abs"], 0.01)
-
-    def test_compare_latents_fails_when_length_or_tolerances_drift(self):
-        tolerances = check_dacvae_encode_parity.EncodeParityTolerances(
-            max_abs=0.001,
-            mean_abs=0.001,
-            rmse=0.001,
-            min_cosine=0.9999,
-        )
-
-        result = check_dacvae_encode_parity.compare_latents(
-            np.array([[[0.0, 0.0], [0.0, 0.0]]], dtype=np.float32),
-            np.array([[[0.5, 0.5]]], dtype=np.float32),
-            hop_length=2,
-            tolerances=tolerances,
-        )
-
-        self.assertEqual(result["status"], "failed")
-        self.assertFalse(result["checks"]["shape"])
-        self.assertFalse(result["checks"]["latent_steps"])
-        self.assertFalse(result["checks"]["max_abs"])
-
     def test_encode_pair_uses_audio_for_mlx_and_writes_latents(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

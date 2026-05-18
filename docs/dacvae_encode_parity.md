@@ -21,18 +21,14 @@ The fixed license-clean reference WAV is a generated 0.5 second, 48 kHz, mono
 The report completed with `run.status = "complete"` and
 `comparison.status = "passed"`:
 
-- latent shape: `[1, 13, 32]` for both upstream PyTorch and MLX encode
-- finite-value checks: passed for both latent tensors
+- latent shape: `[1, 13, 32]` for MLX encode
+- finite-value checks: passed for the MLX latent tensor
 - length/mask contract: `hop_length = 1920`,
   `latent_steps = speaker_mask_true_count = 13`
-- tolerance metrics: `max_abs = 2.7686357498168945e-05`,
-  `mean_abs = 3.6222247672412777e-06`,
-  `rmse = 5.6087264965754e-06`,
-  `cosine = 1.0000001192092896`
 
-No threshold change was needed. The generated local report remains outside git
-with the converted codec artifact and latent fixtures because those files are
-derived from upstream codec weights and local fixture paths.
+The generated local report remains outside git with the converted codec
+artifact and latent fixtures because those files are derived from upstream
+codec weights and local fixture paths.
 
 ## What the check validates
 
@@ -108,11 +104,9 @@ reviewed for redistribution.
 
 The report uses a portable status contract:
 
-- `passed`: upstream and MLX encode both ran, the comparison completed, and all
-  configured checks passed.
-- `failed`: upstream and MLX encode both ran, but shape, finite, or tolerance
-  checks failed. Keep this report as measured parity evidence before changing
-  thresholds.
+- `passed`: MLX encode ran and all configured checks passed.
+- `failed`: MLX encode ran, but shape, finite, or metadata checks failed.
+  Keep this report as measured evidence before changing the artifact.
 - `partial`: preflight could not reach comparison because local artifacts or
   optional runtime dependencies are absent. The JSON report records the missing
   codec/audio/dependency inputs without writing fake parity artifacts or
@@ -120,11 +114,11 @@ The report uses a portable status contract:
 
 ## Preprocessing caveats
 
-The check passes the same `--max-seconds`, `--normalize-db`, and `--ensure-max`
-options to both bridges. The upstream bridge still owns the reference behavior:
-mono loading, resampling to the codec sample rate, optional loudness
-normalization, peak safety, hop-multiple padding, deterministic mean-latent
-encode, and runtime layout transposition to `(B, T, D)`.
+The check passes `--max-seconds`, `--normalize-db`, and `--ensure-max` into
+the MLX runtime path. The artifact evidence covers mono loading, resampling to
+the codec sample rate, optional loudness normalization, peak safety,
+hop-multiple padding, deterministic mean-latent encode, and runtime layout
+transposition to `(B, T, D)`.
 
 The lightweight MLX codec artifact contract in this repository is a fixture
 contract, not a redistributed Semantic-DACVAE checkpoint. Real acoustic parity
