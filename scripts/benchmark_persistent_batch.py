@@ -17,6 +17,8 @@ from typing import Any
 TIME_L_BIN = "/usr/bin/time"
 DEFAULT_TEXT = "今日はいい天気ですね。"
 DEFAULT_CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
+DEFAULT_CFG_SCALE_CAPTION = 3.0
+DEFAULT_CFG_SCALE_SPEAKER = 5.0
 WALL_RE = re.compile(r"(?:^|\s)([0-9]+(?:\.[0-9]+)?)\s+real(?:\s|$)")
 RSS_RE = re.compile(r"^\s*(\d+)\s+maximum resident set size\s*$")
 
@@ -42,6 +44,9 @@ class RequestResult:
     text: str
     seed: int | None
     num_steps: int | None
+    cfg_guidance_mode: str | None
+    cfg_scale_text: float | None
+    output_duration_seconds: float | None
     timings_ms: dict[str, float]
     codec_encode_backend: str | None
     codec_decode_backend: str | None
@@ -78,6 +83,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seconds", type=float, default=5.0)
     parser.add_argument("--omit-seconds", action="store_true")
     parser.add_argument("--num-steps", type=int, default=24)
+    parser.add_argument("--cfg-guidance-mode", choices=("independent", "joint", "reduced"), default="independent")
+    parser.add_argument("--cfg-scale-text", type=float, default=3.0)
+    parser.add_argument("--cfg-scale-caption", type=float)
+    parser.add_argument("--cfg-scale-speaker", type=float)
     parser.add_argument("--reference-wav")
     parser.add_argument("--upstream-root")
     parser.add_argument("--mlx-python", default="python3")
@@ -167,18 +176,39 @@ def build_request_overrides(args: argparse.Namespace, output_dir: Path) -> list[
             "text": args.text,
             "output": str(output_dir / f"{slug}.request-{index:02d}.wav"),
             "num_steps": int(args.num_steps),
+            "cfg_guidance_mode": args.cfg_guidance_mode,
+            "cfg_scale_text": float(args.cfg_scale_text),
             "seed": int(args.seed) + index - 1,
         }
         if args.caption:
             item["caption"] = args.caption
+            if args.cfg_scale_caption is not None:
+                item["cfg_scale_caption"] = float(args.cfg_scale_caption)
+        else:
+            item["cfg_scale_caption"] = 0.0 if args.cfg_scale_caption is None else float(args.cfg_scale_caption)
         if args.reference_wav:
             item["reference_wav"] = args.reference_wav
+            if args.cfg_scale_speaker is not None:
+                item["cfg_scale_speaker"] = float(args.cfg_scale_speaker)
         else:
             item["no_reference"] = True
+            item["cfg_scale_speaker"] = 0.0 if args.cfg_scale_speaker is None else float(args.cfg_scale_speaker)
         if not args.omit_seconds:
             item["seconds"] = float(args.seconds)
         overrides.append(item)
     return overrides
+
+
+def effective_cfg_scale_caption(args: argparse.Namespace) -> float:
+    if args.cfg_scale_caption is not None:
+        return float(args.cfg_scale_caption)
+    return DEFAULT_CFG_SCALE_CAPTION if args.caption else 0.0
+
+
+def effective_cfg_scale_speaker(args: argparse.Namespace) -> float:
+    if args.cfg_scale_speaker is not None:
+        return float(args.cfg_scale_speaker)
+    return DEFAULT_CFG_SCALE_SPEAKER if args.reference_wav else 0.0
 
 
 def build_command(args: argparse.Namespace, requests_json: Path, metadata_json: Path) -> tuple[list[str], dict[str, str]]:
@@ -274,6 +304,9 @@ def parse_batch_metadata(metadata: dict[str, Any], *, warmup_requests: int) -> t
                 text=str(request.get("text") or ""),
                 seed=request.get("seed"),
                 num_steps=request.get("num_steps"),
+                cfg_guidance_mode=request.get("cfg_guidance_mode"),
+                cfg_scale_text=None if request.get("cfg_scale_text") is None else float(request["cfg_scale_text"]),
+                output_duration_seconds=None if result.get("resolved_seconds") is None else float(result["resolved_seconds"]),
                 timings_ms={str(key): float(value) for key, value in timings.items()},
                 codec_encode_backend=result.get("codec_encode_backend"),
                 codec_decode_backend=result.get("codec_decode_backend"),
@@ -389,6 +422,10 @@ def build_json_summary(result: BatchRunResult, *, args: argparse.Namespace) -> d
             "seconds": args.seconds,
             "omit_seconds": bool(args.omit_seconds),
             "num_steps": args.num_steps,
+            "cfg_guidance_mode": args.cfg_guidance_mode,
+            "cfg_scale_text": args.cfg_scale_text,
+            "cfg_scale_caption": effective_cfg_scale_caption(args),
+            "cfg_scale_speaker": effective_cfg_scale_speaker(args),
             "reference_wav": args.reference_wav,
             "weights": args.weights,
             "weights_dir": args.weights_dir,
@@ -419,7 +456,14 @@ def build_json_summary(result: BatchRunResult, *, args: argparse.Namespace) -> d
             "measured_total_to_decode_ms": request_metric_summary(result, "total_to_decode"),
             "measured_sample_rf_ms": request_metric_summary(result, "sample_rf"),
             "measured_decode_dacvae_ms": request_metric_summary(result, "decode_dacvae"),
+            "measured_decode_dacvae_model_ms": request_metric_summary(result, "decode_dacvae_model"),
+            "measured_audio_write_ms": request_metric_summary(result, "audio_write_wav"),
             "measured_encode_dacvae_ms": request_metric_summary(result, "encode_dacvae"),
+            "measured_output_duration_seconds": summarize_numeric([
+                item.output_duration_seconds
+                for item in result.requests
+                if item.phase == "measured" and item.output_duration_seconds is not None
+            ]),
         },
         "requests": [asdict(item) for item in result.requests],
     }
@@ -432,7 +476,10 @@ def build_report(result: BatchRunResult, *, args: argparse.Namespace) -> str:
     total = aggregates["measured_total_to_decode_ms"] or {}
     sample = aggregates["measured_sample_rf_ms"] or {}
     decode = aggregates["measured_decode_dacvae_ms"] or {}
+    decode_model = aggregates["measured_decode_dacvae_model_ms"] or {}
+    audio_write = aggregates["measured_audio_write_ms"] or {}
     encode = aggregates["measured_encode_dacvae_ms"] or {}
+    output_duration = aggregates["measured_output_duration_seconds"] or {}
     first = result.requests[0] if result.requests else None
 
     def metric_range(item: dict[str, float | int]) -> str:
@@ -448,6 +495,10 @@ def build_report(result: BatchRunResult, *, args: argparse.Namespace) -> str:
         f"- Prompt text: {args.text}",
         f"- Seed start: {args.seed}",
         f"- Num steps: {args.num_steps}",
+        f"- CFG guidance mode: {args.cfg_guidance_mode}",
+        f"- CFG text scale: {args.cfg_scale_text}",
+        f"- CFG caption scale: {effective_cfg_scale_caption(args)}",
+        f"- CFG speaker scale: {effective_cfg_scale_speaker(args)}",
         f"- Seconds: {'predicted duration (--seconds omitted)' if args.omit_seconds else args.seconds}",
         f"- Codec runtime mode: {args.codec_runtime_mode}",
         f"- Cleanup between requests: {bool(args.cleanup_between_requests)}",
@@ -473,6 +524,9 @@ def build_report(result: BatchRunResult, *, args: argparse.Namespace) -> str:
         f"| sample_rf | {format_ms(first.timings_ms.get('sample_rf') if first else None)} | {format_ms(float(sample['median'])) if sample else ''} | {metric_range(sample)} |",
         f"| encode_dacvae | {format_ms(first.timings_ms.get('encode_dacvae') if first else None)} | {format_ms(float(encode['median'])) if encode else ''} | {metric_range(encode)} |",
         f"| decode_dacvae | {format_ms(first.timings_ms.get('decode_dacvae') if first else None)} | {format_ms(float(decode['median'])) if decode else ''} | {metric_range(decode)} |",
+        f"| decode_dacvae_model | {format_ms(first.timings_ms.get('decode_dacvae_model') if first else None)} | {format_ms(float(decode_model['median'])) if decode_model else ''} | {metric_range(decode_model)} |",
+        f"| audio_write_wav | {format_ms(first.timings_ms.get('audio_write_wav') if first else None)} | {format_ms(float(audio_write['median'])) if audio_write else ''} | {metric_range(audio_write)} |",
+        f"| output_duration_seconds | {format_seconds(first.output_duration_seconds if first else None)} | {format_seconds(float(output_duration['median'])) if output_duration else ''} | {'' if not output_duration else format_seconds(float(output_duration['min'])) + ' / ' + format_seconds(float(output_duration['max']))} |",
         "",
     ]
     decode_subphase_rows = []
@@ -500,20 +554,26 @@ def build_report(result: BatchRunResult, *, args: argparse.Namespace) -> str:
         [
             "## Raw requests",
             "",
-            "| # | Phase | Seed | total_to_decode | sample_rf | encode_dacvae | decode_dacvae | Output |",
-            "| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+            "| # | Phase | Seed | Steps | CFG mode | CFG text | Duration | total_to_decode | sample_rf | encode_dacvae | decode_dacvae | decode_model | audio_write | Output |",
+            "| ---: | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
         ]
     )
     for item in result.requests:
         lines.append(
-            "| {index} | {phase} | {seed} | {total} | {sample} | {encode} | {decode} | {output} |".format(
+            "| {index} | {phase} | {seed} | {steps} | {cfg_mode} | {cfg_text} | {duration} | {total} | {sample} | {encode} | {decode} | {decode_model} | {audio_write} | {output} |".format(
                 index=item.index,
                 phase=item.phase,
                 seed="" if item.seed is None else item.seed,
+                steps="" if item.num_steps is None else item.num_steps,
+                cfg_mode=item.cfg_guidance_mode or "",
+                cfg_text="" if item.cfg_scale_text is None else item.cfg_scale_text,
+                duration=format_seconds(item.output_duration_seconds),
                 total=format_ms(item.timings_ms.get("total_to_decode")),
                 sample=format_ms(item.timings_ms.get("sample_rf")),
                 encode=format_ms(item.timings_ms.get("encode_dacvae")),
                 decode=format_ms(item.timings_ms.get("decode_dacvae")),
+                decode_model=format_ms(item.timings_ms.get("decode_dacvae_model")),
+                audio_write=format_ms(item.timings_ms.get("audio_write_wav")),
                 output=item.output_wav,
             )
         )
@@ -558,7 +618,7 @@ def run_self_test() -> int:
         process_setup_overhead_ms=process_setup_overhead_ms(2.0, parsed),
         requests=parsed,
     )
-    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx-decode", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
+    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, cfg_guidance_mode="independent", cfg_scale_text=3.0, cfg_scale_caption=None, cfg_scale_speaker=None, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx-decode", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
     report = build_report(result, args=args)
     assert "Persistent Batch Benchmark Report" in report
     assert "Measured generation throughput" in report

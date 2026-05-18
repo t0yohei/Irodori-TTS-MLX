@@ -610,6 +610,8 @@ class RuntimeBridgeTests(unittest.TestCase):
                     "decode_dacvae_model",
                     "audio_write",
                     "decode_dacvae_cleanup",
+                    "decode_dacvae_model",
+                    "audio_write_wav",
                 },
             )
             self.assertTrue(all(value >= 0.0 for value in bridge.last_decode_timings_ms.values()))
