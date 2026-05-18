@@ -13,6 +13,7 @@ The hosted artifact is approved for public `--codec-artifact-repo` use from the 
 - PR commit: `16d64e0978afe79c46b971405bba4f464cc743f8`
 - pinned repository revision: `bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78`
 - publication status: `approved-public`
+- access policy: public and ungated; no Hugging Face access request or terms gate is required
 - license review: approved for personal OSS, research, and development publication
 - source codec: `Aratako/Semantic-DACVAE-Japanese-32dim`
 - source revision: `47376ee24834d7a05a48ebabfe3cde29b3c5e214`
@@ -42,6 +43,7 @@ Required runtime facts in the prepared manifest:
 - `supports_mlx_decode: true`
 - `supports_mlx_encode: true`
 - `requires_pytorch_fallback: false`
+- `requires_access_request: false`
 - `license_review.status: "approved"`
 
 Use the pinned revision in public examples:

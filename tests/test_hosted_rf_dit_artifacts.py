@@ -75,7 +75,27 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
         self.assertTrue(artifact.supports_mlx_decode)
         self.assertTrue(artifact.supports_mlx_encode)
         self.assertFalse(artifact.requires_pytorch_fallback)
+        self.assertFalse(artifact.requires_access_request)
         self.assertIsNone(artifact.blocker)
+
+    def test_dacvae_codec_artifact_with_access_request_is_not_public(self):
+        artifact = hosted_dacvae_codec_artifact()
+        gated = artifact.__class__(
+            source_repo=artifact.source_repo,
+            repo_id=artifact.repo_id,
+            revision=artifact.revision,
+            publication_status=artifact.publication_status,
+            license_review_status=artifact.license_review_status,
+            review_reference=artifact.review_reference,
+            issue_url=artifact.issue_url,
+            hf_pr_url=artifact.hf_pr_url,
+            supports_mlx_decode=artifact.supports_mlx_decode,
+            supports_mlx_encode=artifact.supports_mlx_encode,
+            requires_pytorch_fallback=artifact.requires_pytorch_fallback,
+            requires_access_request=True,
+        )
+
+        self.assertFalse(gated.is_approved_public)
 
     def test_doc_records_public_status_and_smoke_commands(self):
         required_terms = [
@@ -111,6 +131,7 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
             "supports_mlx_decode: true",
             "supports_mlx_encode: true",
             "requires_pytorch_fallback: false",
+            "requires_access_request: false",
             "license_review.status: \"approved\"",
             "3.0517578125e-05",
             "1.33514404296875e-05",

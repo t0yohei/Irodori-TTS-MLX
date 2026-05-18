@@ -45,6 +45,7 @@ class HostedDacvaeCodecArtifact:
     supports_mlx_decode: bool
     supports_mlx_encode: bool
     requires_pytorch_fallback: bool
+    requires_access_request: bool
     blocker: str | None = None
 
     @property
@@ -53,6 +54,7 @@ class HostedDacvaeCodecArtifact:
             self.publication_status == "approved-public"
             and self.license_review_status == "approved"
             and self.revision is not None
+            and not self.requires_access_request
             and self.blocker is None
         )
 
@@ -101,6 +103,7 @@ HOSTED_DACVAE_CODEC_ARTIFACT = HostedDacvaeCodecArtifact(
     supports_mlx_decode=True,
     supports_mlx_encode=True,
     requires_pytorch_fallback=False,
+    requires_access_request=False,
 )
 
 
