@@ -62,6 +62,9 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn('"pytest>=8,<9"', pyproject)
         self.assertNotIn("torch>=2.6,<3", runtime_extra)
         self.assertNotIn("torchaudio>=2.6,<3", runtime_extra)
+        bench_extra = _pyproject_extra_entries(pyproject, "bench")
+        self.assertIn("torch>=2.6,<3", bench_extra)
+        self.assertNotIn("torchaudio>=2.6,<3", bench_extra)
 
         self.assertIn('[project.scripts]', pyproject)
         self.assertIn('irodori-tts-generate = "scripts.generate_wav:cli_main"', pyproject)
