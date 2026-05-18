@@ -29,6 +29,13 @@ The project defines these install targets:
 - `.[bench]`: benchmark-oriented environment for `scripts/benchmark.py` and checkpoint conversion helpers
 - `.[dev]`: local contributor environment for tests plus packaging validation helpers
 
+On Python 3.11, the `runtime`, `bench`, and `dev` extras intentionally use the
+upstream-compatible `sentencepiece>=0.1.99,<0.2` range so a single venv can
+install both this package and upstream `irodori-tts` without a resolver
+conflict. On Python 3.12 and newer, those extras use `sentencepiece>=0.2,<1`
+because `sentencepiece==0.1.99` does not publish wheels for the advertised
+newer Python packaging targets; use Python 3.11 for same-venv upstream installs.
+
 There is intentionally no separate codec-only extra yet. The v0.2 MLX codec path is artifact-driven through `--codec-runtime-mode mlx`, `--codec-runtime-mode mlx-decode`, and `--codec-path`; keep a future codec-only dependency split blocked until the redistributed DACVAE artifact contract is approved.
 
 ## Package users versus repository contributors

@@ -80,6 +80,12 @@ python -m pip install -e ../Irodori-TTS
 # export PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}
 ```
 
+Python 3.11 では、`runtime`、`bench`、`dev` extra は同じ virtual environment
+に upstream `irodori-tts` も入れる場合に衝突しないよう
+`sentencepiece>=0.1.99,<0.2` へ揃えています。Python 3.12 以降では wheel
+availability のため `sentencepiece>=0.2,<1` を維持するので、upstream
+`irodori-tts` を同じ venv に install する場合は Python 3.11 を使ってください。
+
 default の `persistent` / `subprocess` codec mode では upstream `irodori_tts.codec.DACVAECodec` が必要です。再現性のある環境構築は [docs/packaging.md](docs/packaging.md) と [docs/upstream_dependency.md](docs/upstream_dependency.md) を参照してください。
 
 ## 入口: Hosted Weights

@@ -25,6 +25,13 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[runtime]"
 ```
 
+On Python 3.11, the runtime extra uses the same
+`sentencepiece>=0.1.99,<0.2` range as upstream `irodori-tts`, so the next
+editable install should not force `sentencepiece==0.2.x` into the shared venv.
+On Python 3.12 and newer, use Python 3.11 for same-venv upstream installs or
+keep upstream on `PYTHONPATH`, because `sentencepiece==0.1.99` does not publish
+wheels for the newer Python packaging targets.
+
 Then make a local upstream checkout importable from the same environment. The recommended option is an editable install:
 
 ```bash
