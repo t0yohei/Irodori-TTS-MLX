@@ -79,7 +79,7 @@ irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --codec-runtime-mode mlx-decode \
   --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
-  --codec-artifact-revision <approved-hf-commit> \
+  --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
   --output /tmp/irodori-v3-hosted-codec.wav

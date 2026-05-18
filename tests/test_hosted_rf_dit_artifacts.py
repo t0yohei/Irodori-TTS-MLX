@@ -60,13 +60,13 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
                 with self.subTest(value=value):
                     self.assertNotRegex(value, forbidden)
 
-    def test_dacvae_codec_artifact_pr_is_recorded_but_not_approved_public_yet(self):
+    def test_dacvae_codec_artifact_is_approved_public(self):
         artifact = hosted_dacvae_codec_artifact()
 
-        self.assertFalse(artifact.is_approved_public)
+        self.assertTrue(artifact.is_approved_public)
         self.assertEqual(artifact.repo_id, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec")
-        self.assertIsNone(artifact.revision)
-        self.assertEqual(artifact.publication_status, "hf-pr-open")
+        self.assertEqual(artifact.revision, "bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78")
+        self.assertEqual(artifact.publication_status, "approved-public")
         self.assertEqual(artifact.license_review_status, "approved")
         self.assertEqual(
             artifact.hf_pr_url,
@@ -75,7 +75,7 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
         self.assertTrue(artifact.supports_mlx_decode)
         self.assertTrue(artifact.supports_mlx_encode)
         self.assertFalse(artifact.requires_pytorch_fallback)
-        self.assertIn("must be merged", artifact.blocker or "")
+        self.assertIsNone(artifact.blocker)
 
     def test_doc_records_public_status_and_smoke_commands(self):
         required_terms = [
@@ -106,7 +106,8 @@ class HostedRfDitArtifactsTests(unittest.TestCase):
             "t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
             "https://huggingface.co/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/discussions/1",
             "16d64e0978afe79c46b971405bba4f464cc743f8",
-            "publication status: `hf-pr-open`",
+            "bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78",
+            "publication status: `approved-public`",
             "supports_mlx_decode: true",
             "supports_mlx_encode: true",
             "requires_pytorch_fallback: false",

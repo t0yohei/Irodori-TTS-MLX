@@ -6,22 +6,21 @@ This page records the v0.2 public DACVAE codec hosted-artifact status. The machi
 
 ## Current status
 
-The hosted artifact is prepared as a Hugging Face pull request, not pushed directly to the model repository main branch:
+The hosted artifact is approved for public `--codec-artifact-repo` use from the pinned Hugging Face repository revision:
 
 - repo: `t0yohei/Irodori-TTS-MLX-DACVAE-Codec`
 - Hugging Face PR: https://huggingface.co/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/discussions/1
 - PR commit: `16d64e0978afe79c46b971405bba4f464cc743f8`
-- publication status: `hf-pr-open`
+- pinned repository revision: `bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78`
+- publication status: `approved-public`
 - license review: approved for personal OSS, research, and development publication
 - source codec: `Aratako/Semantic-DACVAE-Japanese-32dim`
 - source revision: `47376ee24834d7a05a48ebabfe3cde29b3c5e214`
 - DACVAE package revision used for conversion: `414c20785fc3a28373073ea8ef7a1316eeeaca6e`
 
-Do not document the artifact as an approved public `--codec-artifact-repo` dependency until the Hugging Face PR is merged and the resulting repository revision is pinned.
+## Published artifact contract
 
-## Prepared artifact contract
-
-The HF PR adds this hosted codec layout:
+The pinned Hugging Face revision contains this hosted codec layout:
 
 - `irodori_dacvae_codec_manifest.json`
 - `dacvae-codec.npz`
@@ -45,9 +44,22 @@ Required runtime facts in the prepared manifest:
 - `requires_pytorch_fallback: false`
 - `license_review.status: "approved"`
 
+Use the pinned revision in public examples:
+
+```bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --codec-runtime-mode mlx-decode \
+  --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
+  --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
+  --text "こんにちは。" \
+  --no-reference \
+  --output /tmp/irodori-v3-hosted-codec.wav
+```
+
 ## Validation evidence
 
-The prepared artifact was converted locally from `weights.pth` with `scripts/convert_dacvae_decoder.py`.
+The published artifact was converted locally from `weights.pth` with `scripts/convert_dacvae_decoder.py`.
 
 Decode parity against the upstream PyTorch bridge passed:
 
@@ -62,14 +74,3 @@ Encode parity against the upstream PyTorch bridge passed:
 - mean_abs: `2.287564711878076e-06`
 - rmse: `3.305609425297007e-06`
 - cosine: `1.0`
-
-## Post-merge update
-
-After the Hugging Face PR is merged:
-
-1. Record the merged HF repository revision here.
-2. Set `HOSTED_DACVAE_CODEC_ARTIFACT.publication_status` to `approved-public`.
-3. Set `HOSTED_DACVAE_CODEC_ARTIFACT.revision` to the merged 40-character HF commit.
-4. Replace examples that use `<approved-hf-commit>` with that pinned revision.
-5. Run hosted codec resolution against the pinned revision.
-
