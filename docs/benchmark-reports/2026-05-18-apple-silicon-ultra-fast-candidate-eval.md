@@ -12,8 +12,9 @@ with real v3 hosted weights and the hosted MLX DACVAE decode artifact.
 
 - Fastest measured request latency: `issue-220-ultra-fast-steps-6-reduced-cfg-1` at 1168.7 ms.
 - Implemented `--preset ultra-fast` equivalent: `issue-220-ultra-fast-steps-6-joint-cfg-1` at 1198.2 ms.
-- Both 6-step candidates are well below the prior 8-step one-shot v3 no-reference anchor, but they still need human listening/parity review before the preset can be promoted beyond experimental.
+- Both 6-step predicted-duration candidates are well below the prior 8-step one-shot v3 no-reference anchor, but human listening found audible non-Japanese/Chinese-like artifacts at the beginning or end across the candidate set. Treat the predicted-duration ultra-fast candidates as rejected for this short prompt until the duration policy is changed.
 - The remaining latency floor is still DACVAE decode/materialization: measured audio write is only 1-2 ms median across these runs.
+- A manual-duration follow-up with `--seconds 2.5` is promising as a latency path: the implemented `6/joint/1` shape measured 768.3 ms median `total_to_decode`, and the `8/reduced/1` control measured 848.0 ms. These files still need listening review before changing the preset guidance.
 - Baselines: [#64 v3 one-shot](2026-05-14-apple-silicon-num-steps-v3-text.md) and [persistent mlx-decode baseline](2026-05-18-apple-silicon-persistent-batch-runtime-cleanup.md).
 
 ## Environment
@@ -45,15 +46,34 @@ with real v3 hosted weights and the hosted MLX DACVAE decode artifact.
 `6/reduced/1` is the latency winner, but it is not the implemented preset.
 The current `ultra-fast` mapping uses `6/joint/1`, which is only about 30 ms
 slower in this run while keeping the originally selected joint-guidance shape.
-That makes the existing preset a reasonable first listening candidate.
+Human listening rejected the predicted-duration candidate set because each
+candidate had a strange Chinese-like artifact at the beginning or end. That
+means the measured latency win is real, but the predicted-duration short-prompt
+audio is not acceptable evidence for promoting `ultra-fast`.
 
 The 8-step candidates are slower by about 90-140 ms versus `6/joint/1`.
 They remain useful as safer comparison samples for listening review, especially
 if the 6-step outputs sound unstable.
 
 Measured output duration stayed close to the same short-prompt band for all
-candidates (4.34-4.48 s median). This catches gross duration failure, but it is
-not an audio-quality score.
+predicted-duration candidates (4.34-4.48 s median). For the text `今日はいい天気ですね。`,
+that is likely too long and matches the existing short-prompt warning that
+over-allocated v3 predicted duration can produce tail repetition or artifacts.
+
+## Manual Duration Follow-up
+
+After the listening failure, two candidates were rerun with `--seconds 2.5`
+instead of predicted duration:
+
+| Case | Steps | CFG mode | CFG text | Request wall | sample_rf | DACVAE decode | Decode model | Audio write | Output duration | Status |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| issue-220-ultra-fast-steps-6-joint-cfg-1-seconds-2p5 | 6 | joint | 1 | 768.3 ms | 257.3 ms | 499.6 ms | 437.0 ms | 1.4 ms | 2.50 s | needs listening |
+| issue-220-ultra-fast-steps-8-reduced-cfg-1-seconds-2p5 | 8 | reduced | 1 | 848.0 ms | 331.5 ms | 521.3 ms | 431.1 ms | 3.5 ms | 2.50 s | needs listening |
+
+These numbers show that explicit short duration can bring complete-WAV latency
+below one second, but it changes the UX contract: `ultra-fast` would need either
+a short-prompt duration cap/scale or documentation telling users to combine it
+with a manual duration for very short prompts.
 
 ## Listening Artifacts
 
@@ -66,17 +86,18 @@ available in the local benchmark output tree from this run:
     benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-independent-cfg-2/
 
 Use the request 02-05 WAVs in each directory for measured samples; request 01 is
-the warmup sample. A human listening pass should check intelligibility, obvious
-noise/artifacts, and whether the short prompt still sounds natural enough for a
-latency-first candidate.
+the warmup sample. The predicted-duration candidate files are retained as
+negative evidence because they exposed the Chinese-like start/end artifact. The
+manual-duration `seconds-2p5` files should be the next listening target.
 
 ## Recommendation
 
-Keep `--preset ultra-fast` experimental. For the next gate, listen to the
-`6/joint/1` measured samples first. If they are acceptable, keep the preset as
-implemented and document it as the candidate for sub-second follow-up work. If
-they are not acceptable, compare `6/reduced/1` and the two 8-step controls
-before changing the preset mapping.
+Keep `--preset ultra-fast` experimental and do not promote the predicted-duration
+short-prompt path. For the next gate, listen to the `6/joint/1 --seconds 2.5`
+measured samples first. If those are acceptable, the likely product direction is
+not a different CFG preset; it is an ultra-fast short-prompt duration policy. If
+they still contain artifacts, fall back to the `8/reduced/1 --seconds 2.5`
+control before spending more time on lower-step CFG variants.
 
 ## Evidence Fields
 
