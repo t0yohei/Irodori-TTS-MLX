@@ -100,6 +100,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text-tokenizer-repo")
     parser.add_argument("--caption-tokenizer-repo")
     parser.add_argument("--case-label", default="persistent-batch")
+    parser.add_argument(
+        "--cleanup-between-requests",
+        action="store_true",
+        help="Forward generate_wav --cleanup-between-requests to test explicit MLX cache cleanup in one persistent process.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -217,6 +222,8 @@ def build_command(args: argparse.Namespace, requests_json: Path, metadata_json: 
         if weight_flag != "--weights":
             raise PersistentBatchBenchmarkError("--model-config-json is only valid with --weights")
         argv.extend(["--model-config-json", args.model_config_json])
+    if args.cleanup_between_requests:
+        argv.append("--cleanup-between-requests")
     env = os.environ.copy()
     if args.upstream_root:
         parts = [str(Path(args.upstream_root).resolve())]
@@ -382,6 +389,7 @@ def build_json_summary(result: BatchRunResult, *, args: argparse.Namespace) -> d
             "codec_artifact_dir": args.codec_artifact_dir,
             "codec_artifact_repo": args.codec_artifact_repo,
             "codec_artifact_revision": args.codec_artifact_revision,
+            "cleanup_between_requests": bool(args.cleanup_between_requests),
         },
         "process": {
             "status": result.status,
@@ -432,6 +440,7 @@ def build_report(result: BatchRunResult, *, args: argparse.Namespace) -> str:
         f"- Num steps: {args.num_steps}",
         f"- Seconds: {'predicted duration (--seconds omitted)' if args.omit_seconds else args.seconds}",
         f"- Codec runtime mode: {args.codec_runtime_mode}",
+        f"- Cleanup between requests: {bool(args.cleanup_between_requests)}",
         "",
         "## Process results",
         "",
@@ -514,7 +523,7 @@ def run_self_test() -> int:
         process_setup_overhead_ms=process_setup_overhead_ms(2.0, parsed),
         requests=parsed,
     )
-    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx-decode", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None)
+    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx-decode", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
     report = build_report(result, args=args)
     assert "Persistent Batch Benchmark Report" in report
     assert "Measured generation throughput" in report
@@ -548,4 +557,3 @@ if __name__ == "__main__":
     except PersistentBatchBenchmarkError as exc:
         print(f"error: {exc}")
         raise SystemExit(1) from exc
-
