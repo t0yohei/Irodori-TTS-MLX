@@ -164,24 +164,14 @@ CHOICE_KEYS = {
 }
 
 PRESET_DEFAULTS = {
-    "ultra-fast": {
-        "num_steps": 6,
-        "cfg_guidance_mode": "joint",
-        "cfg_scale_text": 1.0,
-        "cfg_scale_caption": 0.0,
-        "cfg_scale_speaker": 0.0,
-    },
+    "ultra-fast": {"num_steps": 8},
     "fast": {"num_steps": 12},
     "balanced": {"num_steps": 24},
     "quality": {"num_steps": 40},
 }
+ULTRA_FAST_SHORT_PROMPT_MAX_AUTO_SECONDS = 2.5
+ULTRA_FAST_SHORT_PROMPT_MAX_ESTIMATE_SECONDS = 3.0
 PRESET_NUM_STEPS = {name: int(defaults["num_steps"]) for name, defaults in PRESET_DEFAULTS.items()}
-BASELINE_CFG_DEFAULTS = {
-    "cfg_guidance_mode": "independent",
-    "cfg_scale_text": 3.0,
-    "cfg_scale_caption": 3.0,
-    "cfg_scale_speaker": 5.0,
-}
 
 
 def _load_json_value(value: str | None, *, label: str) -> Any:
@@ -415,7 +405,7 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         default=config.get("preset"),
         choices=tuple(PRESET_NUM_STEPS),
         help=(
-            "Local generation preset: ultra-fast=experimental 6-step latency-first CFG, "
+            "Local generation preset: ultra-fast=experimental 8-step short-prompt latency/quality candidate, "
             "fast=12 steps, balanced=24 steps, quality=40 steps. Explicit sampling flags still win."
         ),
     )
@@ -595,6 +585,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if not _has_cli_override(argv, "--codec-artifact-revision"):
             args.codec_artifact_revision = None
     _apply_preset_defaults(args, config=config, argv=argv)
+    args.duration_scale_explicit = _has_cli_override(argv, "--duration-scale") or "duration_scale" in config
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
     selected_weights = [value for value in (args.weights, args.weights_dir, args.weights_repo) if value is not None and str(value).strip()]
@@ -957,13 +948,6 @@ def _merged_request_preset_value(
     if "preset" in overrides and key not in overrides:
         if key in preset_defaults:
             return preset_defaults[key]
-        if (
-            preset in {"fast", "balanced", "quality"}
-            and key in BASELINE_CFG_DEFAULTS
-            and args.preset == "ultra-fast"
-            and getattr(args, key) == PRESET_DEFAULTS["ultra-fast"][key]
-        ):
-            return BASELINE_CFG_DEFAULTS[key]
     return _merged_request_value(args, overrides, key)
 
 
@@ -989,6 +973,12 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
     cfg_scale_speaker = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_speaker")
     seconds = _merged_request_value(args, overrides, "seconds")
     duration_scale = float(_merged_request_value(args, overrides, "duration_scale"))
+    duration_scale_explicit = bool(getattr(args, "duration_scale_explicit", False)) or "duration_scale" in overrides
+    max_auto_seconds = None
+    max_auto_estimate_seconds = None
+    if preset == "ultra-fast" and seconds is None and not duration_scale_explicit:
+        max_auto_seconds = ULTRA_FAST_SHORT_PROMPT_MAX_AUTO_SECONDS
+        max_auto_estimate_seconds = ULTRA_FAST_SHORT_PROMPT_MAX_ESTIMATE_SECONDS
     max_reference_seconds = _merged_request_value(args, overrides, "max_reference_seconds")
     if seconds is not None and float(seconds) <= 0:
         raise ValueError("seconds must be > 0 when provided")
@@ -1006,6 +996,8 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         caption=_merged_request_value(args, overrides, "caption"),
         seconds=None if seconds is None else float(seconds),
         duration_scale=duration_scale,
+        max_auto_seconds=max_auto_seconds,
+        max_auto_estimate_seconds=max_auto_estimate_seconds,
         num_steps=num_steps,
         cfg_scale_text=float(cfg_scale_text),
         cfg_scale_caption=float(cfg_scale_caption),
