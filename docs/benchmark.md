@@ -23,6 +23,7 @@ We now have both:
 - the persistent batch runtime decode cleanup comparison from [docs/benchmark-reports/2026-05-18-apple-silicon-persistent-batch-runtime-cleanup-comparison.md](benchmark-reports/2026-05-18-apple-silicon-persistent-batch-runtime-cleanup-comparison.md)
 - the persistent local serving benchmark contract from [docs/benchmark-reports/2026-05-18-persistent-local-serving-benchmark-contract.md](benchmark-reports/2026-05-18-persistent-local-serving-benchmark-contract.md)
 - the MLX DACVAE decode subphase profile from [docs/benchmark-reports/2026-05-18-apple-silicon-dacvae-decode-profile.md](benchmark-reports/2026-05-18-apple-silicon-dacvae-decode-profile.md)
+- the real Apple Silicon ultra-fast candidate evaluation from [docs/benchmark-reports/2026-05-18-apple-silicon-ultra-fast-candidate-eval.md](benchmark-reports/2026-05-18-apple-silicon-ultra-fast-candidate-eval.md)
 - persistent batch generation is now documented in [dacvae_bridge.md](dacvae_bridge.md); the old one-off persistent-batch report was removed because no current summary or test referenced it
 
 Current read:
@@ -43,7 +44,7 @@ For day-to-day local generation defaults, the later `num_steps` sweep now sugges
 - `--num-steps 24` for balanced local usage
 - keep `--num-steps 40` as the higher-quality comparison/default anchor when latency matters less
 
-The `--preset ultra-fast` mode is intentionally experimental: it maps to a 6-step, joint-guidance, text-CFG-1 profile with caption/speaker CFG set to 0. That setting is useful for latency-first candidate generation after #217/#218/#221/#222, but it is not a replacement for the public `fast`, `balanced`, or `quality` defaults until real candidate WAVs have listening/parity evidence.
+The `--preset ultra-fast` mode is intentionally experimental: it maps to a 6-step, joint-guidance, text-CFG-1 profile with caption/speaker CFG set to 0. A real Apple Silicon candidate run measured that implemented mapping at **1198.2 ms** median `total_to_decode` for short v3 no-reference generation, while the fastest measured sibling candidate was 6-step reduced CFG at **1168.7 ms**. Human listening then found non-Japanese/Chinese-like start or end artifacts across the predicted-duration candidate set, so that path is rejected for this short prompt. A manual `--seconds 2.5` follow-up removed the artifact; the implemented 6-step joint shape measured **768.3 ms**, while an 8-step reduced-CFG control measured **848.0 ms** and was preferred on quality.
 
 The v0.2 hosted weights measurement shows that hosted loading is a setup/UX improvement rather than a generation-latency optimization: the first hosted run is dominated by the artifact download, while warm hosted repo, local hosted-layout directory, and direct local `.npz` fallback all produce similar `sample_rf` and `total_to_decode` timings.
 
