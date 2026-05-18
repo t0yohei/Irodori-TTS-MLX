@@ -137,7 +137,7 @@ Approved hosted DACVAE codec artifacts use a separate repo/layout from RF-DiT we
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --codec-runtime-mode mlx-decode \
-  --codec-artifact-repo t0yohei/Irodori-DACVAE-Codec-MLX \
+  --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision <approved-hf-commit> \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
@@ -227,6 +227,7 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 - v0.2 hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
 - Hosted weights/codec artifact usage and local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
 - Hosted RF-DiT artifact publication status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
+- Hosted DACVAE codec artifact publication status: [docs/hosted_dacvae_codec_artifacts.md](docs/hosted_dacvae_codec_artifacts.md)
 - mlx-audio interop and adapter boundary: [docs/mlx_audio_interop.md](docs/mlx_audio_interop.md)
 - DACVAE codec artifact layout and hosted repo contract: [docs/codec_artifact_layout.md](docs/codec_artifact_layout.md)
 - Checkpoint support matrix: [docs/checkpoint_support.md](docs/checkpoint_support.md)

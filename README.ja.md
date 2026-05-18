@@ -214,6 +214,7 @@ python scripts/benchmark.py --self-test
 - v0.2 hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
 - Hosted weights usage / local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
 - Hosted RF-DiT artifact publication status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
+- Hosted DACVAE codec artifact publication status: [docs/hosted_dacvae_codec_artifacts.md](docs/hosted_dacvae_codec_artifacts.md)
 - mlx-audio interop / adapter boundary: [docs/mlx_audio_interop.md](docs/mlx_audio_interop.md)
 - DACVAE artifact layout: [docs/codec_artifact_layout.md](docs/codec_artifact_layout.md)
 - Checkpoint support matrix: [docs/checkpoint_support.md](docs/checkpoint_support.md)

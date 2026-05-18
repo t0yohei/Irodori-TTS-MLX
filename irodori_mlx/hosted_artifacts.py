@@ -30,6 +30,33 @@ class HostedRfDitArtifact:
         )
 
 
+@dataclass(frozen=True)
+class HostedDacvaeCodecArtifact:
+    """Publication status for a hosted DACVAE codec artifact."""
+
+    source_repo: str
+    repo_id: str
+    revision: str | None
+    publication_status: str
+    license_review_status: str
+    review_reference: str
+    issue_url: str
+    hf_pr_url: str | None
+    supports_mlx_decode: bool
+    supports_mlx_encode: bool
+    requires_pytorch_fallback: bool
+    blocker: str | None = None
+
+    @property
+    def is_approved_public(self) -> bool:
+        return (
+            self.publication_status == "approved-public"
+            and self.license_review_status == "approved"
+            and self.revision is not None
+            and self.blocker is None
+        )
+
+
 HOSTED_RF_DIT_ARTIFACTS: dict[str, HostedRfDitArtifact] = {
     CHECKPOINT_FAMILY_VOICEDESIGN_V2: HostedRfDitArtifact(
         family=CHECKPOINT_FAMILY_VOICEDESIGN_V2,
@@ -62,6 +89,22 @@ HOSTED_RF_DIT_ARTIFACTS: dict[str, HostedRfDitArtifact] = {
 }
 
 
+HOSTED_DACVAE_CODEC_ARTIFACT = HostedDacvaeCodecArtifact(
+    source_repo="Aratako/Semantic-DACVAE-Japanese-32dim",
+    repo_id="t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
+    revision=None,
+    publication_status="hf-pr-open",
+    license_review_status="approved",
+    review_reference="https://github.com/t0yohei/Irodori-TTS-MLX/issues/188",
+    issue_url="https://github.com/t0yohei/Irodori-TTS-MLX/issues/188",
+    hf_pr_url="https://huggingface.co/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/discussions/1",
+    supports_mlx_decode=True,
+    supports_mlx_encode=True,
+    requires_pytorch_fallback=False,
+    blocker="Hugging Face artifact PR #1 must be merged before this repo can publish a pinned revision.",
+)
+
+
 def hosted_rf_dit_artifacts() -> dict[str, HostedRfDitArtifact]:
     """Return the v0.2 hosted RF-DiT artifact publication contract."""
 
@@ -90,3 +133,9 @@ def approved_hosted_rf_dit_repo(family: str) -> str:
         return artifact.repo_id
     blocker = artifact.blocker or "artifact is not approved for public hosted use"
     raise RuntimeError(blocker)
+
+
+def hosted_dacvae_codec_artifact() -> HostedDacvaeCodecArtifact:
+    """Return the v0.2 hosted DACVAE codec artifact publication contract."""
+
+    return HOSTED_DACVAE_CODEC_ARTIFACT

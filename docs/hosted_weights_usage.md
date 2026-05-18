@@ -78,7 +78,7 @@ PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --codec-runtime-mode mlx-decode \
-  --codec-artifact-repo t0yohei/Irodori-DACVAE-Codec-MLX \
+  --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision <approved-hf-commit> \
   --text "こんにちは。今日は良い天気です。" \
   --no-reference \
