@@ -752,6 +752,7 @@ class MLXDACVAEBridge:
         self.codec_path = Path(config.codec_path).expanduser()
         self.semantic_decoder = None
         self.semantic_encoder = None
+        self.last_decode_timings_ms: dict[str, float] = {}
         try:
             import numpy as np
 
@@ -902,6 +903,7 @@ class MLXDACVAEBridge:
         return latents[None, :, :]
 
     def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
+        self.last_decode_timings_ms = {}
         if len(latents.shape) != 3:
             raise ValueError(f"Expected MLX latents with shape (B,T,D), got {latents.shape}")
         if int(latents.shape[0]) != 1:
@@ -911,23 +913,44 @@ class MLXDACVAEBridge:
         waveform = None
         frames = None
         samples = None
+        output: Path | None = None
+        timings_ms: dict[str, float] = {}
         try:
+            started = time.perf_counter()
             if self.semantic_decoder is not None:
                 waveform = self.semantic_decoder(latents.astype(mx.float32))
+                timings_ms["decode_dacvae_model_compute"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 mx.eval(waveform)
+                timings_ms["decode_dacvae_materialization"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 samples = _as_numpy(waveform[0, :, 0]).astype("float32", copy=False)
+                timings_ms["decode_dacvae_host_transfer"] = (time.perf_counter() - started) * 1000.0
             else:
                 frames = latents[0].astype(mx.float32) @ self.decode_basis + self.decode_bias
+                timings_ms["decode_dacvae_model_compute"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 mx.eval(frames)
+                timings_ms["decode_dacvae_materialization"] = (time.perf_counter() - started) * 1000.0
+                started = time.perf_counter()
                 samples = _as_numpy(frames.reshape((-1,))).astype("float32", copy=False)
+                timings_ms["decode_dacvae_host_transfer"] = (time.perf_counter() - started) * 1000.0
+            started = time.perf_counter()
             if max_samples is not None:
                 samples = samples[: int(max_samples)]
-            return save_wav_numpy(output_path, samples, self.sample_rate)
+            timings_ms["decode_dacvae_postprocess"] = (time.perf_counter() - started) * 1000.0
+            started = time.perf_counter()
+            output = save_wav_numpy(output_path, samples, self.sample_rate)
+            timings_ms["decode_dacvae_wav_serialization"] = (time.perf_counter() - started) * 1000.0
+            return output
         finally:
             del waveform
             del frames
             del samples
+            started = time.perf_counter()
             release_mlx_runtime_memory()
+            timings_ms["decode_dacvae_cleanup"] = (time.perf_counter() - started) * 1000.0
+            self.last_decode_timings_ms = timings_ms
 
 
 class MLXDACVAEDecodeOnlyBridge:
@@ -991,7 +1014,9 @@ class MLXDACVAEDecodeOnlyBridge:
         )
 
     def decode_to_wav(self, latents: mx.array, output_path: str | Path, *, max_samples: int | None = None) -> Path:
-        return self.decode_bridge.decode_to_wav(latents, output_path, max_samples=max_samples)
+        output = self.decode_bridge.decode_to_wav(latents, output_path, max_samples=max_samples)
+        self.last_decode_timings_ms = dict(self.decode_bridge.last_decode_timings_ms)
+        return output
 
 
 def _load_audio_numpy(path: str | Path) -> tuple["object", int]:
@@ -1371,6 +1396,11 @@ class MLXDACVAERuntime:
         started = time.perf_counter()
         output = self.bridge.decode_to_wav(z, request.output_wav, max_samples=target_samples)
         timings_ms["decode_dacvae"] = (time.perf_counter() - started) * 1000.0
+        decode_timings = getattr(self.bridge, "last_decode_timings_ms", None)
+        if isinstance(decode_timings, dict):
+            for name, value in decode_timings.items():
+                if name.startswith("decode_dacvae_"):
+                    timings_ms[name] = float(value)
         timings_ms["total_to_decode"] = (time.perf_counter() - total_started) * 1000.0
         codec_boundaries = self.describe_boundaries()["codec"]
         codec_encode_backend = (
