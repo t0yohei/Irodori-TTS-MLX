@@ -25,18 +25,20 @@ Python 3.11 remains the reference environment for the current Apple Silicon benc
 The project defines these install targets:
 
 - base install: core MLX package modules (`irodori_mlx.layers`, encoders, model, sampler, weights)
-- `.[runtime]`: end-to-end WAV generation with the PyTorch DACVAE bridge
-- `.[bench]`: benchmark-oriented environment for `scripts/benchmark.py` and checkpoint conversion helpers
+- `.[runtime]`: standalone MLX runtime WAV generation with hosted/local DACVAE codec artifacts; does not install `torch` or `torchaudio`
+- `.[pytorch-bridge]`: explicit PyTorch DACVAE bridge fallback dependencies for `persistent` / `subprocess` modes
+- `.[bench]`: benchmark-oriented environment for MLX artifact benchmarks and checkpoint conversion helpers
+- `.[parity]`: upstream comparison and parity environment, including PyTorch bridge dependencies
 - `.[dev]`: local contributor environment for tests plus packaging validation helpers
 
-On Python 3.11, the `runtime`, `bench`, and `dev` extras intentionally use the
+On Python 3.11, the `runtime`, `bench`, `parity`, and `dev` extras intentionally use the
 upstream-compatible `sentencepiece>=0.1.99,<0.2` range so a single venv can
 install both this package and upstream `irodori-tts` without a resolver
 conflict. On Python 3.12 and newer, those extras use `sentencepiece>=0.2,<1`
 because `sentencepiece==0.1.99` does not publish wheels for the advertised
 newer Python packaging targets; use Python 3.11 for same-venv upstream installs.
 
-There is intentionally no separate codec-only extra yet. The v0.2 MLX codec path is artifact-driven through `--codec-runtime-mode mlx`, `--codec-runtime-mode mlx-decode`, and `--codec-path`; keep a future codec-only dependency split blocked until the redistributed DACVAE artifact contract is approved.
+The standalone MLX runtime path is artifact-driven through the default approved hosted DACVAE codec artifact, `--codec-artifact-dir`, or `--codec-path`. Keep PyTorch bridge dependencies out of `.[runtime]` so clean public installs can generate with approved hosted artifacts without upstream `irodori-tts`.
 
 ## Package users versus repository contributors
 
@@ -89,10 +91,22 @@ python -m pip install -e .
 python -m pip install -e ".[runtime]"
 ```
 
+#### PyTorch bridge fallback environment
+
+```bash
+python -m pip install -e ".[pytorch-bridge]"
+```
+
 #### Benchmark environment
 
 ```bash
 python -m pip install -e ".[bench]"
+```
+
+#### Upstream parity environment
+
+```bash
+python -m pip install -e ".[parity]"
 ```
 
 #### Development environment
@@ -103,12 +117,11 @@ python -m pip install -e ".[dev]"
 
 ## Upstream dependency boundary
 
-The v0.1 runtime still reuses upstream `irodori_tts.codec.DACVAECodec` for reference encode / waveform decode.
-That means the local environment must also be able to import upstream `irodori_tts`.
-This is intentional: this MLX repo owns the text/caption conditioning, RF-DiT, converted-weight runtime, duration handling, and sampler path, while upstream still owns the PyTorch DACVAE codec boundary.
-A full MLX DACVAE port is not required for v0.1 WAV generation.
+The v0.2 public runtime defaults to full-MLX codec artifact mode and does not require upstream `irodori_tts.codec.DACVAECodec`.
+The local environment must be able to import upstream `irodori_tts` only for explicit PyTorch bridge fallback, reference-audio encode fallback in `mlx-decode`, or upstream parity/comparison workflows.
+This is intentional: this MLX repo owns the text/caption conditioning, RF-DiT, converted-weight runtime, duration handling, sampler path, and artifact-backed DACVAE runtime, while upstream remains the reference implementation for bridge/parity workflows.
 
-The v0.2 `--codec-runtime-mode mlx` path is artifact-driven: package users must provide `--codec-path /path/to/dacvae-codec.npz`, and the repository does not ship Semantic-DACVAE codec weights. The local contract keeps encode/decode math in MLX and is intended for converted codec artifacts and parity fixtures; default runtime packaging should continue to include the PyTorch bridge dependencies until a real redistributed codec artifact is approved.
+The v0.2 `--codec-runtime-mode mlx` path is artifact-driven: package users can use the default approved hosted codec artifact, `--codec-artifact-dir`, or `--codec-path /path/to/dacvae-codec.npz`. The repository does not ship Semantic-DACVAE codec weights.
 See [upstream_dependency.md](upstream_dependency.md) for the full responsibility split and import-failure guidance.
 
 Supported ways to provide upstream:
@@ -130,14 +143,13 @@ The local benchmark harness already supports this pattern through `--upstream-ro
 
 ## Reproducible runtime setup
 
-For the current bridge prototype, the minimal practical setup is:
+For the current standalone MLX runtime, the minimal practical setup is:
 
 ```bash
 python3.11 -m venv .venv  # or: python3.12/3.13/3.14 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[runtime]"
-python -m pip install -e /path/to/Irodori-TTS
 ```
 
 Then run the installed generation command:
@@ -150,7 +162,8 @@ irodori-tts-generate \
   --output /tmp/irodori.wav \
   --seconds 5 \
   --num-steps 40 \
-  --codec-device cpu
+  --codec-runtime-mode mlx \
+  --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec
 ```
 
 For repository development, invoke scripts directly from a checkout:

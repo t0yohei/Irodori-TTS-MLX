@@ -3,16 +3,16 @@
 Issue: [#72 Document the upstream irodori_tts dependency boundary](https://github.com/t0yohei/Irodori-TTS-MLX/issues/72)  
 Parent: [#68 v0.1 documentation and release readiness](https://github.com/t0yohei/Irodori-TTS-MLX/issues/68)
 
-## Why this repo still needs upstream `irodori_tts`
+## When this repo still needs upstream `irodori_tts`
 
-The v0.1 runtime is intentionally a mixed MLX + PyTorch bridge:
+The v0.2 public runtime has a standalone MLX runtime path by default. Upstream `irodori_tts` is still needed only for explicit PyTorch bridge fallback, upstream parity checks, and comparison workflows.
 
 - this repository owns the MLX text/caption conditioning, RF-DiT model path, weight conversion, duration handling, and Euler RF sampling surface;
-- upstream `irodori_tts` still owns the PyTorch `irodori_tts.codec.DACVAECodec` used to encode reference audio into DACVAE latents and decode generated latents back to waveform audio.
+- upstream `irodori_tts` owns the explicit PyTorch bridge fallback through `irodori_tts.codec.DACVAECodec`, used by `persistent` / `subprocess` modes and by `mlx-decode` when reference-audio encode falls back to PyTorch.
 
-That boundary is a deliberate v0.1 constraint, not an accidental missing import. A full MLX DACVAE port is not required to validate v0.1 because the current milestone is about the latent-generation path: converted Irodori-TTS weights running through MLX and then crossing back through the known upstream DACVAE implementation for audio I/O.
+That boundary is deliberate fallback behavior, not an accidental missing import. The recommended public path uses approved hosted RF-DiT weights plus the approved hosted DACVAE codec artifact and does not import upstream `DACVAECodec`.
 
-For v0.2 DACVAE port work, `scripts/generate_wav.py --codec-runtime-mode mlx --codec-path /path/to/dacvae-codec.npz` can use a local MLX codec artifact instead of importing upstream PyTorch codec code. That path is covered by local contract tests and is suitable for fixed parity fixtures, but this repository still does not bundle Semantic-DACVAE weights or claim that arbitrary codec artifacts match the upstream acoustic model.
+For local v0.2 DACVAE artifact work, `scripts/generate_wav.py --codec-runtime-mode mlx --codec-path /path/to/dacvae-codec.npz` can use a local MLX codec artifact instead of importing upstream PyTorch codec code. Hosted public examples default to `t0yohei/Irodori-TTS-MLX-DACVAE-Codec`. This repository still does not bundle Semantic-DACVAE weights or claim that arbitrary codec artifacts match the upstream acoustic model.
 
 ## Recommended install path
 
@@ -32,14 +32,14 @@ On Python 3.12 and newer, use Python 3.11 for same-venv upstream installs or
 keep upstream on `PYTHONPATH`, because `sentencepiece==0.1.99` does not publish
 wheels for the newer Python packaging targets.
 
-Then make a local upstream checkout importable from the same environment. The recommended option is an editable install:
+For PyTorch bridge fallback or parity workflows, make a local upstream checkout importable from the same environment. The recommended option is an editable install:
 
 ```bash
 git clone https://github.com/Aratako/Irodori-TTS.git /path/to/Irodori-TTS
 python -m pip install -e /path/to/Irodori-TTS
 ```
 
-Use `PYTHONPATH` only when you intentionally do not want to install the upstream checkout into the venv:
+Use `PYTHONPATH` only when you intentionally do not want to install the upstream checkout into the venv for bridge/parity modes:
 
 ```bash
 export PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}
@@ -65,9 +65,9 @@ watermarking requires an upstream checkout with that keyword.
 | Caption tokenizer and VoiceDesign-style conditioning | this MLX repo | Supported for the inspected public VoiceDesign family only. |
 | RF-DiT forward pass and MLX layers | this MLX repo | Runs converted `.npz` weights through MLX modules. |
 | Duration predictor / explicit `--seconds` semantics | this MLX repo | v3 predicted-duration behavior is implemented here. |
-| Reference WAV loading and conditioning handoff | mixed boundary | This repo validates request semantics, then asks upstream DACVAE to produce latents. |
-| DACVAE encode/decode | upstream `irodori_tts` | Calls `irodori_tts.codec.DACVAECodec`; the codec remains PyTorch-only in v0.1. |
-| WAV writing fallback | this MLX repo | Writes decoded audio with `torchaudio`, `soundfile`, or the stdlib fallback. |
+| Reference WAV loading and conditioning handoff | this MLX repo by default | Full-MLX mode uses executable Semantic-DACVAE encoder tensors from the codec artifact; `mlx-decode` can still fall back to upstream PyTorch encode. |
+| DACVAE encode/decode | this MLX repo by default; upstream fallback explicit | Full-MLX mode uses hosted/local codec artifacts. Explicit `persistent` / `subprocess` modes call `irodori_tts.codec.DACVAECodec`. |
+| WAV writing fallback | this MLX repo | Writes decoded audio with `soundfile` or the stdlib fallback; PyTorch bridge modes may also use `torchaudio`. |
 
 ## Import-failure behavior
 
@@ -77,7 +77,7 @@ If upstream is not importable, runtime construction fails early with a message l
 The PyTorch DACVAE bridge currently reuses upstream irodori_tts.codec.DACVAECodec. Install the upstream Irodori-TTS package or add its checkout to PYTHONPATH.
 ```
 
-That message is expected. Fix the environment by either running `python -m pip install -e /path/to/Irodori-TTS` in the active venv or exporting `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}` before starting `scripts/generate_wav.py`, `scripts/benchmark.py --mode mlx`, or any code that constructs `PyTorchDACVAEBridge` / `MLXDACVAERuntime`.
+That message is expected only for bridge-backed modes. Fix the environment by either running `python -m pip install -e /path/to/Irodori-TTS` in the active venv or exporting `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}` before starting explicit bridge/parity commands or any code that constructs `PyTorchDACVAEBridge`.
 
 If runtime construction fails with a message about `DACVAECodec.load` keyword
 arguments, update the upstream checkout installed in the active environment. The
@@ -86,6 +86,6 @@ watermarking is disabled.
 
 ## What this does not claim
 
-This repository does **not** provide standalone v0.1 WAV generation without upstream `irodori_tts`. It also does not vendor upstream code or replace the DACVAE model with MLX yet. Those are possible later milestones, but v0.1 keeps the DACVAE boundary in PyTorch so the MLX RF-DiT path can be validated first.
+This repository does provide standalone v0.2 WAV generation without upstream `irodori_tts` when using approved hosted/local MLX codec artifacts. It still does not vendor upstream code, checkpoints, tokenizer assets, generated audio, or codec weights.
 
-Standalone v0.2 codec experiments require a caller-provided converted MLX codec artifact. Without that artifact, keep using the upstream PyTorch DACVAE bridge for both reference encode and waveform decode.
+Standalone v0.2 codec experiments require an approved hosted codec artifact, `--codec-artifact-dir`, or caller-provided `--codec-path`. Without an available codec artifact, use the upstream PyTorch DACVAE bridge explicitly for both reference encode and waveform decode.

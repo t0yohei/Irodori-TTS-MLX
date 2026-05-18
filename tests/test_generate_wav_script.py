@@ -247,6 +247,42 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.codec_runtime_mode, "mlx")
         self.assertEqual(args.codec_path, "codec.npz")
 
+    def test_parse_args_defaults_to_full_mlx_hosted_codec_artifact(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights-repo",
+                "t0yohei/Irodori-TTS-MLX-500M-v3",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--no-reference",
+            ]
+        )
+
+        self.assertEqual(args.codec_runtime_mode, "mlx")
+        self.assertEqual(args.codec_artifact_repo, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec")
+        self.assertEqual(args.codec_artifact_revision, "bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78")
+        self.assertIsNone(args.codec_path)
+
+    def test_parse_args_pytorch_bridge_mode_does_not_default_codec_artifact(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--codec-runtime-mode",
+                "persistent",
+            ]
+        )
+
+        self.assertEqual(args.codec_runtime_mode, "persistent")
+        self.assertIsNone(args.codec_artifact_repo)
+        self.assertIsNone(args.codec_artifact_revision)
+
     def test_parse_args_accepts_hosted_codec_artifact_repo(self):
         args = generate_wav.parse_args(
             [
@@ -1210,8 +1246,11 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "repo"
+            codec_root = Path(td) / "codec"
             root.mkdir()
+            codec_root.mkdir()
             self._write_hosted_layout(root, license_status="approved")
+            self._write_codec_artifact_layout(codec_root, license_status="approved")
             out_wav = str(Path(td) / "out.wav")
             args = generate_wav.parse_args([
                 "--weights-repo",
@@ -1226,6 +1265,8 @@ class GenerateWavScriptTests(unittest.TestCase):
             stdout = StringIO()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "_download_weights_repo_snapshot", return_value=root
+            ), patch.object(
+                generate_wav, "_download_codec_repo_snapshot", return_value=codec_root
             ), patch.object(generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)), patch.object(
                 generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory
             ), redirect_stdout(stdout):

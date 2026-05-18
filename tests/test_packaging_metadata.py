@@ -14,10 +14,25 @@ except ModuleNotFoundError:
     HAS_BUILD_MODULE = False
 
 
+def _pyproject_extra_entries(pyproject: str, extra: str) -> list[str]:
+    marker = f"{extra} = ["
+    start = pyproject.index(marker)
+    end = pyproject.index("]", start)
+    entries: list[str] = []
+    for line in pyproject[start:end].splitlines()[1:]:
+        stripped = line.strip().rstrip(",")
+        if stripped.startswith('"') and stripped.endswith('"'):
+            entries.append(stripped[1:-1])
+    return entries
+
+
 class PackagingMetadataTests(unittest.TestCase):
     def test_pyproject_declares_supported_python_and_extras(self):
         root = Path(__file__).resolve().parents[1]
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+        runtime_extra = _pyproject_extra_entries(pyproject, "runtime")
+        bridge_extra = _pyproject_extra_entries(pyproject, "pytorch-bridge")
+        parity_extra = _pyproject_extra_entries(pyproject, "parity")
 
         self.assertIn('requires = ["setuptools>=77", "wheel"]', pyproject)
         self.assertIn('name = "irodori-tts-mlx"', pyproject)
@@ -36,7 +51,9 @@ class PackagingMetadataTests(unittest.TestCase):
 
         self.assertIn('[project.optional-dependencies]', pyproject)
         self.assertIn('runtime = [', pyproject)
+        self.assertIn('pytorch-bridge = [', pyproject)
         self.assertIn('bench = [', pyproject)
+        self.assertIn('parity = [', pyproject)
         self.assertIn('web = [', pyproject)
         self.assertIn('dev = [', pyproject)
         self.assertIn('"torch>=2.6,<3"', pyproject)
@@ -47,6 +64,12 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertNotIn('"sentencepiece>=0.2,<1",', pyproject)
         self.assertIn('"safetensors>=0.4,<1"', pyproject)
         self.assertIn('"pytest>=8,<9"', pyproject)
+        self.assertNotIn("torch>=2.6,<3", runtime_extra)
+        self.assertNotIn("torchaudio>=2.6,<3", runtime_extra)
+        self.assertIn("torch>=2.6,<3", bridge_extra)
+        self.assertIn("torchaudio>=2.6,<3", bridge_extra)
+        self.assertIn("torch>=2.6,<3", parity_extra)
+        self.assertIn("torchaudio>=2.6,<3", parity_extra)
 
         self.assertIn('[project.scripts]', pyproject)
         self.assertIn('irodori-tts-generate = "scripts.generate_wav:cli_main"', pyproject)
@@ -71,7 +94,9 @@ class PackagingMetadataTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         packaging_doc = (root / "docs" / "packaging.md").read_text(encoding="utf-8")
         self.assertIn('pip install -e ".[runtime]"', packaging_doc)
+        self.assertIn('pip install -e ".[pytorch-bridge]"', packaging_doc)
         self.assertIn('pip install -e ".[bench]"', packaging_doc)
+        self.assertIn('pip install -e ".[parity]"', packaging_doc)
         self.assertIn('pip install -e ".[dev]"', packaging_doc)
         self.assertIn("irodori-tts-generate", packaging_doc)
         self.assertIn("irodori-tts-convert", packaging_doc)
@@ -89,6 +114,7 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn("sentencepiece>=0.1.99,<0.2", packaging_doc)
         self.assertIn("Python 3.11", packaging_doc)
         self.assertIn("Python 3.12 and newer", packaging_doc)
+        self.assertIn("standalone MLX runtime", packaging_doc)
         self.assertIn("upstream-compatible", packaging_doc)
 
     @unittest.skipIf(sys.version_info < (3, 11), "project console scripts require Python >= 3.11")
@@ -164,9 +190,9 @@ class PackagingMetadataTests(unittest.TestCase):
             self.assertIn("PYTHONPATH=/path/to/Irodori-TTS", doc)
 
         self.assertIn("this repository owns the MLX text/caption conditioning", dependency_doc)
-        self.assertIn("upstream `irodori_tts` still owns the PyTorch", dependency_doc)
-        self.assertIn("full MLX DACVAE port is not required", dependency_doc)
-        self.assertIn("does **not** provide standalone v0.1 WAV generation", dependency_doc)
+        self.assertIn("upstream `irodori_tts` owns the explicit PyTorch bridge fallback", dependency_doc)
+        self.assertIn("standalone MLX runtime path", dependency_doc)
+        self.assertIn("does provide standalone v0.2 WAV generation", dependency_doc)
 
     def test_license_and_distribution_policy_is_documented(self):
         root = Path(__file__).resolve().parents[1]
