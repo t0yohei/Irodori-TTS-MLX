@@ -17,6 +17,7 @@ We now have both:
 - the reference-path memory mitigation follow-up from [docs/benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md](benchmark-reports/2026-05-12-apple-silicon-memory-residency-mitigation.md)
 - the local Apple Silicon `num_steps` preset sweep for v3 + VoiceDesign from [docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md)
 - the real hosted/pre-converted weights loading measurement from [docs/benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md](benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md)
+- the codec runtime mode comparison from [docs/benchmark-reports/2026-05-18-apple-silicon-codec-runtime-modes.md](benchmark-reports/2026-05-18-apple-silicon-codec-runtime-modes.md)
 - persistent batch generation is now documented in [dacvae_bridge.md](dacvae_bridge.md); the old one-off persistent-batch report was removed because no current summary or test referenced it
 
 Current read:
@@ -38,6 +39,8 @@ For day-to-day local generation defaults, the later `num_steps` sweep now sugges
 - keep `--num-steps 40` as the higher-quality comparison/default anchor when latency matters less
 
 The v0.2 hosted weights measurement shows that hosted loading is a setup/UX improvement rather than a generation-latency optimization: the first hosted run is dominated by the artifact download, while warm hosted repo, local hosted-layout directory, and direct local `.npz` fallback all produce similar `sample_rf` and `total_to_decode` timings.
+
+The v0.2 codec runtime mode measurement shows a similar split: MLX codec artifacts do not change RF sampling time, but they can reduce PyTorch dependency surface and peak RSS. In the measured v3 reference-audio run, full `mlx` encode/decode reduced warm max RSS from about 4.33 GiB to 3.08 GiB versus the PyTorch bridge and lowered codec encode/decode timings. Treat this as a deployment and memory-pressure improvement first; larger repeated runs are still needed before claiming a broad codec-speed win.
 
 ## Existing upstream baseline numbers
 

@@ -132,10 +132,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument(
         "--codec-runtime-mode",
-        choices=("persistent", "subprocess"),
+        choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
         default="persistent",
-        help="DACVAE bridge runtime mode for MLX benchmark runs.",
+        help="DACVAE runtime mode for MLX benchmark runs.",
     )
+    parser.add_argument("--codec-path", help="Converted local MLX DACVAE codec artifact .npz.")
+    parser.add_argument("--codec-artifact-dir", help="Local hosted DACVAE codec artifact layout directory or archive.")
+    parser.add_argument("--codec-artifact-repo", help="Hugging Face repo id with a hosted DACVAE codec artifact layout.")
+    parser.add_argument("--codec-artifact-revision", help="Optional Hugging Face revision for --codec-artifact-repo.")
     parser.add_argument("--model-config-json", help="Optional inline/path JSON for MLX ModelConfig.")
     parser.add_argument("--text-tokenizer-repo")
     parser.add_argument("--caption-tokenizer-repo")
@@ -377,6 +381,16 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
         "--codec-runtime-mode",
         args.codec_runtime_mode,
     ]
+    if getattr(args, "codec_path", None):
+        argv.extend(["--codec-path", args.codec_path])
+    if getattr(args, "codec_artifact_dir", None):
+        argv.extend(["--codec-artifact-dir", args.codec_artifact_dir])
+    if getattr(args, "codec_artifact_repo", None):
+        argv.extend(["--codec-artifact-repo", args.codec_artifact_repo])
+    if getattr(args, "codec_artifact_revision", None):
+        if not getattr(args, "codec_artifact_repo", None):
+            raise BenchmarkError("--codec-artifact-revision requires --codec-artifact-repo")
+        argv.extend(["--codec-artifact-revision", args.codec_artifact_revision])
     if weight_flag == "--weights-repo" and getattr(args, "weights_revision", None):
         argv.extend(["--weights-revision", args.weights_revision])
     if seconds is not None:
@@ -561,6 +575,13 @@ def format_seconds(value: float | None) -> str:
     return f"{value:.2f} s"
 
 
+def setup_overhead_ms(result: BenchmarkResult) -> float | None:
+    total_ms = result.timings_ms.get("total_to_decode")
+    if result.wall_seconds is None or total_ms is None:
+        return None
+    return max(0.0, (float(result.wall_seconds) * 1000.0) - float(total_ms))
+
+
 def format_case_seconds(kind: str, seconds: float | None) -> str:
     if seconds is not None:
         return f"`{seconds}`"
@@ -645,26 +666,39 @@ def build_report(
         "",
         "## Aggregate results",
         "",
-        "| Case | Phase | Cache | Runs | sample_rf median | sample_rf min/max | decode median | total median | wall median | max RSS median |",
-        "| --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | --- |",
+        "| Case | Phase | Cache | Runs | setup/load median | sample_rf median | sample_rf min/max | codec encode median | codec decode median | total median | wall median | max RSS median |",
+        "| --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |",
     ]
     for aggregate in aggregates:
         sample_rf = aggregate["timings_ms"].get("sample_rf")
+        encode = aggregate["timings_ms"].get("encode_dacvae")
         decode = aggregate["timings_ms"].get("decode_dacvae") or aggregate["timings_ms"].get("decode_latent")
         total = aggregate["timings_ms"].get("total_to_decode")
         wall = aggregate["wall_seconds"]
         rss = aggregate["max_rss_bytes"]
+        setup_values = [
+            value
+            for result in results
+            if result.case_name == aggregate["case_name"]
+            and result.phase == aggregate["phase"]
+            and result.cache_state == aggregate["cache_state"]
+            for value in [setup_overhead_ms(result)]
+            if value is not None
+        ]
+        setup = summarize_numeric(setup_values)
         sample_rf_range = ""
         if sample_rf:
             sample_rf_range = f"{format_ms(float(sample_rf['min']))} / {format_ms(float(sample_rf['max']))}"
         lines.append(
-            "| {case} | {phase} | {cache} | {runs} | {sample_rf_med} | {sample_rf_range} | {decode_med} | {total_med} | {wall_med} | {rss_med} |".format(
+            "| {case} | {phase} | {cache} | {runs} | {setup_med} | {sample_rf_med} | {sample_rf_range} | {encode_med} | {decode_med} | {total_med} | {wall_med} | {rss_med} |".format(
                 case=aggregate["case_name"],
                 phase=aggregate["phase"],
                 cache=aggregate["cache_state"],
                 runs=aggregate["runs"],
+                setup_med=format_ms(float(setup["median"])) if setup else "",
                 sample_rf_med=format_ms(float(sample_rf["median"])) if sample_rf else "",
                 sample_rf_range=sample_rf_range,
+                encode_med=format_ms(float(encode["median"])) if encode else "",
                 decode_med=format_ms(float(decode["median"])) if decode else "",
                 total_med=format_ms(float(total["median"])) if total else "",
                 wall_med=format_seconds(float(wall["median"])) if wall else "",
@@ -710,8 +744,8 @@ def build_report(
             "",
             "Raw runs:",
             "",
-            "| Run | Status | sample_rf | decode | total_to_decode | wall | max RSS | stdout | stderr |",
-            "| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |",
+            "| Run | Status | setup/load | sample_rf | codec encode | codec decode | total_to_decode | wall | max RSS | stdout | stderr |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
         ])
         matching_results = [
             result
@@ -722,10 +756,12 @@ def build_report(
         ]
         for result in matching_results:
             lines.append(
-                "| {name} | {status} | {sample_rf} | {decode} | {total} | {wall} | {rss} | `{stdout}` | `{stderr}` |".format(
+                "| {name} | {status} | {setup} | {sample_rf} | {encode} | {decode} | {total} | {wall} | {rss} | `{stdout}` | `{stderr}` |".format(
                     name=result.name,
                     status=result.status,
+                    setup=format_ms(setup_overhead_ms(result)),
                     sample_rf=format_ms(result.timings_ms.get("sample_rf")),
+                    encode=format_ms(result.timings_ms.get("encode_dacvae")),
                     decode=format_ms(result.timings_ms.get("decode_dacvae") or result.timings_ms.get("decode_latent")),
                     total=format_ms(result.timings_ms.get("total_to_decode")),
                     wall=format_seconds(result.wall_seconds),
@@ -778,6 +814,10 @@ def write_json_summary(results: list[BenchmarkResult], path: Path, *, args: argp
             "weights_repo": args.weights_repo,
             "weights_revision": args.weights_revision,
             "codec_runtime_mode": args.codec_runtime_mode,
+            "codec_path": args.codec_path,
+            "codec_artifact_dir": args.codec_artifact_dir,
+            "codec_artifact_repo": args.codec_artifact_repo,
+            "codec_artifact_revision": args.codec_artifact_revision,
         },
         "results": [asdict(result) for result in results],
         "aggregates": build_aggregates(results),
