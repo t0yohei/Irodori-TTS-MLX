@@ -50,9 +50,11 @@ class PublicDocsSanitizedTests(unittest.TestCase):
             "PyTorch bridge-backed DACVAE codec path | Supported default",
             "MLX DACVAE decode for no-reference generation | Experimental",
             "Fully MLX DACVAE encode/decode for reference audio | Experimental",
+            "Local Web UI | Optional",
             "Hosted artifacts outside the approved layouts | Blocked",
             "Unsupported upstream product features | Non-goal",
-            "Training, LoRA fine-tuning, Gradio/UI hosting, watermark guarantees, arbitrary checkpoint compatibility, and stable public Python API guarantees",
+            "Training, LoRA fine-tuning, hosted demo operation, watermark guarantees, arbitrary checkpoint compatibility, and stable public Python API guarantees",
+            "not a hosted demo or a stable public Python API boundary",
             "not references to private caches, local maintainer machines, or unpublished public artifacts",
             "Local conversion is a user-managed fallback",
         ]

@@ -20,6 +20,7 @@ The project currently supports:
 - loading direct local `.npz` weights, local hosted-layout directories/archives, or approved Hugging Face hosted-layout repositories
 - adapting unquantized `mlx-audio` Irodori artifact directories into this project's hosted weights layout
 - generating WAV files through `irodori-tts-generate` / `scripts/generate_wav.py`
+- starting an optional local Gradio Web UI through `irodori-tts-web`
 - using `--config-json`, `--requests-json`, `--cleanup-between-requests`, `--preset ultra-fast|fast|balanced|quality`, JSON metadata output, and persistent runtime reuse for repeated local generation
 - running local benchmarks, parity checks, and hosted Apple Silicon validation workflows
 
@@ -51,8 +52,9 @@ boundary.
 | PyTorch bridge-backed DACVAE codec path | Supported default | The normal runtime uses upstream `irodori_tts.codec.DACVAECodec` for codec encode/decode and therefore needs the upstream dependency installed or importable. |
 | MLX DACVAE decode for no-reference generation | Experimental | Approved codec artifacts can keep decode off the PyTorch bridge for no-reference v3 and VoiceDesign runs, but this is an opt-in codec artifact path. |
 | Fully MLX DACVAE encode/decode for reference audio | Experimental | Requires an executable local/hosted codec artifact with both encoder and decoder tensors; reference-audio speaker fidelity is still a maturing validation surface. |
+| Local Web UI | Optional | `irodori-tts-web` is a local Gradio wrapper over the generation CLI for manual runs. It is not a hosted demo or a stable public Python API boundary. |
 | Hosted artifacts outside the approved layouts | Blocked | Repositories without the documented manifest, checksum, provenance, and approved license review are not public support. Use local conversion instead. |
-| Unsupported upstream product features | Non-goal | Training, LoRA fine-tuning, Gradio/UI hosting, watermark guarantees, arbitrary checkpoint compatibility, and stable public Python API guarantees are intentionally outside this prototype. |
+| Unsupported upstream product features | Non-goal | Training, LoRA fine-tuning, hosted demo operation, watermark guarantees, arbitrary checkpoint compatibility, and stable public Python API guarantees are intentionally outside this prototype. |
 
 Paths such as `/path/to/...` and `/tmp/...` in examples are placeholders for user-managed files. They are not references to private caches, local maintainer machines, or unpublished public artifacts.
 
@@ -104,6 +106,32 @@ when both projects are installed in the same virtual environment. On Python
 use Python 3.11 when installing upstream `irodori-tts` into the same venv.
 
 The bridge runtime needs upstream `irodori_tts.codec.DACVAECodec` for the default `persistent` and `subprocess` codec modes. For reproducible setup details, see [docs/packaging.md](docs/packaging.md) and [docs/upstream_dependency.md](docs/upstream_dependency.md).
+
+## Optional Local Web UI
+
+Install the optional Web UI dependencies in the same environment as the runtime:
+
+```bash
+python -m pip install -e ".[runtime,web]"
+```
+
+Start the local UI:
+
+```bash
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
+irodori-tts-web --host 127.0.0.1 --port 7860 --inbrowser
+```
+
+The Web UI is a local Gradio wrapper over the existing `irodori-tts-generate`
+command. It provides presets for the approved VoiceDesign and v3 hosted
+artifacts, plus fields for local weights, codec artifact inputs, reference audio,
+caption text, sampling controls, generated audio, metadata, and logs.
+
+Do not use reference audio unless you have the right to use that audio. The UI
+does not redistribute checkpoints, codec weights, tokenizer assets, reference
+audio, generated WAV files, or Hugging Face cache snapshots. The UI is an
+optional local-use surface and does not make `irodori_mlx` or `scripts.*`
+a stable public Python API.
 
 ## Quickstart: Hosted Weights
 
@@ -276,6 +304,7 @@ irodori-tts-convert /path/to/model.safetensors /path/to/weights.npz
 irodori-tts-convert /path/to/model.safetensors --dry-run --json
 irodori-tts-generate --help
 irodori-tts-generate --config-json config.json --requests-json requests.json
+irodori-tts-web --help
 irodori-tts-adapt-mlx-audio --help
 python scripts/benchmark.py --self-test
 ```
@@ -313,7 +342,7 @@ This prototype does not include:
 - a bundled or fully redistributed Semantic-DACVAE codec
 - guaranteed watermarking or watermark-detection behavior
 - guaranteed compatibility with arbitrary third-party checkpoints
-- GUI, Gradio, or hosted demo support
+- hosted demo support
 - stable public Python API guarantees
 - automatic legal approval for publishing converted weights or generated audio
 
