@@ -39,17 +39,17 @@ artifact PR is merged and pinned.
 Command summary:
 
 ```bash
-PYTHONPATH=/Users/kouka/.openclaw/workspace/repos/_external/Irodori-TTS:${PYTHONPATH:-} \
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 uv run --python 3.11 python scripts/run_upstream_parity.py \
   --scenario v3-no-reference \
   --scenario-name v3-no-reference-mlx-decode \
   --run-upstream \
   --run-mlx \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/_external/Irodori-TTS \
-  --mlx-weights /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-500M-v3/snapshots/078ffb11ffad92e6dde237a6abef730f4341b359/weights.npz \
-  --mlx-model-config-json /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-500M-v3/snapshots/078ffb11ffad92e6dde237a6abef730f4341b359/model_config.json \
+  --upstream-root /path/to/Irodori-TTS \
+  --mlx-weights /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/weights.npz \
+  --mlx-model-config-json /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/model_config.json \
   --codec-runtime-mode mlx-decode \
-  --codec-path /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-DACVAE-Codec/snapshots/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
+  --codec-path /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
   --output-dir /tmp/irodori-issue-189-parity/v3-no-reference-mlx-decode \
   --codec-device cpu \
   --num-steps 8 \
@@ -71,17 +71,17 @@ Result:
 Command summary:
 
 ```bash
-PYTHONPATH=/Users/kouka/.openclaw/workspace/repos/_external/Irodori-TTS:${PYTHONPATH:-} \
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 uv run --python 3.11 python scripts/run_upstream_parity.py \
   --scenario voicedesign-contrastive-caption \
   --scenario-name voicedesign-contrastive-caption-mlx-decode \
   --run-upstream \
   --run-mlx \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/_external/Irodori-TTS \
-  --mlx-weights /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-500M-v2-VoiceDesign/snapshots/bf877a3beb7d921dc6bfb2b6812d02be07f39f2a/weights.npz \
-  --mlx-model-config-json /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-500M-v2-VoiceDesign/snapshots/bf877a3beb7d921dc6bfb2b6812d02be07f39f2a/model_config.json \
+  --upstream-root /path/to/Irodori-TTS \
+  --mlx-weights /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign/bf877a3beb7d921dc6bfb2b6812d02be07f39f2a/weights.npz \
+  --mlx-model-config-json /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign/bf877a3beb7d921dc6bfb2b6812d02be07f39f2a/model_config.json \
   --codec-runtime-mode mlx-decode \
-  --codec-path /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-DACVAE-Codec/snapshots/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
+  --codec-path /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
   --output-dir /tmp/irodori-issue-189-parity/voicedesign-contrastive-caption-mlx-decode \
   --codec-device cpu \
   --seconds 2.0 \
@@ -110,18 +110,18 @@ comparison expectation are narrowed.
 Command summary:
 
 ```bash
-PYTHONPATH=/Users/kouka/.openclaw/workspace/repos/_external/Irodori-TTS:${PYTHONPATH:-} \
+PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 uv run --python 3.11 python scripts/run_upstream_parity.py \
   --scenario v3-reference-predicted \
   --scenario-name v3-reference-predicted-mlx-codec \
   --run-upstream \
   --run-mlx \
-  --upstream-root /Users/kouka/.openclaw/workspace/repos/_external/Irodori-TTS \
-  --mlx-weights /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-500M-v3/snapshots/078ffb11ffad92e6dde237a6abef730f4341b359/weights.npz \
-  --mlx-model-config-json /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-500M-v3/snapshots/078ffb11ffad92e6dde237a6abef730f4341b359/model_config.json \
-  --reference-wav /Users/kouka/.openclaw/workspace/tmp/irodori-v3-smoke/generated-with-reference.wav \
+  --upstream-root /path/to/Irodori-TTS \
+  --mlx-weights /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/weights.npz \
+  --mlx-model-config-json /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/model_config.json \
+  --reference-wav /path/to/local/reference.wav \
   --codec-runtime-mode mlx \
-  --codec-path /Users/kouka/.cache/huggingface/hub/models--t0yohei--Irodori-TTS-MLX-DACVAE-Codec/snapshots/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
+  --codec-path /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
   --output-dir /tmp/irodori-issue-189-parity/v3-reference-predicted-mlx-codec \
   --codec-device cpu \
   --num-steps 8 \

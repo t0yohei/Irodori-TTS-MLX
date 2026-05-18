@@ -9,7 +9,7 @@ An unofficial Apple Silicon-focused MLX inference prototype for [Irodori-TTS](ht
 
 ## Current Scope
 
-The implemented path is:
+The implemented default path is:
 
 > MLX text/caption conditioning + MLX RF-DiT sampling + upstream PyTorch DACVAE bridge by default
 
@@ -24,6 +24,22 @@ The project currently supports:
 - running local benchmarks, parity checks, and hosted Apple Silicon validation workflows
 
 The default audio codec path still imports upstream `irodori_tts.codec.DACVAECodec`. Experimental local MLX codec artifact modes exist for v0.2 codec-port work, but this repository does not bundle codec weights or claim broad acoustic parity for arbitrary codec artifacts.
+
+## Current Support Matrix
+
+| Surface | Status | Public support boundary |
+| --- | --- | --- |
+| Project maturity | Alpha | CLI-first inference prototype. Console commands and documented artifact layouts are the supported interface; the Python module layout is not a stable public API. |
+| VoiceDesign v2 hosted RF-DiT artifact | Supported | `--weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign` is approved for the documented no-reference caption quickstart. |
+| v3 hosted RF-DiT artifact | Supported | `--weights-repo t0yohei/Irodori-TTS-MLX-500M-v3` is approved for the documented no-reference predicted-duration quickstart. |
+| Base v2 speaker-conditioned generation | Experimental | Inspection and conversion are supported; generation is a manual reference-audio path and requires user-supplied audio that the user has rights to use. |
+| PyTorch bridge-backed DACVAE codec path | Supported default | The normal runtime uses upstream `irodori_tts.codec.DACVAECodec` for codec encode/decode and therefore needs the upstream dependency installed or importable. |
+| MLX DACVAE decode for no-reference generation | Experimental | Approved codec artifacts can keep decode off the PyTorch bridge for no-reference v3 and VoiceDesign runs, but this is an opt-in codec artifact path. |
+| Fully MLX DACVAE encode/decode for reference audio | Experimental | Requires an executable local/hosted codec artifact with both encoder and decoder tensors; reference-audio speaker fidelity is still a maturing validation surface. |
+| Hosted artifacts outside the approved layouts | Blocked | Repositories without the documented manifest, checksum, provenance, and approved license review are not public support. Use local conversion instead. |
+| Unsupported upstream product features | Non-goal | Training, LoRA fine-tuning, Gradio/UI hosting, watermark guarantees, arbitrary checkpoint compatibility, and stable public Python API guarantees are intentionally outside this prototype. |
+
+Paths such as `/path/to/...` and `/tmp/...` in examples are placeholders for user-managed files. They are not references to private caches, local maintainer machines, or unpublished public artifacts.
 
 ## Supported Inputs
 
@@ -148,7 +164,7 @@ The metadata for that no-reference path reports `codec_decode_backend: "mlx"` an
 
 ## Quickstart: Local Conversion Fallback
 
-Use this path when a hosted repo is unavailable, unapproved, private, or outside the audited candidate families.
+Use this path when a hosted repo is unavailable, unapproved, private, or outside the audited candidate families. Local conversion is a user-managed fallback; it does not make the input checkpoint or local paths part of this repository's public support surface.
 
 ```bash
 CHECKPOINT=/path/to/Irodori-TTS-500M-v3/model.safetensors
@@ -245,8 +261,10 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 
 This prototype does not include:
 
-- training or fine-tuning
+- training
+- LoRA or other fine-tuning workflows
 - a bundled or fully redistributed Semantic-DACVAE codec
+- guaranteed watermarking or watermark-detection behavior
 - guaranteed compatibility with arbitrary third-party checkpoints
 - GUI, Gradio, or hosted demo support
 - stable public Python API guarantees

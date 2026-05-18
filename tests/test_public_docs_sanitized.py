@@ -37,6 +37,29 @@ class PublicDocsSanitizedTests(unittest.TestCase):
 
         self.assertEqual([], violations)
 
+    def test_readme_support_matrix_states_alpha_boundaries(self):
+        readme = (self.root / "README.md").read_text(encoding="utf-8")
+
+        required_terms = [
+            "## Current Support Matrix",
+            "| Surface | Status | Public support boundary |",
+            "Project maturity | Alpha",
+            "VoiceDesign v2 hosted RF-DiT artifact | Supported",
+            "v3 hosted RF-DiT artifact | Supported",
+            "Base v2 speaker-conditioned generation | Experimental",
+            "PyTorch bridge-backed DACVAE codec path | Supported default",
+            "MLX DACVAE decode for no-reference generation | Experimental",
+            "Fully MLX DACVAE encode/decode for reference audio | Experimental",
+            "Hosted artifacts outside the approved layouts | Blocked",
+            "Unsupported upstream product features | Non-goal",
+            "Training, LoRA fine-tuning, Gradio/UI hosting, watermark guarantees, arbitrary checkpoint compatibility, and stable public Python API guarantees",
+            "not references to private caches, local maintainer machines, or unpublished public artifacts",
+            "Local conversion is a user-managed fallback",
+        ]
+        for term in required_terms:
+            with self.subTest(term=term):
+                self.assertIn(term, readme)
+
 
 if __name__ == "__main__":
     unittest.main()
