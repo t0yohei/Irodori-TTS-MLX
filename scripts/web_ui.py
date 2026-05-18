@@ -210,15 +210,15 @@ def run_generation(config: WebGenerationConfig) -> tuple[str | None, str, str]:
     finally:
         sys.argv = old_argv
 
+    log_text = "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part)
+    if rc != 0:
+        return None, "", f"generation failed with exit code {rc}\n{log_text}".strip()
     metadata_text = ""
     if metadata_path.exists():
         try:
             metadata_text = json.dumps(json.loads(metadata_path.read_text(encoding="utf-8")), ensure_ascii=False, indent=2, sort_keys=True)
         except json.JSONDecodeError:
             metadata_text = metadata_path.read_text(encoding="utf-8")
-    log_text = "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part)
-    if rc != 0:
-        return None, metadata_text, f"generation failed with exit code {rc}\n{log_text}".strip()
     return output_wav, metadata_text, log_text
 
 
