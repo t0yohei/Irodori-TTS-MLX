@@ -240,7 +240,7 @@ irodori-tts-generate \
   --json
 ```
 
-v3 では predicted duration を使うために `--seconds` を省略します。Base v2 の speaker-conditioned check では `--no-reference` の代わりに、権利上問題のない `--reference-wav /path/to/reference.wav` を渡します。
+v3 では predicted duration を使うために `--seconds` を省略します。短い prompt では、予測 duration が長すぎると末尾の語句が反復して聞こえることがあります。CLI が predicted-duration warning を出す場合や、再生時に末尾が反復する場合は、`--seconds 2.5` のように短めの手動 duration を指定するか、予測は維持したまま `--duration-scale 0.75` を起点に調整してください。Base v2 の speaker-conditioned check では `--no-reference` の代わりに、権利上問題のない `--reference-wav /path/to/reference.wav` を渡します。
 
 ## mlx-audio Adapter
 

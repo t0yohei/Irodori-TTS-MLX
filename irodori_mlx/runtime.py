@@ -29,6 +29,7 @@ from .duration import (
     build_duration_features,
     estimate_fallback_duration_seconds,
     estimate_voicedesign_duration_seconds,
+    predicted_duration_overallocation_warning,
 )
 from .layers import unpatch_latents
 from .model import TextToLatentRFDiT
@@ -1301,6 +1302,12 @@ class MLXDACVAERuntime:
                 "predicted duration active: "
                 f"frames={pred_frames:.1f}, scale={float(request.duration_scale):.3f}, seconds={resolved_seconds:.3f}"
             )
+            warning = predicted_duration_overallocation_warning(
+                normalized_text,
+                predicted_seconds=resolved_seconds,
+            )
+            if warning:
+                messages.append(warning)
         elif self.config.model_config.use_caption_condition:
             duration_mode = "estimated"
             fallback_seconds = estimate_voicedesign_duration_seconds(normalized_text, caption=caption_text)

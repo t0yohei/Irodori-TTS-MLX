@@ -205,6 +205,44 @@ def estimate_voicedesign_duration_seconds(
     return min(float(max_seconds), max(float(min_seconds), estimated * multiplier))
 
 
+def predicted_duration_overallocation_warning(
+    text: str,
+    *,
+    predicted_seconds: float,
+    baseline_seconds: float | None = None,
+    short_prompt_max_seconds: float = 4.0,
+    ratio_threshold: float = 1.55,
+    absolute_threshold_seconds: float = 0.75,
+) -> str | None:
+    """Return a conservative warning when v3 predicted duration looks long for short text.
+
+    The warning is advisory only. It must not clamp or otherwise change the
+    learned v3 duration predictor output because normal predicted-duration
+    behavior should remain stable unless the user explicitly passes manual
+    duration controls.
+    """
+
+    baseline = (
+        estimate_fallback_duration_seconds(text)
+        if baseline_seconds is None
+        else float(baseline_seconds)
+    )
+    predicted = float(predicted_seconds)
+    if baseline <= 0 or predicted <= 0:
+        return None
+    if baseline > float(short_prompt_max_seconds):
+        return None
+    if predicted < baseline + float(absolute_threshold_seconds):
+        return None
+    if predicted < baseline * float(ratio_threshold):
+        return None
+    return (
+        "predicted duration warning: short prompt resolved longer than the conservative text-length estimate "
+        f"(predicted={predicted:.3f}s, estimate={baseline:.3f}s). If playback repeats a final phrase, pass "
+        "--seconds for an explicit shorter duration or use --duration-scale 0.75 as a starting point."
+    )
+
+
 def build_duration_features(
     texts: Sequence[str] | Iterable[str],
     *,

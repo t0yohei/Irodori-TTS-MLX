@@ -241,7 +241,7 @@ irodori-tts-generate \
   --json
 ```
 
-For v3, omit `--seconds` to use predicted duration; add `--seconds N` only for a manual override. For base v2 speaker-conditioned checks, replace `--no-reference` with `--reference-wav /path/to/reference.wav`. Use only reference audio you have rights to use.
+For v3, omit `--seconds` to use predicted duration; add `--seconds N` only for a manual override. Very short prompts can sound repeated when the predicted duration is too long for the text. If the CLI prints a predicted-duration warning or playback repeats the final phrase, rerun with a shorter manual duration such as `--seconds 2.5`, or keep prediction but start with `--duration-scale 0.75`. For base v2 speaker-conditioned checks, replace `--no-reference` with `--reference-wav /path/to/reference.wav`. Use only reference audio you have rights to use.
 
 ## mlx-audio Adapter
 

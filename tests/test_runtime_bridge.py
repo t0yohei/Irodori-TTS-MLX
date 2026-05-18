@@ -1445,6 +1445,47 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIn("predicted duration active", "\n".join(result.messages))
 
     @require_mlx
+    def test_runtime_warns_when_predicted_duration_looks_long_for_short_prompt(self):
+        cfg = replace(
+            tiny_config(),
+            use_duration_predictor=True,
+            duration_aux_dim=14,
+            duration_hidden_dim=8,
+            duration_layers=1,
+            duration_dropout=0.0,
+            duration_attention_heads=2,
+        )
+        bridge = FakeBridge()
+        model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(300.0)))
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+            model=model,
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            result = runtime.generate(
+                GenerationRequest(
+                    text="こんにちは。今日は良い天気です。",
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=None,
+                    duration_scale=1.0,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        messages = "\n".join(result.messages)
+        self.assertEqual(result.duration_mode, "predicted")
+        self.assertEqual(result.latent_steps, 300)
+        self.assertAlmostEqual(result.resolved_seconds, 6.0, places=3)
+        self.assertIn("predicted duration warning", messages)
+        self.assertIn("--seconds", messages)
+
+    @require_mlx
     def test_runtime_estimates_fallback_duration_when_predictor_is_unavailable(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
         bridge = FakeBridge()
