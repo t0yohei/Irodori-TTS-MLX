@@ -9,6 +9,7 @@ try:
         build_duration_features,
         estimate_fallback_duration_seconds,
         estimate_voicedesign_duration_seconds,
+        predicted_duration_overallocation_warning,
     )
 
     HAS_MLX = True
@@ -72,6 +73,34 @@ class DurationFeatureTests(unittest.TestCase):
 
         self.assertGreater(slow, neutral)
         self.assertLess(fast, neutral)
+
+    @require_mlx
+    def test_predicted_duration_warning_flags_short_prompt_overallocation(self):
+        warning = predicted_duration_overallocation_warning(
+            "こんにちは。今日は良い天気です。",
+            predicted_seconds=6.0,
+        )
+
+        self.assertIsNotNone(warning)
+        self.assertIn("--duration-scale 0.75", str(warning))
+
+    @require_mlx
+    def test_predicted_duration_warning_ignores_close_prediction(self):
+        self.assertIsNone(
+            predicted_duration_overallocation_warning(
+                "こんにちは。今日は良い天気です。",
+                predicted_seconds=2.9,
+            )
+        )
+
+    @require_mlx
+    def test_predicted_duration_warning_ignores_long_prompt(self):
+        self.assertIsNone(
+            predicted_duration_overallocation_warning(
+                "こんにちは。私はいろどりです。今日は音声生成のテストをしています。" * 2,
+                predicted_seconds=8.0,
+            )
+        )
 
     @require_mlx
     def test_build_duration_features_matches_expected_aux_dim(self):
