@@ -34,7 +34,7 @@ class PackagingMetadataTests(unittest.TestCase):
 
         self.assertIn('requires = ["setuptools>=77", "wheel"]', pyproject)
         self.assertIn('name = "irodori-tts-mlx"', pyproject)
-        self.assertIn('version = "0.2.0a1"', pyproject)
+        self.assertIn('version = "0.3.0a1"', pyproject)
         self.assertNotIn('version = "0.0.0"', pyproject)
         self.assertIn('requires-python = ">=3.11,<3.15"', pyproject)
         self.assertIn('license = "MIT"', pyproject)
@@ -95,7 +95,7 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn("irodori-tts-convert", packaging_doc)
         self.assertIn("irodori-tts-inspect", packaging_doc)
         self.assertIn("irodori-tts-adapt-mlx-audio", packaging_doc)
-        self.assertIn("0.2.0a1", packaging_doc)
+        self.assertIn("0.3.0a1", packaging_doc)
         self.assertIn("python -m build", packaging_doc)
         self.assertIn("Python 3.11", packaging_doc)
         self.assertIn("Python 3.12", packaging_doc)
@@ -129,8 +129,8 @@ class PackagingMetadataTests(unittest.TestCase):
                 check=True,
                 cwd=root,
             )
-            wheels = sorted(build_dir.glob("irodori_tts_mlx-0.2.0a1-py3-none-any.whl"))
-            sdists = sorted(build_dir.glob("irodori_tts_mlx-0.2.0a1.tar.gz"))
+            wheels = sorted(build_dir.glob("irodori_tts_mlx-0.3.0a1-py3-none-any.whl"))
+            sdists = sorted(build_dir.glob("irodori_tts_mlx-0.3.0a1.tar.gz"))
             self.assertEqual(1, len(wheels))
             self.assertEqual(1, len(sdists))
 
@@ -184,7 +184,7 @@ class PackagingMetadataTests(unittest.TestCase):
 
         self.assertIn("The old bridge-backed generation modes", dependency_doc)
         self.assertIn("this MLX repo owns the text/caption conditioning", dependency_doc)
-        self.assertIn("standalone v0.2 WAV generation", dependency_doc)
+        self.assertIn("standalone v0.3 alpha WAV generation", dependency_doc)
 
     def test_license_and_distribution_policy_is_documented(self):
         root = Path(__file__).resolve().parents[1]

@@ -84,7 +84,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[runtime]"
 ```
 
-checkout から開発するのではなく release artifact を使う package user は、clean environment に built wheel / sdist を install し、installed `irodori-tts-*` console script を使ってください。editable install、build validation、v0.2 release-artifact checklist は [docs/packaging.md](docs/packaging.md) にまとめています。
+checkout から開発するのではなく release artifact を使う package user は、clean environment に built wheel / sdist を install し、installed `irodori-tts-*` console script を使ってください。editable install、build validation、v0.3 alpha release-artifact checklist は [docs/packaging.md](docs/packaging.md) にまとめています。
 
 必要な workflow にだけ追加 dependency を入れます。
 
@@ -282,7 +282,7 @@ python scripts/benchmark.py --self-test
 
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - DACVAE bridge / generation CLI: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
-- v0.2 hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
+- Hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
 - Hosted weights usage / local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
 - Hosted RF-DiT artifact publication status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
 - Hosted DACVAE codec artifact publication status: [docs/hosted_dacvae_codec_artifacts.md](docs/hosted_dacvae_codec_artifacts.md)
@@ -298,7 +298,7 @@ python scripts/benchmark.py --self-test
 - Packaging: [docs/packaging.md](docs/packaging.md)
 - Public API stability boundary: [docs/public_api_stability.md](docs/public_api_stability.md)
 - License / distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
-- v0.2 cross-repository delivery plan / downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
+- Historical v0.2 cross-repository delivery plan / downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 
 ## 対象外
 

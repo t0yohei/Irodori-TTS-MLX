@@ -165,7 +165,7 @@ def _validate_manifest(manifest: dict[str, Any], *, source_kind: str) -> dict[st
     for key, entry in manifest_files.items():
         _manifest_relative_path(entry, label=f"manifest files.{key}")
     runtime = _require_mapping(manifest, "runtime", label="manifest")
-    for key in ("requires_upstream_dacvae_bridge", "requires_reference_audio", "supports_no_reference", "supports_caption", "supports_predicted_duration"):
+    for key in ("requires_reference_audio", "supports_no_reference", "supports_caption", "supports_predicted_duration"):
         if not isinstance(runtime.get(key), bool):
             raise HostedWeightsError(f"manifest runtime.{key} must be a boolean")
     license_review = _require_mapping(manifest, "license_review", label="manifest")

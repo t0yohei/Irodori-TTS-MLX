@@ -4,7 +4,7 @@ Issue: [#233 Prepare a standalone MLX runtime install path without upstream DACV
 
 ## Public runtime boundary
 
-The v0.2 public generation runtime is standalone by default. It does not require upstream `irodori_tts`, `irodori_tts.codec.DACVAECodec`, `torch`, or `torchaudio` for WAV generation.
+The v0.3 alpha public generation runtime is standalone by default. It does not require upstream `irodori_tts`, `irodori_tts.codec.DACVAECodec`, `torch`, or `torchaudio` for WAV generation.
 
 The public codec path is:
 
@@ -18,7 +18,7 @@ In this split, this MLX repo owns the text/caption conditioning, RF-DiT forward 
 
 ## Responsibility split
 
-| Area | Owner in v0.2 public runtime | Notes |
+| Area | Owner in v0.3 alpha public runtime | Notes |
 | --- | --- | --- |
 | Text tokenizer loading and prompt token preparation | this MLX repo | Uses Transformers tokenizers configured by `ModelConfig`; tokenizer assets are not vendored. |
 | Caption tokenizer and VoiceDesign-style conditioning | this MLX repo | Supported for the inspected public VoiceDesign family only. |
@@ -30,4 +30,4 @@ In this split, this MLX repo owns the text/caption conditioning, RF-DiT forward 
 
 ## What this does not claim
 
-This repository provides standalone v0.2 WAV generation without upstream `irodori_tts` when using approved hosted/local MLX codec artifacts. It still does not vendor upstream code, checkpoints, tokenizer assets, generated audio, or codec weights.
+This repository provides standalone v0.3 alpha WAV generation without upstream `irodori_tts` when using approved hosted/local MLX codec artifacts. It still does not vendor upstream code, checkpoints, tokenizer assets, generated audio, or codec weights.

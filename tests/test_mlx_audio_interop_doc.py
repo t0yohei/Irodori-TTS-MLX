@@ -98,8 +98,7 @@ def _write_irodori_layout(root: Path, *, model_config: dict[str, object]) -> Non
             "checksums": "checksums.sha256",
         },
         "runtime": {
-            "minimum_irodori_tts_mlx_version": "0.2.0",
-            "requires_upstream_dacvae_bridge": True,
+            "minimum_irodori_tts_mlx_version": "0.3.0",
             "requires_reference_audio": True,
             "supports_no_reference": False,
             "supports_caption": False,

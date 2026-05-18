@@ -3,7 +3,7 @@
 Issue: [#85 Document hosted converted weights usage and fallback local conversion](https://github.com/t0yohei/Irodori-TTS-MLX/issues/85)  
 Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/Irodori-TTS-MLX/issues/78)
 
-This page explains the user-facing v0.2 flow for **hosted pre-converted MLX RF-DiT weights** and the supported fallback when no approved hosted artifact is available. The current family-by-family publication state is tracked in [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md).
+This page explains the user-facing flow for **hosted pre-converted MLX RF-DiT weights** and the supported fallback when no approved hosted artifact is available. The current family-by-family publication state is tracked in [hosted_rf_dit_artifacts.md](hosted_rf_dit_artifacts.md).
 
 Hosted weights are a convenience path, not a new model source or redistribution waiver. The runtime boundary is:
 
@@ -31,7 +31,7 @@ If any of those checks fail, use the [local conversion fallback](#fallback-local
 The current CLI accepts a Hugging Face repo id with `--weights-repo`, or the
 same hosted-layout contract from disk with `--weights-dir`. The concrete repo
 ids below are examples of the expected shape; use only repositories that have
-actually been published and approved by the v0.2 publication checklist.
+actually been published and approved by the current publication checklist.
 
 ```bash
 python -m pip install -e ".[runtime]"
@@ -91,7 +91,7 @@ For VoiceDesign v2 hosted artifacts, `--seconds` can also be omitted for the nor
 
 ## Local hosted-layout directory
 
-Use `--weights-dir` when you have the same v0.2 layout on disk, for example during private staging, CI fixtures, or local-only conversions that cannot be redistributed publicly:
+Use `--weights-dir` when you have the same hosted layout on disk, for example during private staging, CI fixtures, or local-only conversions that cannot be redistributed publicly:
 
 ```bash
 irodori-tts-generate \
@@ -170,6 +170,6 @@ Every hosted converted weights README/model card should make these points clear:
 - the upstream model-card license and ethical-use restrictions, including no impersonation or misleading synthetic speech where applicable;
 - that Semantic-DACVAE codec weights, upstream source code, reference audio, generated audio, and Hugging Face cache snapshots are not bundled;
 - the runtime uses the approved hosted/local MLX DACVAE codec artifact instead of an upstream PyTorch bridge;
-- a link to the license audit / publication decision, currently [preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md) for the reviewed v0.2 candidate families.
+- a link to the license audit / publication decision, currently [preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md) for the reviewed candidate families.
 
 The current audit allows only the explicitly reviewed Irodori-TTS checkpoint families to proceed with conditions. Anything outside that list is **local-conversion-only** until separately audited.

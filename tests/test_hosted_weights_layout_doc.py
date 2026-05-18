@@ -38,8 +38,7 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
             '"format_version": "0.2"',
             '"family": "v3"',
             '"upstream_checkpoint": "Aratako/Irodori-TTS-500M-v3"',
-            '"minimum_irodori_tts_mlx_version": "0.2.0"',
-            '"requires_upstream_dacvae_bridge": true',
+            '"minimum_irodori_tts_mlx_version": "0.3.0"',
             '"supports_predicted_duration": true',
             '"license_review"',
             "names every loader-required artifact plus the checksum file",
@@ -93,7 +92,7 @@ class HostedWeightsLayoutDocTests(unittest.TestCase):
             with self.subTest(document=text[:40]):
                 self.assertIn("hosted_weights_layout.md", text)
 
-        self.assertIn("v0.2 hosted/pre-converted MLX weights layout contract", readme)
+        self.assertIn("Hosted/pre-converted MLX weights layout contract", readme)
         self.assertIn("does not approve publishing converted weights", policy)
 
 
