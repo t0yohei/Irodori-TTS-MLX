@@ -226,7 +226,7 @@ class ConvertDACVAEDecoderScriptTests(unittest.TestCase):
                 **arrays,
             )
 
-            report = describe_codec_capabilities(DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(path)))
+            report = describe_codec_capabilities(DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(path)))
 
         self.assertTrue(report["mlx_decode_available"])
         self.assertIn("executable Semantic-DACVAE decoder tensors", "\n".join(report["messages"]))

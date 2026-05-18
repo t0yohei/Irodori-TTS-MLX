@@ -61,17 +61,17 @@ Required work:
 - Research upstream `irodori_tts.codec.DACVAECodec`, Semantic-DACVAE architecture, tensor names, shapes, sampling rate, hop length, and preprocessing.
 - Evaluate mlx-audio artifacts/runtime as a reference for codec layout and possible interoperability.
 - Define codec artifact layout, manifest fields, provenance requirements, and local/hosted resolution behavior.
-- Implement MLX decode path with PyTorch bridge fallback.
+- Implement the MLX decode path without a public PyTorch bridge fallback.
 - Add decode parity fixtures and report tolerances before making MLX decode a recommended path.
 - Implement MLX encode path for reference audio only after decode is validated.
 - Add encode parity fixtures and report tolerances.
 
 Validation:
 
-- Decode parity compares fixed latents through upstream PyTorch and MLX.
-- Encode parity compares fixed audio through upstream PyTorch and MLX.
+- Decode evidence validates fixed latents through the MLX codec artifact.
+- Encode evidence validates fixed audio through the MLX codec artifact.
 - Runtime metadata records `codec_decode_backend` and `codec_encode_backend`.
-- Docs state which families and flows still require the PyTorch bridge.
+- Docs state that public generation uses the MLX codec artifact path.
 
 ### 3. Upstream-vs-MLX parity harness
 

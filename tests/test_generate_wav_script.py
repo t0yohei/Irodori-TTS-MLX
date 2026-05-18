@@ -29,16 +29,11 @@ class _FakeRuntime:
         output = Path(request.output_wav)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake wav")
-        mode = self.config.codec.runtime_mode
-        decode_backend = "mlx" if mode in {"mlx-decode", "mlx-decode-subprocess"} else mode
+        decode_backend = "mlx"
         if request.no_reference or not self.config.model_config.use_speaker_condition:
             encode_backend = "not-required"
-        elif mode == "mlx-decode-subprocess":
-            encode_backend = "pytorch-subprocess"
-        elif mode == "mlx-decode":
-            encode_backend = "pytorch-persistent"
         else:
-            encode_backend = mode
+            encode_backend = "mlx"
         return type(
             "Result",
             (),
@@ -168,7 +163,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             codec_artifact_repo=None,
             codec_artifact_revision=None,
             codec_device="cpu",
-            codec_runtime_mode="subprocess",
+            codec_runtime_mode="mlx",
             disable_codec_normalize=False,
             enable_watermark=False,
             seconds=0.1,
@@ -215,7 +210,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         request = runtime.requests[0]
         self.assertIsNone(request.reference_wav)
         self.assertFalse(request.no_reference)
-        self.assertEqual(runtime.config.codec.runtime_mode, "subprocess")
+        self.assertEqual(runtime.config.codec.runtime_mode, "mlx")
 
     def test_build_runtime_config_accepts_mlx_codec_artifact_path(self):
         args = self._args("out.wav")
@@ -247,6 +242,56 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.codec_runtime_mode, "mlx")
         self.assertEqual(args.codec_path, "codec.npz")
 
+    def test_parse_args_defaults_to_full_mlx_hosted_codec_artifact(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights-repo",
+                "t0yohei/Irodori-TTS-MLX-500M-v3",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--no-reference",
+            ]
+        )
+
+        self.assertEqual(args.codec_runtime_mode, "mlx")
+        self.assertEqual(args.codec_artifact_repo, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec")
+        self.assertEqual(args.codec_artifact_revision, "bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78")
+        self.assertIsNone(args.codec_path)
+
+    def test_parse_args_rejects_legacy_mlx_decode_alias(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--codec-runtime-mode",
+                    "mlx-decode",
+                ]
+            )
+
+    def test_parse_args_preserves_explicit_hosted_codec_artifact_revision(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--codec-artifact-revision",
+                "abc123",
+            ]
+        )
+
+        self.assertEqual(args.codec_artifact_repo, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec")
+        self.assertEqual(args.codec_artifact_revision, "abc123")
+
     def test_parse_args_accepts_hosted_codec_artifact_repo(self):
         args = generate_wav.parse_args(
             [
@@ -256,8 +301,6 @@ class GenerateWavScriptTests(unittest.TestCase):
                 "out.wav",
                 "--text",
                 "hello",
-                "--codec-runtime-mode",
-                "mlx-decode",
                 "--codec-artifact-repo",
                 "t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
                 "--codec-artifact-revision",
@@ -326,8 +369,6 @@ class GenerateWavScriptTests(unittest.TestCase):
                     "out.wav",
                     "--text",
                     "hello",
-                    "--codec-runtime-mode",
-                    "mlx-decode",
                     "--codec-artifact-dir",
                     str(root),
                 ]
@@ -349,8 +390,6 @@ class GenerateWavScriptTests(unittest.TestCase):
                     "out.wav",
                     "--text",
                     "hello",
-                    "--codec-runtime-mode",
-                    "mlx-decode",
                     "--codec-artifact-repo",
                     "org/codec",
                 ]
@@ -507,7 +546,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(runtime_holder["runtime"].config.weights_path, str(resolved.weights_path))
         self.assertEqual(runtime_holder["runtime"].config.model_config.text_tokenizer_repo, "layout/text")
 
-    def test_main_metadata_marks_no_reference_mlx_decode_as_not_required_encode(self):
+    def test_main_metadata_marks_no_reference_mlx_as_not_required_encode(self):
         runtime_holder = {}
 
         def fake_runtime_factory(*, config):
@@ -519,7 +558,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args = self._args(str(Path(td) / "out.wav"))
             args.no_reference = True
             args.caption = None
-            args.codec_runtime_mode = "mlx-decode"
+            args.codec_runtime_mode = "mlx"
             args.codec_path = "codec.npz"
             args.metadata_json = str(metadata_path)
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
@@ -535,33 +574,6 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
         self.assertEqual(payload["result"]["codec_decode_backend"], "mlx")
 
-    def test_main_metadata_matches_subprocess_backend_names(self):
-        runtime_holder = {}
-
-        def fake_runtime_factory(*, config):
-            runtime_holder["runtime"] = _FakeRuntime(config)
-            return runtime_holder["runtime"]
-
-        with tempfile.TemporaryDirectory() as td:
-            metadata_path = Path(td) / "metadata.json"
-            args = self._args(str(Path(td) / "out.wav"))
-            args.reference_wav = str(Path(td) / "reference.wav")
-            args.caption = None
-            args.codec_runtime_mode = "subprocess"
-            args.metadata_json = str(metadata_path)
-            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
-                generate_wav, "load_model_config_json", return_value=ModelConfig()
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
-                generate_wav, "iter_messages", return_value=iter([])
-            ):
-                rc = generate_wav.main()
-
-            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-
-        self.assertEqual(rc, 0)
-        self.assertEqual(payload["result"]["codec_encode_backend"], "subprocess")
-        self.assertEqual(payload["result"]["codec_decode_backend"], "subprocess")
-
     def test_main_metadata_marks_reference_audio_full_mlx_encode_and_decode(self):
         runtime_holder = {}
 
@@ -575,7 +587,6 @@ class GenerateWavScriptTests(unittest.TestCase):
             args.reference_wav = str(Path(td) / "reference.wav")
             args.caption = None
             args.codec_runtime_mode = "mlx"
-            args.codec_path = "codec.npz"
             args.metadata_json = str(metadata_path)
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig()
@@ -589,7 +600,6 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(payload["result"]["codec_encode_backend"], "mlx")
         self.assertEqual(payload["result"]["codec_decode_backend"], "mlx")
-
     def test_main_rejects_layout_no_reference_when_manifest_requires_reference(self):
         with tempfile.TemporaryDirectory() as td:
             args = self._args(str(Path(td) / "out.wav"))
@@ -1028,8 +1038,8 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["runtime"]["checkpoint_family"], "v3")
         self.assertEqual(payload["runtime"]["text_tokenizer_repo"], "example/text")
         self.assertEqual(payload["weights"]["source_kind"], "file")
-        self.assertEqual(payload["codec"]["source_kind"], "pytorch-bridge")
-        self.assertEqual(payload["codec_capabilities"]["runtime_mode"], "subprocess")
+        self.assertEqual(payload["codec"]["source_kind"], "mlx-codec-artifact")
+        self.assertEqual(payload["codec_capabilities"]["runtime_mode"], "mlx")
 
     def test_main_preflight_reports_resolved_layout_and_codec_paths(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1044,8 +1054,6 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights-dir",
                     str(weights_root),
-                    "--codec-runtime-mode",
-                    "mlx-decode",
                     "--codec-artifact-dir",
                     str(codec_root),
                     "--preflight",
@@ -1068,7 +1076,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertTrue(payload["weights"]["weights_path"].endswith("weights.npz"))
         self.assertEqual(payload["codec"]["source_kind"], "local")
         self.assertTrue(payload["codec"]["codec_path"].endswith("dacvae-codec.npz"))
-        self.assertEqual(payload["codec_capabilities"]["runtime_mode"], "mlx-decode")
+        self.assertEqual(payload["codec_capabilities"]["runtime_mode"], "mlx")
 
     def test_resolve_weights_layout_dir_supplies_weights_and_model_config(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1210,8 +1218,11 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "repo"
+            codec_root = Path(td) / "codec"
             root.mkdir()
+            codec_root.mkdir()
             self._write_hosted_layout(root, license_status="approved")
+            self._write_codec_artifact_layout(codec_root, license_status="approved")
             out_wav = str(Path(td) / "out.wav")
             args = generate_wav.parse_args([
                 "--weights-repo",
@@ -1226,6 +1237,8 @@ class GenerateWavScriptTests(unittest.TestCase):
             stdout = StringIO()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "_download_weights_repo_snapshot", return_value=root
+            ), patch.object(
+                generate_wav, "_download_codec_repo_snapshot", return_value=codec_root
             ), patch.object(generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)), patch.object(
                 generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory
             ), redirect_stdout(stdout):

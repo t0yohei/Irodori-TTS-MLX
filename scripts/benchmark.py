@@ -132,8 +132,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument(
         "--codec-runtime-mode",
-        choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
-        default="persistent",
+        choices=("mlx",),
+        default="mlx",
         help="DACVAE runtime mode for MLX benchmark runs.",
     )
     parser.add_argument("--codec-path", help="Converted local MLX DACVAE codec artifact .npz.")

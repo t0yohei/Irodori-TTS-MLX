@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from irodori_mlx.hosted_artifacts import hosted_dacvae_codec_artifact
+
 DACVAEBridgeConfig = None
 GenerationRequest = None
 MLXDACVAERuntime = None
@@ -159,7 +161,7 @@ FLOAT_KEYS = {
 NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
     "preset": {"ultra-fast", "fast", "balanced", "quality"},
-    "codec_runtime_mode": {"persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"},
+    "codec_runtime_mode": {"mlx"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
 }
 
@@ -172,6 +174,9 @@ PRESET_DEFAULTS = {
 ULTRA_FAST_SHORT_PROMPT_MAX_AUTO_SECONDS = 2.5
 ULTRA_FAST_SHORT_PROMPT_MAX_ESTIMATE_SECONDS = 3.0
 PRESET_NUM_STEPS = {name: int(defaults["num_steps"]) for name, defaults in PRESET_DEFAULTS.items()}
+DEFAULT_CODEC_RUNTIME_MODE = "mlx"
+MLX_CODEC_RUNTIME_MODES = {"mlx"}
+DEFAULT_HOSTED_DACVAE_CODEC_ARTIFACT = hosted_dacvae_codec_artifact()
 
 
 def _load_json_value(value: str | None, *, label: str) -> Any:
@@ -442,7 +447,8 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         "--codec-artifact-repo",
         default=config.get("codec_artifact_repo"),
         help=(
-            "Hugging Face repo id with an approved hosted DACVAE codec artifact layout. "
+            "Hugging Face repo id with an approved hosted DACVAE codec artifact layout. Defaults to "
+            f"{DEFAULT_HOSTED_DACVAE_CODEC_ARTIFACT.repo_id} for MLX codec runtime modes. "
             "RF-DiT --weights-repo and DACVAE --codec-artifact-repo stay separate."
         ),
     )
@@ -450,12 +456,9 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument("--codec-device", default=_default(config, "codec_device", "cpu"), help="PyTorch codec device: cpu, mps, or cuda.")
     parser.add_argument(
         "--codec-runtime-mode",
-        default=_default(config, "codec_runtime_mode", "persistent"),
-        choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
-        help=(
-            "How to host DACVAE encode/decode: PyTorch in-process, PyTorch subprocesses, a converted local "
-            "MLX fixture codec, or MLX decode-only with PyTorch encode fallback."
-        ),
+        default=_default(config, "codec_runtime_mode", DEFAULT_CODEC_RUNTIME_MODE),
+        choices=("mlx",),
+        help="How to host DACVAE encode/decode: full MLX hosted/local codec artifact.",
     )
     _add_configurable_bool(
         parser,
@@ -585,6 +588,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if not _has_cli_override(argv, "--codec-artifact-revision"):
             args.codec_artifact_revision = None
     _apply_preset_defaults(args, config=config, argv=argv)
+    selected_codec_sources = [
+        value
+        for value in (args.codec_path, args.codec_artifact_dir, args.codec_artifact_repo)
+        if value is not None and str(value).strip()
+    ]
+    if args.codec_runtime_mode in MLX_CODEC_RUNTIME_MODES and not selected_codec_sources:
+        args.codec_artifact_repo = DEFAULT_HOSTED_DACVAE_CODEC_ARTIFACT.repo_id
+        if not args.codec_artifact_revision:
+            args.codec_artifact_revision = DEFAULT_HOSTED_DACVAE_CODEC_ARTIFACT.revision
     args.duration_scale_explicit = _has_cli_override(argv, "--duration-scale") or "duration_scale" in config
     if args.reference_wav and args.no_reference:
         parser.error("choose either --reference-wav or --no-reference, not both")
@@ -750,7 +762,6 @@ def describe_codec_capabilities_for_preflight(*, args: argparse.Namespace, model
     mode = args.codec_runtime_mode
     uses_speaker = bool(model_config.use_speaker_condition)
     needs_reference_encode = uses_speaker
-    uses_pytorch_encode = mode in {"persistent", "subprocess", "mlx-decode", "mlx-decode-subprocess"}
     messages: list[str] = []
     report: dict[str, Any] = {
         "runtime_mode": mode,
@@ -758,34 +769,20 @@ def describe_codec_capabilities_for_preflight(*, args: argparse.Namespace, model
         "codec_path": args.codec_path,
         "mlx_decode_available": None,
         "mlx_encode_available": None,
-        "requires_codec_artifact": mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"},
-        "requires_pytorch_decode": mode in {"persistent", "subprocess"},
-        "requires_pytorch_encode": uses_pytorch_encode and needs_reference_encode,
+        "requires_codec_artifact": mode == "mlx",
+        "requires_pytorch_decode": False,
+        "requires_pytorch_encode": False,
         "reference_encode_policy": "not-required"
         if not uses_speaker
-        else "pytorch-bridge"
-        if mode != "mlx"
         else "mlx-artifact",
-        "decode_policy": "mlx-artifact" if mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"} else "pytorch-bridge",
+        "decode_policy": "mlx-artifact",
     }
-    if mode in {"persistent", "subprocess"}:
-        messages.append(
-            "PyTorch bridge required for DACVAE decode; reference-audio encode is not used."
-            if not uses_speaker
-            else "PyTorch bridge required for both DACVAE encode and decode."
-        )
-    elif mode in {"mlx-decode", "mlx-decode-subprocess"}:
-        messages.append(
-            "MLX codec artifact is used for decode; reference-audio encode is not used."
-            if not uses_speaker
-            else "MLX codec artifact is used for decode; reference-audio encode falls back to the PyTorch bridge."
-        )
-    elif mode == "mlx":
+    if mode == "mlx":
         messages.append("MLX codec artifact is used for both encode and decode; artifact must include encode tensors.")
-        report["requires_pytorch_encode"] = False
     if report["requires_codec_artifact"] and not args.codec_path:
         messages.append(
-            "MLX codec modes require --codec-path, --codec-artifact-dir, or --codec-artifact-repo."
+            "MLX codec modes require --codec-path, --codec-artifact-dir, or --codec-artifact-repo; "
+            "the CLI defaults to the approved hosted DACVAE codec artifact when no codec source is provided."
         )
     report["messages"] = tuple(messages)
     return report
@@ -807,7 +804,7 @@ def build_preflight_payload(
         "model_config_json": args.model_config_json,
     }
     codec_payload = _preflight_source_payload(codec_layout) or {
-        "source_kind": "file" if args.codec_path else "pytorch-bridge",
+        "source_kind": "file" if args.codec_path else "mlx-codec-artifact",
         "codec_path": str(Path(args.codec_path).expanduser()) if args.codec_path else None,
         "codec_repo": args.codec_repo,
     }
@@ -845,9 +842,8 @@ def build_preflight_payload(
         "codec_capabilities": describe_codec_capabilities_for_preflight(args=args, model_config=model_config),
         "fallbacks": {
             "weights": "Use --weights with a locally converted .npz if --weights-repo or --weights-dir resolution fails.",
-            "codec": "Use --codec-runtime-mode persistent for the upstream PyTorch DACVAE bridge, or --codec-path/--codec-artifact-dir for a local MLX codec artifact.",
+            "codec": "Use the default hosted DACVAE codec artifact for standalone MLX runtime, or --codec-path/--codec-artifact-dir for a local MLX codec artifact.",
             "tokenizer": "If tokenizer loading fails during generation, check network/cache access for the listed tokenizer repo.",
-            "upstream": "Install upstream Irodori-TTS or set PYTHONPATH when using PyTorch bridge-backed codec modes.",
         },
     }
     return payload

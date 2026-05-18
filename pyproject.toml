@@ -33,8 +33,6 @@ runtime = [
   "soundfile>=0.12,<1",
   "sentencepiece>=0.1.99,<0.2; python_version < '3.12'",
   "sentencepiece>=0.2,<1; python_version >= '3.12'",
-  "torch>=2.6,<3",
-  "torchaudio>=2.6,<3",
   "transformers>=4.51,<5",
 ]
 bench = [
@@ -42,8 +40,6 @@ bench = [
   "soundfile>=0.12,<1",
   "sentencepiece>=0.1.99,<0.2; python_version < '3.12'",
   "sentencepiece>=0.2,<1; python_version >= '3.12'",
-  "torch>=2.6,<3",
-  "torchaudio>=2.6,<3",
   "transformers>=4.51,<5",
 ]
 web = [

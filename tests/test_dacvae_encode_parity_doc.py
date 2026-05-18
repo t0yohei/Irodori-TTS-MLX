@@ -23,15 +23,15 @@ class DACVAEEncodeParityDocTests(unittest.TestCase):
             "47376ee24834d7a05a48ebabfe3cde29b3c5e214",
             "414c20785fc3a28373073ea8ef7a1316eeeaca6e",
             "latent shape: `[1, 13, 32]`",
-            "No threshold change was needed.",
+            "MLX-only artifact evidence check",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)
 
     def test_doc_defines_complete_failed_partial_report_contract(self):
         for term in (
-            "`passed`: upstream and MLX encode both ran",
-            "`failed`: upstream and MLX encode both ran",
+            "`passed`: MLX encode ran",
+            "`failed`: MLX encode ran",
             "`partial`: preflight could not reach comparison",
             "--allow-partial",
         ):

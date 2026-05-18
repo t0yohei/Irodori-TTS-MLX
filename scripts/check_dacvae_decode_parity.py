@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare upstream PyTorch and MLX DACVAE decode outputs for fixed latents."""
+"""Check MLX DACVAE decode output for fixed latents."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import importlib.util
 import json
 import sys
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,39 +20,27 @@ SCHEMA_VERSION = 3
 SOURCE_ISSUE = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/184"
 PARENT_EPIC = "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169"
 DEFAULT_EXPECTED_LATENT_DIM = 32
+DEFAULT_EXPECTED_SAMPLE_RATE = 48_000
+DEFAULT_EXPECTED_HOP_LENGTH = 1_920
 
 DACVAEBridgeConfig: Any = None
 MLXDACVAEBridge: Any = None
-PyTorchDACVAEBridge: Any = None
 _load_audio_numpy: Any = None
 
 
 def _load_runtime_decode_dependencies() -> None:
-    global DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy
-    if all(
-        dependency is not None
-        for dependency in (DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy)
-    ):
+    global DACVAEBridgeConfig, MLXDACVAEBridge, _load_audio_numpy
+    if all(dependency is not None for dependency in (DACVAEBridgeConfig, MLXDACVAEBridge, _load_audio_numpy)):
         return
     from irodori_mlx.runtime import (  # noqa: E402
         DACVAEBridgeConfig as runtime_config,
         MLXDACVAEBridge as mlx_bridge,
-        PyTorchDACVAEBridge as pytorch_bridge,
         _load_audio_numpy as runtime_load_audio_numpy,
     )
 
     DACVAEBridgeConfig = runtime_config
     MLXDACVAEBridge = mlx_bridge
-    PyTorchDACVAEBridge = pytorch_bridge
     _load_audio_numpy = runtime_load_audio_numpy
-
-
-@dataclass(frozen=True)
-class DecodeParityTolerances:
-    max_abs: float = 5e-3
-    mean_abs: float = 1e-3
-    rmse: float = 2e-3
-    min_cosine: float = 0.999
 
 
 class PartialPreconditionError(RuntimeError):
@@ -79,14 +66,6 @@ def _preflight_decode_pair(args: argparse.Namespace) -> None:
     _require_existing_path(args.latents_npy, "Fixed DACVAE decode latents fixture")
     _require_existing_path(args.codec_path, "Converted MLX DACVAE codec artifact")
     _require_module("mlx", "MLX runtime dependency is required for DACVAE decode parity.")
-    _require_module(
-        "irodori_tts.codec",
-        "Upstream irodori_tts.codec dependency is required for DACVAE decode parity.",
-    )
-    _require_module(
-        "torch",
-        "PyTorch runtime dependency is required for DACVAE decode parity.",
-    )
 
 
 def _load_latents(path: str | Path, *, expected_latent_dim: int = DEFAULT_EXPECTED_LATENT_DIM):
@@ -131,6 +110,8 @@ def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[st
         "codec": {
             "repo": args.codec_repo,
             "device": args.codec_device,
+            "expected_sample_rate": int(args.expected_sample_rate),
+            "expected_hop_length": int(args.expected_hop_length),
             "expected_latent_dim": int(args.expected_latent_dim),
             "mlx_codec": _path_metadata(args.codec_path),
             "watermark": "disabled",
@@ -162,57 +143,6 @@ def _audio_stats(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
     }
 
 
-def compare_audio(
-    upstream: np.ndarray,
-    mlx: np.ndarray,
-    *,
-    sample_rate: int,
-    tolerances: DecodeParityTolerances,
-) -> dict[str, Any]:
-    upstream = np.asarray(upstream, dtype=np.float32).reshape(-1)
-    mlx = np.asarray(mlx, dtype=np.float32).reshape(-1)
-    shape_match = upstream.shape == mlx.shape
-    n = min(int(upstream.shape[0]), int(mlx.shape[0]))
-    if n == 0:
-        diff = np.array([], dtype=np.float32)
-        cosine = 1.0 if shape_match else 0.0
-    else:
-        upstream_cmp = upstream[:n]
-        mlx_cmp = mlx[:n]
-        diff = mlx_cmp - upstream_cmp
-        denom = float(np.linalg.norm(upstream_cmp) * np.linalg.norm(mlx_cmp))
-        if denom == 0.0:
-            cosine = 1.0 if np.linalg.norm(diff) == 0.0 else 0.0
-        else:
-            cosine = float(np.dot(upstream_cmp, mlx_cmp) / denom)
-    metrics = {
-        "shape_match": bool(shape_match),
-        "compared_samples": int(n),
-        "max_abs": float(np.max(np.abs(diff))) if diff.size else 0.0,
-        "mean_abs": float(np.mean(np.abs(diff))) if diff.size else 0.0,
-        "rmse": float(np.sqrt(np.mean(np.square(diff)))) if diff.size else 0.0,
-        "cosine": cosine,
-        "upstream": _audio_stats(upstream, sample_rate),
-        "mlx": _audio_stats(mlx, sample_rate),
-    }
-    checks = {
-        "shape": bool(shape_match),
-        "finite": bool(metrics["upstream"]["finite"] and metrics["mlx"]["finite"]),
-        "range": bool(metrics["upstream"]["within_unit_range"] and metrics["mlx"]["within_unit_range"]),
-        "max_abs": metrics["max_abs"] <= tolerances.max_abs,
-        "mean_abs": metrics["mean_abs"] <= tolerances.mean_abs,
-        "rmse": metrics["rmse"] <= tolerances.rmse,
-        "cosine": metrics["cosine"] >= tolerances.min_cosine,
-    }
-    return {
-        "status": "passed" if all(checks.values()) else "failed",
-        "sample_rate": int(sample_rate),
-        "tolerances": asdict(tolerances),
-        "checks": checks,
-        "metrics": metrics,
-    }
-
-
 def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
     _load_runtime_decode_dependencies()
     output_dir = Path(args.output_dir).expanduser().resolve()
@@ -223,51 +153,48 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
         raise FileNotFoundError(f"Converted MLX DACVAE codec artifact was not found: {codec_path}")
     max_samples = None if args.max_samples is None else int(args.max_samples)
 
-    upstream_config = DACVAEBridgeConfig(
-        codec_repo=args.codec_repo,
-        codec_device=args.codec_device,
-        runtime_mode="persistent",
-        deterministic_encode=True,
-        deterministic_decode=True,
-        enable_watermark=False,
-        normalize_db=None,
-    )
     mlx_config = DACVAEBridgeConfig(
         codec_repo=args.codec_repo,
         codec_path=str(codec_path),
         codec_device=args.codec_device,
-        runtime_mode="mlx-decode",
+        runtime_mode="mlx",
         deterministic_encode=True,
         deterministic_decode=True,
         enable_watermark=False,
         normalize_db=None,
     )
-    upstream_bridge = PyTorchDACVAEBridge(config=upstream_config)
     mlx_bridge = MLXDACVAEBridge(config=mlx_config, require_encode=False)
-    if int(upstream_bridge.sample_rate) != int(mlx_bridge.sample_rate):
-        raise ValueError(f"sample_rate mismatch: upstream={upstream_bridge.sample_rate}, mlx={mlx_bridge.sample_rate}")
-    if int(upstream_bridge.hop_length) != int(mlx_bridge.hop_length):
-        raise ValueError(f"hop_length mismatch: upstream={upstream_bridge.hop_length}, mlx={mlx_bridge.hop_length}")
-    if int(upstream_bridge.latent_dim) != int(mlx_bridge.latent_dim):
-        raise ValueError(f"latent_dim mismatch: upstream={upstream_bridge.latent_dim}, mlx={mlx_bridge.latent_dim}")
+    expected_sample_rate = int(args.expected_sample_rate)
+    expected_hop_length = int(args.expected_hop_length)
+    expected_latent_dim = int(args.expected_latent_dim)
+    sample_rate_check = int(mlx_bridge.sample_rate) == expected_sample_rate
+    hop_length_check = int(mlx_bridge.hop_length) == expected_hop_length
+    latent_dim_check = int(mlx_bridge.latent_dim) == expected_latent_dim
+    if not latent_dim_check:
+        raise ValueError(
+            "Decode check expected Semantic-DACVAE runtime-layout latents shaped "
+            f"(1,T,{expected_latent_dim}), got latent_dim={mlx_bridge.latent_dim}"
+        )
 
-    upstream_wav = output_dir / "upstream-decode.wav"
     mlx_wav = output_dir / "mlx-decode.wav"
-    upstream_bridge.decode_to_wav(latents, upstream_wav, max_samples=max_samples)
     mlx_bridge.decode_to_wav(latents, mlx_wav, max_samples=max_samples)
-    upstream_audio, upstream_sr = _load_audio_numpy(upstream_wav)
     mlx_audio, mlx_sr = _load_audio_numpy(mlx_wav)
-    if int(upstream_sr) != int(mlx_sr):
-        raise ValueError(f"decoded WAV sample_rate mismatch: upstream={upstream_sr}, mlx={mlx_sr}")
-    tolerances = DecodeParityTolerances(
-        max_abs=float(args.max_abs_tolerance),
-        mean_abs=float(args.mean_abs_tolerance),
-        rmse=float(args.rmse_tolerance),
-        min_cosine=float(args.min_cosine),
-    )
-    comparison = compare_audio(upstream_audio, mlx_audio, sample_rate=int(upstream_sr), tolerances=tolerances)
-    if upstream_audio.shape != mlx_audio.shape:
-        comparison["reason"] = f"decoded waveform shape mismatch: upstream={upstream_audio.shape}, mlx={mlx_audio.shape}"
+    stats = _audio_stats(mlx_audio, int(mlx_sr))
+    decoded_wav_sample_rate_check = int(mlx_sr) == int(mlx_bridge.sample_rate)
+    checks = {
+        "sample_rate": bool(sample_rate_check),
+        "hop_length": bool(hop_length_check),
+        "latent_dim": bool(latent_dim_check),
+        "decoded_wav_sample_rate": bool(decoded_wav_sample_rate_check),
+        "finite": bool(stats["finite"]),
+        "range": bool(stats["within_unit_range"]),
+    }
+    comparison = {
+        "status": "passed" if all(checks.values()) else "failed",
+        "sample_rate": int(mlx_sr),
+        "checks": checks,
+        "metrics": {"mlx": stats},
+    }
     return {
         "schema_version": SCHEMA_VERSION,
         "source_issue": SOURCE_ISSUE,
@@ -285,20 +212,21 @@ def decode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "repo": args.codec_repo,
             "device": args.codec_device,
             "mlx_codec_path": str(codec_path),
-            "expected_latent_dim": int(args.expected_latent_dim),
-            "sample_rate": int(upstream_bridge.sample_rate),
-            "hop_length": int(upstream_bridge.hop_length),
-            "latent_dim": int(upstream_bridge.latent_dim),
+            "expected_sample_rate": expected_sample_rate,
+            "expected_hop_length": expected_hop_length,
+            "expected_latent_dim": expected_latent_dim,
+            "sample_rate": int(mlx_bridge.sample_rate),
+            "hop_length": int(mlx_bridge.hop_length),
+            "latent_dim": int(mlx_bridge.latent_dim),
             "metadata_checks": {
-                "sample_rate": True,
-                "hop_length": True,
-                "latent_dim": True,
-                "decoded_wav_sample_rate": True,
+                "sample_rate": bool(sample_rate_check),
+                "hop_length": bool(hop_length_check),
+                "latent_dim": bool(latent_dim_check),
+                "decoded_wav_sample_rate": bool(decoded_wav_sample_rate_check),
             },
             "watermark": "disabled",
         },
         "outputs": {
-            "upstream_wav": str(upstream_wav),
             "mlx_wav": str(mlx_wav),
         },
         "comparison": comparison,
@@ -315,15 +243,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--codec-device", default="cpu")
     parser.add_argument("--max-samples", type=int)
     parser.add_argument(
+        "--expected-sample-rate",
+        type=int,
+        default=DEFAULT_EXPECTED_SAMPLE_RATE,
+        help="Expected codec sample rate. Defaults to 48000 for Semantic-DACVAE.",
+    )
+    parser.add_argument(
+        "--expected-hop-length",
+        type=int,
+        default=DEFAULT_EXPECTED_HOP_LENGTH,
+        help="Expected codec hop length. Defaults to 1920 for Semantic-DACVAE.",
+    )
+    parser.add_argument(
         "--expected-latent-dim",
         type=int,
         default=DEFAULT_EXPECTED_LATENT_DIM,
         help="Expected runtime latent channel count for the fixed fixture. Defaults to 32 for Semantic-DACVAE.",
     )
-    parser.add_argument("--max-abs-tolerance", type=float, default=DecodeParityTolerances.max_abs)
-    parser.add_argument("--mean-abs-tolerance", type=float, default=DecodeParityTolerances.mean_abs)
-    parser.add_argument("--rmse-tolerance", type=float, default=DecodeParityTolerances.rmse)
-    parser.add_argument("--min-cosine", type=float, default=DecodeParityTolerances.min_cosine)
     parser.add_argument(
         "--allow-partial",
         action="store_true",

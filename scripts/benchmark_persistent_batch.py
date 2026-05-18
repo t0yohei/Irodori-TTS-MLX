@@ -98,8 +98,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument(
         "--codec-runtime-mode",
-        choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
-        default="persistent",
+        choices=("mlx",),
+        default="mlx",
     )
     parser.add_argument("--codec-path")
     parser.add_argument("--codec-artifact-dir")
@@ -618,7 +618,7 @@ def run_self_test() -> int:
         process_setup_overhead_ms=process_setup_overhead_ms(2.0, parsed),
         requests=parsed,
     )
-    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, cfg_guidance_mode="independent", cfg_scale_text=3.0, cfg_scale_caption=None, cfg_scale_speaker=None, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx-decode", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
+    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, cfg_guidance_mode="independent", cfg_scale_text=3.0, cfg_scale_caption=None, cfg_scale_speaker=None, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
     report = build_report(result, args=args)
     assert "Persistent Batch Benchmark Report" in report
     assert "Measured generation throughput" in report

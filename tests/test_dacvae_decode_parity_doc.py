@@ -18,12 +18,10 @@ class DACVAEDecodeParityDocTests(unittest.TestCase):
     def test_decode_parity_doc_defines_gate_inputs_outputs_and_tolerances(self):
         for term in (
             "`(1, T, 32)`",
+            "`--expected-sample-rate`",
+            "`--expected-hop-length`",
             "`--expected-latent-dim`",
-            "`max_abs <= 5e-3`",
-            "`mean_abs <= 1e-3`",
-            "`rmse <= 2e-3`",
-            "`cosine >= 0.999`",
-            "upstream-decode.wav",
+            "MLX-only artifact evidence check",
             "mlx-decode.wav",
             "dacvae-decode-parity.json",
         ):

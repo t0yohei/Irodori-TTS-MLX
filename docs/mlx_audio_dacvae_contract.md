@@ -47,13 +47,13 @@ dacvae-codec.npz
 
 The `.npz` file is a small explicit runtime contract used by
 `MLXDACVAEBridge`. It validates runtime selection, metadata inspection, shape
-checks, decode-only routing, full-MLX encode routing, and PyTorch fallback
-boundaries without committing or downloading large upstream weights.
+checks and full-MLX encode/decode routing without committing or downloading
+large upstream weights.
 
 ## Shape and channel conventions
 
-The PyTorch bridge remains the reference behavior until a real mlx-audio DACVAE
-conversion path has parity evidence:
+Converted codec artifacts remain the public runtime behavior; any mlx-audio
+DACVAE conversion path must provide parity evidence before publication:
 
 - audio input/output is mono, shaped as one channel at the bridge boundary;
 - runtime sample rate is `48000` Hz;
@@ -73,13 +73,12 @@ hop/step semantics with fixed latent and waveform fixtures.
 
 The selected path for v0.2 is:
 
-1. Keep the PyTorch `DACVAECodec` bridge as the production-like fallback.
-2. Keep the local `.npz` codec artifact contract as the only Irodori-TTS-MLX
+1. Keep the local `.npz` codec artifact contract as the only Irodori-TTS-MLX
    runtime MLX DACVAE artifact format for now.
-3. Use mlx-audio's `dacvae/config.json` and `dacvae/model.safetensors` as
+2. Use mlx-audio's `dacvae/config.json` and `dacvae/model.safetensors` as
    source inputs for a future converter or adapter, not as files loaded directly
    by `MLXDACVAEBridge`.
-4. Require fixed decode and encode parity fixtures before treating converted
+3. Require fixed decode and encode parity fixtures before treating converted
    mlx-audio DACVAE weights as compatible.
 
 For #131, the recommendation is explicit: ingest unquantized mlx-audio RF-DiT
@@ -133,5 +132,5 @@ without downloading multi-GiB upstream artifacts.
 - mlx-audio's config names codebooks and rates; this repository's runtime
   boundary names `sample_rate`, `hop_length`, `latent_dim`, and explicit encode
   and decode tensors.
-- Direct loader support is not included. Silent fallback from the
+- Direct loader support is not included. Silent acceptance of the
   mlx-audio DACVAE directory shape would hide licensing and parity decisions.

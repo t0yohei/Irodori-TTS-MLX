@@ -42,9 +42,8 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             '"codec"',
             '"artifact_format": "irodori-tts-mlx-dacvae-codec"',
             '"source_repo": "Aratako/Semantic-DACVAE-Japanese-32dim"',
-            '"runtime_modes": ["mlx-decode", "mlx"]',
+            '"runtime_modes": ["mlx"]',
             "They do not bundle Semantic-DACVAE weights by default.",
-            "PyTorch bridge fallback",
             "RF-DiT weights repository",
             "dedicated Hugging Face model repository",
         ):
@@ -55,15 +54,10 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
         for term in (
             "describe_codec_capabilities()",
             "boundaries.codec.capabilities",
-            "persistent",
-            "subprocess",
-            "mlx-decode",
-            "mlx-decode-subprocess",
             "mlx",
             "base_v2",
             "voicedesign",
             "v3",
-            "reference encode still uses the PyTorch bridge",
             "has_executable_mlx_decode=true",
             "has_executable_mlx_encode=true",
             "available_unvalidated",
@@ -72,6 +66,7 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "--no-reference",
             "runtime_status.mlx_encoder_execution=available_unvalidated",
             "Encode parity remains owned by",
+            "not runtime fallback modes",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, self.doc)

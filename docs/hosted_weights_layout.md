@@ -6,7 +6,7 @@ Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://
 This page is the v0.2 contract for a repository that hosts **pre-converted MLX RF-DiT weights** for `irodori-tts-mlx`.
 It defines the file names, metadata, provenance notes, and path conventions that follow-up loader work can rely on.
 It does **not** approve publishing any weights by itself; every hosted artifact still needs a separate upstream-license and redistribution review before upload.
-DACVAE codec artifacts are intentionally separate from this RF-DiT weights layout; see [codec_artifact_layout.md](codec_artifact_layout.md) for the local/hosted codec pointer format and bridge fallback policy.
+DACVAE codec artifacts are intentionally separate from this RF-DiT weights layout; see [codec_artifact_layout.md](codec_artifact_layout.md) for the local/hosted codec pointer format.
 
 ## Goals
 
@@ -150,8 +150,8 @@ The manifest is the loader source of truth. Required shape:
     "artifact_kind": "separate-local-or-hosted-dacvae-codec",
     "artifact_format": "irodori-tts-mlx-dacvae-codec",
     "artifact_format_version": "0.2",
-    "runtime_modes": ["persistent", "subprocess", "mlx-decode", "mlx"],
-    "fallback_policy": "use the PyTorch bridge when no approved codec artifact is configured"
+    "runtime_modes": ["mlx"],
+    "fallback_policy": "use an approved hosted/local codec artifact or provide --codec-path"
   },
   "license_review": {
     "status": "approved",
@@ -160,7 +160,7 @@ The manifest is the loader source of truth. Required shape:
 }
 ```
 
-The manifest deliberately separates loader behavior from the README prose so automated validation can reject incompatible layouts. The optional `codec` object is metadata only: RF-DiT loaders must not require bundled codec weights, and generation remains valid through the PyTorch DACVAE bridge when a hosted/local codec artifact is absent.
+The manifest deliberately separates loader behavior from the README prose so automated validation can reject incompatible layouts. The optional `codec` object is metadata only: RF-DiT loaders must not require bundled codec weights, and generation uses the approved default hosted codec artifact unless a local codec artifact is provided.
 
 ### `checksums.sha256`
 
@@ -175,8 +175,8 @@ The hosted repo README must state:
 - that this is a converted MLX artifact, not the upstream checkpoint;
 - the converter repo/version used;
 - the supported runtime version and generation family (`v3`, `voicedesign`, etc.);
-- the DACVAE/upstream-code boundary still required by the runtime;
-- whether a separate codec artifact is referenced, plus the PyTorch bridge fallback when it is not;
+- the standalone DACVAE codec artifact boundary used by the runtime;
+- whether a separate codec artifact is referenced;
 - a link to the license review or publishing decision for the converted weights;
 - a fallback local-conversion recipe using the original upstream checkpoint.
 

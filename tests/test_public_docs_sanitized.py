@@ -47,8 +47,9 @@ class PublicDocsSanitizedTests(unittest.TestCase):
             "VoiceDesign v2 hosted RF-DiT artifact | Supported",
             "v3 hosted RF-DiT artifact | Supported",
             "Base v2 speaker-conditioned generation | Experimental",
-            "PyTorch bridge-backed DACVAE codec path | Supported default",
-            "MLX DACVAE decode for no-reference generation | Experimental",
+            "Standalone MLX DACVAE codec artifact path | Supported default",
+            "PyTorch bridge-backed DACVAE codec path | Removed",
+            "MLX DACVAE decode for no-reference generation | Supported",
             "Fully MLX DACVAE encode/decode for reference audio | Experimental",
             "Local Web UI | Optional",
             "Hosted artifacts outside the approved layouts | Blocked",
@@ -97,7 +98,8 @@ class PublicDocsSanitizedTests(unittest.TestCase):
             "irodori_mlx_manifest.json",
             "license_review.status: \"approved\"",
             "irodori_dacvae_codec_manifest.json",
-            "--codec-runtime-mode persistent",
+            "default approved hosted DACVAE codec artifact",
+            "--codec-runtime-mode mlx",
         ]
         for term in required_terms:
             with self.subTest(term=term):

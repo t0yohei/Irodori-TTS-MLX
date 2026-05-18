@@ -268,7 +268,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                     "--mlx-model-config-json",
                     "/tmp/v3-model-config.json",
                     "--codec-runtime-mode",
-                    "mlx-decode",
+                    "mlx",
                     "--codec-artifact-repo",
                     "t0yohei/Irodori-TTS-MLX-DACVAE-Codec",
                     "--codec-artifact-revision",
