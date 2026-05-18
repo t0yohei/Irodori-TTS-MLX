@@ -161,7 +161,7 @@ FLOAT_KEYS = {
 NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
     "preset": {"ultra-fast", "fast", "balanced", "quality"},
-    "codec_runtime_mode": {"mlx", "mlx-decode"},
+    "codec_runtime_mode": {"mlx"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
 }
 
@@ -176,7 +176,6 @@ ULTRA_FAST_SHORT_PROMPT_MAX_ESTIMATE_SECONDS = 3.0
 PRESET_NUM_STEPS = {name: int(defaults["num_steps"]) for name, defaults in PRESET_DEFAULTS.items()}
 DEFAULT_CODEC_RUNTIME_MODE = "mlx"
 MLX_CODEC_RUNTIME_MODES = {"mlx"}
-LEGACY_CODEC_RUNTIME_ALIASES = {"mlx-decode": "mlx"}
 DEFAULT_HOSTED_DACVAE_CODEC_ARTIFACT = hosted_dacvae_codec_artifact()
 
 
@@ -458,11 +457,8 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument(
         "--codec-runtime-mode",
         default=_default(config, "codec_runtime_mode", DEFAULT_CODEC_RUNTIME_MODE),
-        choices=("mlx", "mlx-decode"),
-        help=(
-            "How to host DACVAE encode/decode: full MLX hosted/local codec artifact. "
-            "Legacy alias mlx-decode is accepted for existing parity tooling."
-        ),
+        choices=("mlx",),
+        help="How to host DACVAE encode/decode: full MLX hosted/local codec artifact.",
     )
     _add_configurable_bool(
         parser,
@@ -556,7 +552,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         pre.error(str(exc))
     parser = build_parser(config)
     args = parser.parse_args(argv)
-    args.codec_runtime_mode = LEGACY_CODEC_RUNTIME_ALIASES.get(args.codec_runtime_mode, args.codec_runtime_mode)
     explicit_weight_sources = {
         name
         for option, name in (

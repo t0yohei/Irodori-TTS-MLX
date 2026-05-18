@@ -181,7 +181,7 @@ uv run python scripts/run_upstream_parity.py \
   --upstream-root external/Irodori-TTS \
   --mlx-weights /tmp/irodori-voicedesign/irodori-voicedesign.npz \
   --mlx-model-config-json /tmp/irodori-voicedesign/voicedesign-model-config.json \
-  --codec-runtime-mode mlx-decode \
+  --codec-runtime-mode mlx \
   --codec-path /path/to/dacvae-codec.npz \
   --output-dir parity-runs/voicedesign-real \
   --codec-device cpu \

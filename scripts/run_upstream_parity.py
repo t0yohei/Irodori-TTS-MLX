@@ -814,7 +814,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--model-device", default="mps")
     parser.add_argument("--codec-device", default="cpu")
-    parser.add_argument("--codec-runtime-mode")
+    parser.add_argument("--codec-runtime-mode", choices=("mlx",))
     parser.add_argument("--codec-path")
     parser.add_argument("--codec-artifact-dir")
     parser.add_argument("--codec-artifact-repo")

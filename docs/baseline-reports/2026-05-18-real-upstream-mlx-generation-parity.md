@@ -42,15 +42,15 @@ Command summary:
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 uv run --python 3.11 python scripts/run_upstream_parity.py \
   --scenario v3-no-reference \
-  --scenario-name v3-no-reference-mlx-decode \
+  --scenario-name v3-no-reference-mlx \
   --run-upstream \
   --run-mlx \
   --upstream-root /path/to/Irodori-TTS \
   --mlx-weights /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/weights.npz \
   --mlx-model-config-json /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/model_config.json \
-  --codec-runtime-mode mlx-decode \
+  --codec-runtime-mode mlx \
   --codec-path /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
-  --output-dir /tmp/irodori-issue-189-parity/v3-no-reference-mlx-decode \
+  --output-dir /tmp/irodori-issue-189-parity/v3-no-reference-mlx \
   --codec-device cpu \
   --num-steps 8 \
   --seed 20260516
@@ -58,7 +58,7 @@ uv run --python 3.11 python scripts/run_upstream_parity.py \
 
 Result:
 
-- report: `/tmp/irodori-issue-189-parity/v3-no-reference-mlx-decode/v3-no-reference-mlx-decode.parity.json`
+- report: `/tmp/irodori-issue-189-parity/v3-no-reference-mlx/v3-no-reference-mlx.parity.json`
 - `report_status: complete`
 - `comparison.status: expected_drift`
 - upstream audio: 48,000 Hz, 215,040 samples, 4.48 s
@@ -74,15 +74,15 @@ Command summary:
 PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 uv run --python 3.11 python scripts/run_upstream_parity.py \
   --scenario voicedesign-contrastive-caption \
-  --scenario-name voicedesign-contrastive-caption-mlx-decode \
+  --scenario-name voicedesign-contrastive-caption-mlx \
   --run-upstream \
   --run-mlx \
   --upstream-root /path/to/Irodori-TTS \
   --mlx-weights /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign/bf877a3beb7d921dc6bfb2b6812d02be07f39f2a/weights.npz \
   --mlx-model-config-json /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign/bf877a3beb7d921dc6bfb2b6812d02be07f39f2a/model_config.json \
-  --codec-runtime-mode mlx-decode \
+  --codec-runtime-mode mlx \
   --codec-path /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
-  --output-dir /tmp/irodori-issue-189-parity/voicedesign-contrastive-caption-mlx-decode \
+  --output-dir /tmp/irodori-issue-189-parity/voicedesign-contrastive-caption-mlx \
   --codec-device cpu \
   --seconds 2.0 \
   --num-steps 12 \
@@ -91,7 +91,7 @@ uv run --python 3.11 python scripts/run_upstream_parity.py \
 
 Result:
 
-- report: `/tmp/irodori-issue-189-parity/voicedesign-contrastive-caption-mlx-decode/voicedesign-contrastive-caption-mlx-decode.parity.json`
+- report: `/tmp/irodori-issue-189-parity/voicedesign-contrastive-caption-mlx/voicedesign-contrastive-caption-mlx.parity.json`
 - `report_status: complete`
 - `comparison.status: regression`
 - upstream audio: 48,000 Hz, 368,640 samples, 7.68 s

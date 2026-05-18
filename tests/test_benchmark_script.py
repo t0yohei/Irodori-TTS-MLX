@@ -38,7 +38,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
-            codec_runtime_mode="subprocess",
+            codec_runtime_mode="mlx",
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -53,7 +53,7 @@ class BenchmarkScriptTests(unittest.TestCase):
         self.assertIn("--caption", argv)
         self.assertEqual(argv[argv.index("--caption") + 1], "soft voice")
         self.assertIn("--codec-runtime-mode", argv)
-        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "subprocess")
+        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
         self.assertEqual(argv[argv.index("--output") + 1], "/tmp/out.wav")
 
@@ -68,7 +68,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
-            codec_runtime_mode="persistent",
+            codec_runtime_mode="mlx",
             codec_path=None,
             codec_artifact_dir=None,
             codec_artifact_repo=None,
@@ -210,7 +210,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
-            codec_runtime_mode="persistent",
+            codec_runtime_mode="mlx",
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -244,7 +244,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
-            codec_runtime_mode="persistent",
+            codec_runtime_mode="mlx",
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -272,7 +272,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
-            codec_runtime_mode="persistent",
+            codec_runtime_mode="mlx",
             codec_path=None,
             codec_artifact_dir=None,
             codec_artifact_repo=None,
@@ -300,7 +300,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
-            codec_runtime_mode="mlx-decode",
+            codec_runtime_mode="mlx",
             codec_path=None,
             codec_artifact_dir=None,
             codec_artifact_repo="owner/codec-hosted",
@@ -312,7 +312,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             mlx_python="python3",
         )
         argv, _env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=None, num_steps=12)
-        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
+        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx")
         self.assertIn("--codec-artifact-repo", argv)
         self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], "owner/codec-hosted")
         self.assertIn("--codec-artifact-revision", argv)
@@ -332,7 +332,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             seed=123,
             codec_repo="codec-repo",
             codec_device="cpu",
-            codec_runtime_mode="mlx-decode",
+            codec_runtime_mode="mlx",
             codec_path=None,
             codec_artifact_dir=None,
             codec_artifact_repo=None,
@@ -524,7 +524,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights_dir=None,
             weights_repo=None,
             weights_revision=None,
-            codec_runtime_mode="persistent",
+            codec_runtime_mode="mlx",
             codec_path=None,
             codec_artifact_dir=None,
             codec_artifact_repo=None,
@@ -539,7 +539,7 @@ class BenchmarkScriptTests(unittest.TestCase):
         self.assertEqual(payload["invocation"]["case_label"], "v3-text")
         self.assertEqual(payload["invocation"]["caption"], "soft voice")
         self.assertTrue(payload["invocation"]["omit_seconds"])
-        self.assertEqual(payload["invocation"]["codec_runtime_mode"], "persistent")
+        self.assertEqual(payload["invocation"]["codec_runtime_mode"], "mlx")
         self.assertIsNone(payload["invocation"]["codec_artifact_repo"])
         self.assertEqual(payload["results"][0]["case_name"], "mlx-case")
         self.assertEqual(payload["aggregates"][0]["timings_ms"]["sample_rf"]["median"], 1000.0)

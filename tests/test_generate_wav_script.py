@@ -260,21 +260,20 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.codec_artifact_revision, "bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78")
         self.assertIsNone(args.codec_path)
 
-    def test_parse_args_accepts_legacy_mlx_decode_alias(self):
-        args = generate_wav.parse_args(
-            [
-                "--weights",
-                "weights.npz",
-                "--output",
-                "out.wav",
-                "--text",
-                "hello",
-                "--codec-runtime-mode",
-                "mlx-decode",
-            ]
-        )
-
-        self.assertEqual(args.codec_runtime_mode, "mlx")
+    def test_parse_args_rejects_legacy_mlx_decode_alias(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--codec-runtime-mode",
+                    "mlx-decode",
+                ]
+            )
 
     def test_parse_args_preserves_explicit_hosted_codec_artifact_revision(self):
         args = generate_wav.parse_args(
