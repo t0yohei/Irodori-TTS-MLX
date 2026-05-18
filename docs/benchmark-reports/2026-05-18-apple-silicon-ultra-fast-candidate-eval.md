@@ -107,5 +107,7 @@ Each source summary must include invocation.num_steps, invocation.cfg_guidance_m
 
 - issue-220-ultra-fast-steps-6-reduced-cfg-1: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-6-reduced-cfg-1/persistent-batch-summary.json
 - issue-220-ultra-fast-steps-6-joint-cfg-1: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-6-joint-cfg-1/persistent-batch-summary.json
+- issue-220-ultra-fast-steps-6-joint-cfg-1-seconds-2p5: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-6-joint-cfg-1-seconds-2p5/persistent-batch-summary.json
 - issue-220-ultra-fast-steps-8-reduced-cfg-1: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-reduced-cfg-1/persistent-batch-summary.json
+- issue-220-ultra-fast-steps-8-reduced-cfg-1-seconds-2p5: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-reduced-cfg-1-seconds-2p5/persistent-batch-summary.json
 - issue-220-ultra-fast-steps-8-independent-cfg-2: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-independent-cfg-2/persistent-batch-summary.json
