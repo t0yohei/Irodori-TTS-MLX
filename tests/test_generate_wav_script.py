@@ -792,6 +792,54 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(request.cfg_scale_caption, 0.0)
         self.assertEqual(request.cfg_scale_speaker, 0.0)
 
+    def test_build_generation_request_restores_baseline_cfg_after_ultra_fast_preset(self):
+        args = self._args("default.wav")
+        args.preset = "ultra-fast"
+        args.num_steps = 6
+        args.cfg_guidance_mode = "joint"
+        args.cfg_scale_text = 1.0
+        args.cfg_scale_caption = 0.0
+        args.cfg_scale_speaker = 0.0
+
+        request = generate_wav.build_generation_request(
+            args,
+            {
+                "text": "override",
+                "output": "override.wav",
+                "preset": "fast",
+            },
+        )
+
+        self.assertEqual(request.num_steps, 12)
+        self.assertEqual(request.cfg_guidance_mode, "independent")
+        self.assertEqual(request.cfg_scale_text, 3.0)
+        self.assertEqual(request.cfg_scale_caption, 3.0)
+        self.assertEqual(request.cfg_scale_speaker, 5.0)
+
+    def test_build_generation_request_preserves_custom_cfg_for_standard_request_preset(self):
+        args = self._args("default.wav")
+        args.preset = "ultra-fast"
+        args.num_steps = 6
+        args.cfg_guidance_mode = "reduced"
+        args.cfg_scale_text = 2.0
+        args.cfg_scale_caption = 4.0
+        args.cfg_scale_speaker = 6.0
+
+        request = generate_wav.build_generation_request(
+            args,
+            {
+                "text": "override",
+                "output": "override.wav",
+                "preset": "fast",
+            },
+        )
+
+        self.assertEqual(request.num_steps, 12)
+        self.assertEqual(request.cfg_guidance_mode, "reduced")
+        self.assertEqual(request.cfg_scale_text, 2.0)
+        self.assertEqual(request.cfg_scale_caption, 4.0)
+        self.assertEqual(request.cfg_scale_speaker, 6.0)
+
     def test_parse_args_allows_omitted_seconds_for_auto_duration(self):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"

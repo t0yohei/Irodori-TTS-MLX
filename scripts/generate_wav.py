@@ -176,6 +176,12 @@ PRESET_DEFAULTS = {
     "quality": {"num_steps": 40},
 }
 PRESET_NUM_STEPS = {name: int(defaults["num_steps"]) for name, defaults in PRESET_DEFAULTS.items()}
+BASELINE_CFG_DEFAULTS = {
+    "cfg_guidance_mode": "independent",
+    "cfg_scale_text": 3.0,
+    "cfg_scale_caption": 3.0,
+    "cfg_scale_speaker": 5.0,
+}
 
 
 def _load_json_value(value: str | None, *, label: str) -> Any:
@@ -945,10 +951,19 @@ def _merged_request_preset_value(
     args: argparse.Namespace,
     overrides: dict[str, Any],
     preset_defaults: dict[str, Any],
+    preset: str | None,
     key: str,
 ) -> Any:
-    if "preset" in overrides and key not in overrides and key in preset_defaults:
-        return preset_defaults[key]
+    if "preset" in overrides and key not in overrides:
+        if key in preset_defaults:
+            return preset_defaults[key]
+        if (
+            preset in {"fast", "balanced", "quality"}
+            and key in BASELINE_CFG_DEFAULTS
+            and args.preset == "ultra-fast"
+            and getattr(args, key) == PRESET_DEFAULTS["ultra-fast"][key]
+        ):
+            return BASELINE_CFG_DEFAULTS[key]
     return _merged_request_value(args, overrides, key)
 
 
@@ -967,11 +982,11 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         raise ValueError("generation request cannot set both reference_wav and no_reference")
     preset = _merged_request_value(args, overrides, "preset")
     preset_defaults = PRESET_DEFAULTS.get(preset, {}) if preset else {}
-    num_steps = int(_merged_request_preset_value(args, overrides, preset_defaults, "num_steps"))
-    cfg_guidance_mode = _merged_request_preset_value(args, overrides, preset_defaults, "cfg_guidance_mode")
-    cfg_scale_text = _merged_request_preset_value(args, overrides, preset_defaults, "cfg_scale_text")
-    cfg_scale_caption = _merged_request_preset_value(args, overrides, preset_defaults, "cfg_scale_caption")
-    cfg_scale_speaker = _merged_request_preset_value(args, overrides, preset_defaults, "cfg_scale_speaker")
+    num_steps = int(_merged_request_preset_value(args, overrides, preset_defaults, preset, "num_steps"))
+    cfg_guidance_mode = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_guidance_mode")
+    cfg_scale_text = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_text")
+    cfg_scale_caption = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_caption")
+    cfg_scale_speaker = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_speaker")
     seconds = _merged_request_value(args, overrides, "seconds")
     duration_scale = float(_merged_request_value(args, overrides, "duration_scale"))
     max_reference_seconds = _merged_request_value(args, overrides, "max_reference_seconds")
