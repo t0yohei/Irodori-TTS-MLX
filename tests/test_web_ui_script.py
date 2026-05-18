@@ -28,6 +28,12 @@ class WebUiScriptTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--preset") + 1], "balanced")
         self.assertIn("--metadata-json", argv)
         self.assertIn("--json", argv)
+        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
+        self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], web_ui.DEFAULT_CODEC_ARTIFACT_REPO)
+        self.assertNotIn("--cfg-scale-text", argv)
+        self.assertNotIn("--cfg-scale-caption", argv)
+        self.assertNotIn("--cfg-scale-speaker", argv)
+        self.assertNotIn("--cfg-guidance-mode", argv)
 
     def test_v3_preset_includes_pinned_revision(self):
         argv = web_ui.build_generate_argv(
@@ -64,52 +70,100 @@ class WebUiScriptTests(unittest.TestCase):
                 metadata_json="/tmp/meta.json",
             )
 
-    def test_run_generation_restores_sys_argv_and_reads_metadata(self):
+    def test_local_codec_path_overrides_default_hosted_codec_artifact(self):
+        argv = web_ui.build_generate_argv(
+            web_ui.WebGenerationConfig(codec_path="/tmp/codec.npz", codec_artifact_revision="abc123"),
+            output_wav="/tmp/out.wav",
+            metadata_json="/tmp/meta.json",
+        )
+
+        self.assertIn("--codec-path", argv)
+        self.assertNotIn("--codec-artifact-repo", argv)
+        self.assertNotIn("--codec-artifact-revision", argv)
+
+    def test_pytorch_codec_modes_do_not_inject_hosted_codec_artifact(self):
+        for mode in ("persistent", "subprocess"):
+            with self.subTest(mode=mode):
+                argv = web_ui.build_generate_argv(
+                    web_ui.WebGenerationConfig(codec_runtime_mode=mode, codec_artifact_revision="abc123"),
+                    output_wav="/tmp/out.wav",
+                    metadata_json="/tmp/meta.json",
+                )
+
+                self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], mode)
+                self.assertNotIn("--codec-artifact-repo", argv)
+                self.assertNotIn("--codec-artifact-revision", argv)
+
+    def test_mlx_codec_modes_include_hosted_codec_artifact_and_revision(self):
+        for mode in web_ui.MLX_CODEC_RUNTIME_MODES:
+            with self.subTest(mode=mode):
+                argv = web_ui.build_generate_argv(
+                    web_ui.WebGenerationConfig(codec_runtime_mode=mode, codec_artifact_revision="abc123"),
+                    output_wav="/tmp/out.wav",
+                    metadata_json="/tmp/meta.json",
+                )
+
+                self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], mode)
+                self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], web_ui.DEFAULT_CODEC_ARTIFACT_REPO)
+                self.assertEqual(argv[argv.index("--codec-artifact-revision") + 1], "abc123")
+
+    def test_explicit_zero_cfg_values_are_preserved(self):
+        argv = web_ui.build_generate_argv(
+            web_ui.WebGenerationConfig(
+                cfg_scale_text=0,
+                cfg_scale_caption=0,
+                cfg_scale_speaker=0,
+                cfg_guidance_mode="joint",
+            ),
+            output_wav="/tmp/out.wav",
+            metadata_json="/tmp/meta.json",
+        )
+
+        self.assertEqual(argv[argv.index("--cfg-scale-text") + 1], "0.0")
+        self.assertEqual(argv[argv.index("--cfg-scale-caption") + 1], "0.0")
+        self.assertEqual(argv[argv.index("--cfg-scale-speaker") + 1], "0.0")
+        self.assertEqual(argv[argv.index("--cfg-guidance-mode") + 1], "joint")
+
+    def test_run_generation_uses_subprocess_and_reads_metadata(self):
         old_argv = list(sys.argv)
 
-        def fake_cli_main() -> int:
-            self.assertEqual(sys.argv[0], "irodori-tts-generate")
-            metadata_path = Path(sys.argv[sys.argv.index("--metadata-json") + 1])
+        def fake_run(command, **kwargs):
+            metadata_path = Path(command[command.index("--metadata-json") + 1])
             metadata_path.write_text(json.dumps({"ok": True}), encoding="utf-8")
-            print("generated")
-            return 0
+            return types.SimpleNamespace(returncode=0, stdout="generated\n", stderr="")
 
-        with tempfile.TemporaryDirectory() as td, patch.object(web_ui.generate_wav, "cli_main", side_effect=fake_cli_main):
+        with tempfile.TemporaryDirectory() as td, patch.object(web_ui.subprocess, "run", side_effect=fake_run) as run:
             audio, metadata, logs = web_ui.run_generation(
                 web_ui.WebGenerationConfig(output_dir=td),
             )
 
         self.assertEqual(sys.argv, old_argv)
+        self.assertEqual(run.call_args.args[0][:3], [sys.executable, "-m", "scripts.generate_wav"])
         self.assertTrue(str(audio).endswith("irodori-web-output.wav"))
         self.assertIn('"ok": true', metadata)
         self.assertIn("generated", logs)
 
     def test_run_generation_reports_generator_failure(self):
-        with patch.object(web_ui.generate_wav, "cli_main", return_value=2):
+        completed = types.SimpleNamespace(returncode=2, stdout="", stderr="failed")
+        with patch.object(web_ui.subprocess, "run", return_value=completed):
             audio, _metadata, logs = web_ui.run_generation(web_ui.WebGenerationConfig())
 
         self.assertIsNone(audio)
         self.assertIn("generation failed with exit code 2", logs)
+        self.assertIn("failed", logs)
 
     def test_run_generation_clears_stale_metadata_before_failure(self):
         with tempfile.TemporaryDirectory() as td:
             metadata_path = Path(td) / "irodori-web-metadata.json"
             metadata_path.write_text(json.dumps({"stale": True}), encoding="utf-8")
 
-            with patch.object(web_ui.generate_wav, "cli_main", return_value=2):
+            completed = types.SimpleNamespace(returncode=2, stdout="", stderr="failed")
+            with patch.object(web_ui.subprocess, "run", return_value=completed):
                 audio, metadata, logs = web_ui.run_generation(web_ui.WebGenerationConfig(output_dir=td))
 
         self.assertIsNone(audio)
         self.assertEqual(metadata, "")
         self.assertIn("generation failed with exit code 2", logs)
-
-    def test_run_generation_preserves_system_exit_message(self):
-        with patch.object(web_ui.generate_wav, "cli_main", side_effect=SystemExit("bad request")):
-            audio, _metadata, logs = web_ui.run_generation(web_ui.WebGenerationConfig())
-
-        self.assertIsNone(audio)
-        self.assertIn("generation failed with exit code 1", logs)
-        self.assertIn("bad request", logs)
 
     def test_zero_numeric_values_do_not_fall_back_to_defaults(self):
         self.assertEqual(web_ui._int_or_default(0, 1), 0)
@@ -130,6 +184,24 @@ class WebUiScriptTests(unittest.TestCase):
         with patch.object(web_ui.importlib, "import_module", side_effect=fake_import):
             with self.assertRaisesRegex(RuntimeError, "runtime,web"):
                 web_ui.build_ui()
+
+    def test_main_launches_with_pwa_enabled(self):
+        class FakeDemo:
+            def __init__(self):
+                self.launch_kwargs = None
+
+            def launch(self, **kwargs):
+                self.launch_kwargs = kwargs
+
+        demo = FakeDemo()
+
+        with patch.object(web_ui, "build_ui", return_value=demo):
+            rc = web_ui.main(["--host", "127.0.0.1", "--port", "7861"])
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(demo.launch_kwargs["pwa"])
+        self.assertEqual(demo.launch_kwargs["server_name"], "127.0.0.1")
+        self.assertEqual(demo.launch_kwargs["server_port"], 7861)
 
 
 if __name__ == "__main__":
