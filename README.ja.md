@@ -214,6 +214,8 @@ irodori-tts-generate \
 
 adapter は現在 unquantized v2/base と VoiceDesign layout のみ対応です。quantized mlx-audio artifact は、quantized runtime support が設計されるまで拒否されます。
 
+VoiceDesign v2 で `--seconds` を省略すると `duration_mode: "estimated"` になり、主に `--text` から duration を推定し、`--caption` は話速や雰囲気の小さな補正だけに使います。正確な長さにしたい場合は `--seconds`、推定値を少し短く/長くしたい場合は `--duration-scale` を使ってください。
+
 ## 主なコマンド
 
 ```bash

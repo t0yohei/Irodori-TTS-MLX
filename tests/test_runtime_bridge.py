@@ -1482,13 +1482,75 @@ class RuntimeBridgeTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(short.duration_mode, "fallback")
+        self.assertEqual(short.duration_mode, "estimated")
         self.assertIsNone(short.requested_seconds)
         self.assertLess(short.resolved_seconds, 5.0)
         self.assertGreater(smoke.resolved_seconds, 5.0)
         self.assertLess(smoke.resolved_seconds, 8.0)
         self.assertGreater(smoke.latent_steps, short.latent_steps)
-        self.assertIn("estimated fallback duration from text length", "\n".join(smoke.messages))
+        self.assertIn("estimated duration from text length and caption style hints", "\n".join(smoke.messages))
+        self.assertIn("scale=1.000", "\n".join(smoke.messages))
+
+    @require_mlx
+    def test_runtime_applies_duration_scale_to_voicedesign_estimate(self):
+        cfg = replace(tiny_config(), use_caption_condition=True)
+        bridge = FakeBridge()
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+            model=FakeModel(cfg),
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+            caption_tokenizer=FakeTokenizer(),
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            normal = runtime.generate(
+                GenerationRequest(
+                    text="こんにちは。今日は良い天気です。",
+                    output_wav=str(Path(td) / "normal.wav"),
+                    no_reference=True,
+                    caption="自然な声",
+                    seconds=None,
+                    duration_scale=1.0,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+            shorter = runtime.generate(
+                GenerationRequest(
+                    text="こんにちは。今日は良い天気です。",
+                    output_wav=str(Path(td) / "shorter.wav"),
+                    no_reference=True,
+                    caption="自然な声",
+                    seconds=None,
+                    duration_scale=0.75,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+            minimum = runtime.generate(
+                GenerationRequest(
+                    text="こんにちは。今日は良い天気です。",
+                    output_wav=str(Path(td) / "minimum.wav"),
+                    no_reference=True,
+                    caption="自然な声",
+                    seconds=None,
+                    duration_scale=0.000001,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(shorter.duration_mode, "estimated")
+        self.assertLess(shorter.resolved_seconds, normal.resolved_seconds)
+        self.assertIn("scale=0.750", "\n".join(shorter.messages))
+        self.assertEqual(minimum.duration_mode, "estimated")
+        self.assertEqual(minimum.latent_steps, 1)
+        self.assertEqual(minimum.samples, bridge.hop_length)
+        self.assertGreater(minimum.resolved_seconds, 0.0)
 
     @require_mlx
     def test_manual_seconds_override_skips_duration_predictor(self):

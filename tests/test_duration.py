@@ -5,7 +5,11 @@ import unittest
 import numpy as np
 
 try:
-    from irodori_mlx.duration import build_duration_features, estimate_fallback_duration_seconds
+    from irodori_mlx.duration import (
+        build_duration_features,
+        estimate_fallback_duration_seconds,
+        estimate_voicedesign_duration_seconds,
+    )
 
     HAS_MLX = True
 except Exception as exc:  # pragma: no cover - exercised only without MLX.
@@ -46,6 +50,28 @@ class DurationFeatureTests(unittest.TestCase):
         explicit_vowel_seconds = estimate_fallback_duration_seconds("コオヒイ")
 
         self.assertLess(long_vowel_seconds, explicit_vowel_seconds)
+
+    @require_mlx
+    def test_estimate_voicedesign_duration_ignores_caption_as_spoken_text(self):
+        text = "こんにちは。"
+        long_caption = "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。" * 4
+
+        text_only = estimate_fallback_duration_seconds(text)
+        voicedesign = estimate_voicedesign_duration_seconds(text, caption=long_caption)
+
+        self.assertLess(voicedesign, estimate_fallback_duration_seconds(text + long_caption))
+        self.assertLess(voicedesign, text_only * 1.12)
+
+    @require_mlx
+    def test_estimate_voicedesign_duration_caption_speed_hints_nudge_estimate(self):
+        text = "こんにちは。今日は良い天気です。"
+
+        neutral = estimate_voicedesign_duration_seconds(text, caption="自然な声")
+        slow = estimate_voicedesign_duration_seconds(text, caption="落ち着いてゆっくり読み上げてください")
+        fast = estimate_voicedesign_duration_seconds(text, caption="明るく元気に速めに読み上げてください")
+
+        self.assertGreater(slow, neutral)
+        self.assertLess(fast, neutral)
 
     @require_mlx
     def test_build_duration_features_matches_expected_aux_dim(self):

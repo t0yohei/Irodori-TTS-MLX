@@ -25,7 +25,11 @@ from .dacvae import (
     semantic_dacvae_encoder_config_from_metadata,
     semantic_dacvae_encoder_expected_shapes,
 )
-from .duration import build_duration_features, estimate_fallback_duration_seconds
+from .duration import (
+    build_duration_features,
+    estimate_fallback_duration_seconds,
+    estimate_voicedesign_duration_seconds,
+)
 from .layers import unpatch_latents
 from .model import TextToLatentRFDiT
 from .sampling import sample_euler_rf_cfg
@@ -1216,6 +1220,7 @@ class MLXDACVAERuntime:
             max_length=int(self.config.text_max_length),
         )
         caption_ids = caption_mask = None
+        caption_text: str | None = None
         if self.config.model_config.use_caption_condition:
             caption_text = "" if request.caption is None else str(request.caption)
             caption_max = self.config.caption_max_length or self.config.text_max_length
@@ -1295,6 +1300,19 @@ class MLXDACVAERuntime:
             messages.append(
                 "predicted duration active: "
                 f"frames={pred_frames:.1f}, scale={float(request.duration_scale):.3f}, seconds={resolved_seconds:.3f}"
+            )
+        elif self.config.model_config.use_caption_condition:
+            duration_mode = "estimated"
+            fallback_seconds = estimate_voicedesign_duration_seconds(normalized_text, caption=caption_text)
+            fallback_seconds *= float(request.duration_scale)
+            target_samples = max(int(self.bridge.hop_length), int(fallback_seconds * float(self.bridge.sample_rate)))
+            latent_steps = max(1, (target_samples + self.bridge.hop_length - 1) // self.bridge.hop_length)
+            resolved_seconds = float(target_samples) / float(self.bridge.sample_rate)
+            messages.append(
+                f"{self.config.model_config.checkpoint_family_label} has no learned duration predictor; "
+                "estimated duration from text length and caption style hints: "
+                f"scale={float(request.duration_scale):.3f}, seconds={resolved_seconds:.3f}. "
+                "Pass --seconds for an explicit duration."
             )
         else:
             fallback_seconds = estimate_fallback_duration_seconds(normalized_text)

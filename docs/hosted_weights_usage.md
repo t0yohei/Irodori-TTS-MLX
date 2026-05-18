@@ -90,7 +90,7 @@ The CLI validates `irodori_dacvae_codec_manifest.json`, the declared
 license review before passing the resolved codec file to the existing
 `--codec-path` runtime.
 
-For VoiceDesign v2 hosted artifacts, `--seconds` can also be omitted for the normal path. Because those checkpoints do not have the v3 duration predictor, the runtime estimates a bounded fallback from normalized text length and reports the resolved value in JSON metadata/messages. Keep `--seconds` as the manual override when a specific prompt still clips or when the generated tail becomes audibly over-extended.
+For VoiceDesign v2 hosted artifacts, `--seconds` can also be omitted for the normal path. Because those checkpoints do not have the v3 learned duration predictor, the runtime reports `duration_mode: "estimated"` and estimates a bounded duration from normalized text length plus conservative caption style hints. Caption text is treated as voice/style guidance rather than spoken content, so long captions do not directly lengthen the transcript. Keep `--seconds` as the manual override when a specific prompt still clips or when the generated tail becomes audibly over-extended.
 
 ## Local hosted-layout directory
 
