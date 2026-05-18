@@ -260,6 +260,39 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.codec_artifact_revision, "bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78")
         self.assertIsNone(args.codec_path)
 
+    def test_parse_args_accepts_legacy_mlx_decode_alias(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--codec-runtime-mode",
+                "mlx-decode",
+            ]
+        )
+
+        self.assertEqual(args.codec_runtime_mode, "mlx")
+
+    def test_parse_args_preserves_explicit_hosted_codec_artifact_revision(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--codec-artifact-revision",
+                "abc123",
+            ]
+        )
+
+        self.assertEqual(args.codec_artifact_repo, "t0yohei/Irodori-TTS-MLX-DACVAE-Codec")
+        self.assertEqual(args.codec_artifact_revision, "abc123")
+
     def test_parse_args_accepts_hosted_codec_artifact_repo(self):
         args = generate_wav.parse_args(
             [
