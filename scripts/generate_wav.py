@@ -18,6 +18,7 @@ DACVAEBridgeConfig = None
 GenerationRequest = None
 MLXDACVAERuntime = None
 MLXRuntimeConfig = None
+describe_codec_capabilities = None
 iter_messages = None
 load_model_config_json = None
 resolve_weights_layout_source = None
@@ -25,7 +26,7 @@ resolve_weights_layout_source = None
 
 def _ensure_runtime_imports() -> None:
     """Import runtime dependencies lazily so --help works before optional setup is complete."""
-    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, iter_messages, load_model_config_json, resolve_weights_layout_source
+    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, describe_codec_capabilities, iter_messages, load_model_config_json, resolve_weights_layout_source
     from irodori_mlx import runtime as runtime_module
     from irodori_mlx.hosted_weights import resolve_weights_layout_source as resolve_layout
 
@@ -37,6 +38,8 @@ def _ensure_runtime_imports() -> None:
         MLXDACVAERuntime = runtime_module.MLXDACVAERuntime
     if MLXRuntimeConfig is None:
         MLXRuntimeConfig = runtime_module.MLXRuntimeConfig
+    if describe_codec_capabilities is None:
+        describe_codec_capabilities = runtime_module.describe_codec_capabilities
     if iter_messages is None:
         iter_messages = runtime_module.iter_messages
     if load_model_config_json is None:
@@ -83,6 +86,7 @@ CONFIG_KEYS = {
     "max_reference_seconds",
     "no_context_kv_cache",
     "print_boundaries",
+    "preflight",
     "metadata_json",
     "json_output",
     "requests_json",
@@ -134,6 +138,7 @@ BOOL_KEYS = {
     "enable_watermark",
     "no_context_kv_cache",
     "print_boundaries",
+    "preflight",
     "json_output",
 }
 INT_KEYS = {"text_max_length", "caption_max_length", "num_steps", "seed"}
@@ -442,6 +447,17 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         disable_flag="--no-print-boundaries",
         help_text="Print JSON boundary/config metadata before generation.",
     )
+    _add_configurable_bool(
+        parser,
+        dest="preflight",
+        config=config,
+        enable_flag="--preflight",
+        disable_flag="--no-preflight",
+        help_text=(
+            "Resolve weights, model config, tokenizer repos, codec runtime mode, and artifact paths, "
+            "then exit before tokenizer loading, model loading, or WAV generation."
+        ),
+    )
     parser.add_argument("--metadata-json", default=config.get("metadata_json"), help="Optional path to write generation metadata/timings as JSON.")
     _add_configurable_bool(
         parser,
@@ -527,7 +543,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args.model_config_json_cli_override = _has_cli_override(argv, "--model-config-json")
     if (args.weights_dir or args.weights_repo) and args.model_config_json:
         parser.error("--model-config-json is loaded from --weights-dir/--weights-repo layouts; use --weights for explicit .npz fallback")
-    if not args.requests_json:
+    if not args.requests_json and not args.preflight:
         if args.output is None or not str(args.output).strip():
             parser.error("--output must not be empty unless --requests-json supplies per-request outputs")
         if args.text is None or not str(args.text).strip():
@@ -617,17 +633,196 @@ def resolve_codec_artifact_source(
     return None
 
 
-def resolve_codec_artifact_args(args: argparse.Namespace) -> argparse.Namespace:
+def resolve_codec_artifact_args(args: argparse.Namespace):
     layout = resolve_codec_artifact_source(
         codec_artifact_dir=args.codec_artifact_dir,
         codec_artifact_repo=args.codec_artifact_repo,
         revision=getattr(args, "codec_artifact_revision", None),
     )
     if layout is None:
-        return args
+        return None
     args._resolved_codec_artifact = layout
     args.codec_path = str(layout.codec_path)
-    return args
+    return layout
+
+
+def _preflight_source_payload(source: Any) -> dict[str, Any] | None:
+    if source is None:
+        return None
+    payload = {
+        "source": getattr(source, "source", None),
+        "source_kind": getattr(source, "source_kind", None),
+        "root": str(getattr(source, "root", "")) or None,
+    }
+    for attr in (
+        "manifest_path",
+        "weights_path",
+        "model_config_path",
+        "tokenizer_config_path",
+        "conversion_metadata_path",
+        "codec_path",
+        "metadata_path",
+        "checksums_path",
+    ):
+        value = getattr(source, attr, None)
+        if value is not None:
+            payload[attr] = str(value)
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _preflight_request_count(args: argparse.Namespace, request_overrides: list[dict[str, Any]]) -> int:
+    if request_overrides:
+        return len(request_overrides)
+    if args.text or args.output:
+        return 1
+    return 0
+
+
+def load_model_config_json_for_preflight(value: str | Path | None) -> Any:
+    """Load ModelConfig without importing the MLX runtime module."""
+
+    from irodori_mlx.config import ModelConfig
+
+    if value is None:
+        return ModelConfig()
+    raw = str(value).strip()
+    if raw.startswith("{"):
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Inline model config JSON is invalid.") from exc
+    else:
+        with Path(value).expanduser().open("r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    if not isinstance(payload, dict):
+        raise ValueError("Model config JSON must contain an object.")
+    return ModelConfig(**payload)
+
+
+def describe_codec_capabilities_for_preflight(*, args: argparse.Namespace, model_config: Any) -> dict[str, Any]:
+    mode = args.codec_runtime_mode
+    uses_speaker = bool(model_config.use_speaker_condition)
+    needs_reference_encode = uses_speaker
+    uses_pytorch_encode = mode in {"persistent", "subprocess", "mlx-decode", "mlx-decode-subprocess"}
+    messages: list[str] = []
+    report: dict[str, Any] = {
+        "runtime_mode": mode,
+        "checkpoint_family": model_config.checkpoint_family,
+        "codec_path": args.codec_path,
+        "mlx_decode_available": None,
+        "mlx_encode_available": None,
+        "requires_codec_artifact": mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"},
+        "requires_pytorch_decode": mode in {"persistent", "subprocess"},
+        "requires_pytorch_encode": uses_pytorch_encode and needs_reference_encode,
+        "reference_encode_policy": "not-required"
+        if not uses_speaker
+        else "pytorch-bridge"
+        if mode != "mlx"
+        else "mlx-artifact",
+        "decode_policy": "mlx-artifact" if mode in {"mlx", "mlx-decode", "mlx-decode-subprocess"} else "pytorch-bridge",
+    }
+    if mode in {"persistent", "subprocess"}:
+        messages.append(
+            "PyTorch bridge required for DACVAE decode; reference-audio encode is not used."
+            if not uses_speaker
+            else "PyTorch bridge required for both DACVAE encode and decode."
+        )
+    elif mode in {"mlx-decode", "mlx-decode-subprocess"}:
+        messages.append(
+            "MLX codec artifact is used for decode; reference-audio encode is not used."
+            if not uses_speaker
+            else "MLX codec artifact is used for decode; reference-audio encode falls back to the PyTorch bridge."
+        )
+    elif mode == "mlx":
+        messages.append("MLX codec artifact is used for both encode and decode; artifact must include encode tensors.")
+        report["requires_pytorch_encode"] = False
+    if report["requires_codec_artifact"] and not args.codec_path:
+        messages.append(
+            "MLX codec modes require --codec-path, --codec-artifact-dir, or --codec-artifact-repo."
+        )
+    report["messages"] = tuple(messages)
+    return report
+
+
+def build_preflight_payload(
+    *,
+    args: argparse.Namespace,
+    model_config: Any,
+    weights_layout: Any,
+    codec_layout: Any,
+    request_overrides: list[dict[str, Any]],
+) -> dict[str, Any]:
+    text_tokenizer_repo = args.text_tokenizer_repo or model_config.text_tokenizer_repo
+    caption_tokenizer_repo = args.caption_tokenizer_repo or model_config.caption_tokenizer_repo
+    weights_payload = _preflight_source_payload(weights_layout) or {
+        "source_kind": "file",
+        "weights_path": str(Path(args.weights).expanduser()) if args.weights else None,
+        "model_config_json": args.model_config_json,
+    }
+    codec_payload = _preflight_source_payload(codec_layout) or {
+        "source_kind": "file" if args.codec_path else "pytorch-bridge",
+        "codec_path": str(Path(args.codec_path).expanduser()) if args.codec_path else None,
+        "codec_repo": args.codec_repo,
+    }
+    payload = {
+        "status": "ok",
+        "preflight": {
+            "generation_will_run": False,
+            "request_count": _preflight_request_count(args, request_overrides),
+            "checks": [
+                "argument validation",
+                "weights layout resolution",
+                "model config loading",
+                "codec artifact resolution",
+                "runtime mode summary",
+            ],
+            "skipped": [
+                "tokenizer download/load",
+                "MLX RF-DiT weight loading",
+                "DACVAE bridge construction",
+                "WAV generation",
+            ],
+        },
+        "runtime": {
+            "checkpoint_family": model_config.checkpoint_family,
+            "checkpoint_family_label": model_config.checkpoint_family_label,
+            "checkpoint_capabilities": list(model_config.checkpoint_capabilities),
+            "codec_runtime_mode": args.codec_runtime_mode,
+            "text_tokenizer_repo": text_tokenizer_repo,
+            "caption_tokenizer_repo": caption_tokenizer_repo if model_config.use_caption_condition else None,
+            "text_max_length": int(args.text_max_length),
+            "caption_max_length": args.caption_max_length,
+        },
+        "weights": weights_payload,
+        "codec": codec_payload,
+        "codec_capabilities": describe_codec_capabilities_for_preflight(args=args, model_config=model_config),
+        "fallbacks": {
+            "weights": "Use --weights with a locally converted .npz if --weights-repo or --weights-dir resolution fails.",
+            "codec": "Use --codec-runtime-mode persistent for the upstream PyTorch DACVAE bridge, or --codec-path/--codec-artifact-dir for a local MLX codec artifact.",
+            "tokenizer": "If tokenizer loading fails during generation, check network/cache access for the listed tokenizer repo.",
+            "upstream": "Install upstream Irodori-TTS or set PYTHONPATH when using PyTorch bridge-backed codec modes.",
+        },
+    }
+    return payload
+
+
+def print_preflight_payload(payload: dict[str, Any], *, json_output: bool) -> None:
+    if json_output:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, default=str))
+        return
+    runtime = payload["runtime"]
+    print("Preflight OK: generation was not run.")
+    print(f"checkpoint: {runtime['checkpoint_family']} ({runtime['checkpoint_family_label']})")
+    print(f"codec runtime mode: {runtime['codec_runtime_mode']}")
+    print(f"text tokenizer: {runtime['text_tokenizer_repo']}")
+    if runtime.get("caption_tokenizer_repo"):
+        print(f"caption tokenizer: {runtime['caption_tokenizer_repo']}")
+    weights = payload["weights"]
+    print(f"weights source: {weights.get('source') or weights.get('weights_path')}")
+    codec = payload["codec"]
+    print(f"codec source: {codec.get('source') or codec.get('codec_path') or codec.get('codec_repo')}")
+    for message in payload["codec_capabilities"].get("messages", ()):
+        print(f"- {message}")
 
 
 def _result_to_dict(result: Any) -> dict[str, Any]:
@@ -796,7 +991,9 @@ def write_metadata_json(path: str | Path, payload: dict[str, Any]) -> None:
 
 def main() -> int:
     args = parse_args()
-    _ensure_runtime_imports()
+    preflight = bool(getattr(args, "preflight", False))
+    if not preflight:
+        _ensure_runtime_imports()
     layout = resolve_weights_layout_source(
         weights_dir=args.weights_dir,
         weights_repo=args.weights_repo,
@@ -808,9 +1005,19 @@ def main() -> int:
         model_config = layout.model_config
         layout_runtime = dict(layout.manifest.get("runtime", {}))
     else:
-        model_config = load_model_config_json(args.model_config_json)
-    resolve_codec_artifact_args(args)
-    request_overrides = load_generation_requests_json(args.requests_json) if args.requests_json else [{}]
+        if preflight and load_model_config_json is None:
+            model_config = load_model_config_json_for_preflight(args.model_config_json)
+        else:
+            if load_model_config_json is None:
+                _ensure_runtime_imports()
+            model_config = load_model_config_json(args.model_config_json)
+    codec_layout = resolve_codec_artifact_args(args)
+    if args.requests_json:
+        request_overrides = load_generation_requests_json(args.requests_json)
+    elif getattr(args, "preflight", False) and not (args.text or args.output):
+        request_overrides = []
+    else:
+        request_overrides = [{}]
     for index, item in enumerate(request_overrides, start=1):
         request_reference = item.get("reference_wav", args.reference_wav)
         request_no_reference = bool(item.get("no_reference", args.no_reference))
@@ -834,6 +1041,19 @@ def main() -> int:
                     f"error: generation request #{index}: selected weights layout does not support caption conditioning"
                 )
         validate_checkpoint_family_request(model_config=model_config, args=args, overrides=item, index=index)
+
+    if preflight:
+        payload = build_preflight_payload(
+            args=args,
+            model_config=model_config,
+            weights_layout=layout,
+            codec_layout=codec_layout,
+            request_overrides=request_overrides,
+        )
+        if args.metadata_json:
+            write_metadata_json(args.metadata_json, payload)
+        print_preflight_payload(payload, json_output=bool(args.json_output))
+        return 0
 
     runtime_config = build_runtime_config(args, model_config)
     runtime = MLXDACVAERuntime(config=runtime_config)

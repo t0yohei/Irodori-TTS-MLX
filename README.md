@@ -162,6 +162,26 @@ irodori-tts-generate \
 
 The metadata for that no-reference path reports `codec_decode_backend: "mlx"` and `codec_encode_backend: "not-required"`. Reference-audio generation with `mlx-decode` still uses the documented PyTorch encode fallback and reports that fallback in `codec_encode_backend`. To keep reference-audio generation fully off the PyTorch DACVAE bridge, use `--codec-runtime-mode mlx` with an artifact that includes executable Semantic-DACVAE encoder and decoder tensors; that path reports both `codec_encode_backend: "mlx"` and `codec_decode_backend: "mlx"`. If no approved hosted repository is available, use the local conversion fallback below. See [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md) for the full hosted/local layout flow, provenance checklist, `--weights-dir` / `--codec-artifact-dir` examples, and fallback decision rules.
 
+### If the quickstart fails
+
+Run a preflight first. It resolves the weights layout, model config, tokenizer repo names, codec runtime mode, and codec artifact path, but skips tokenizer loading, MLX weight loading, DACVAE bridge construction, and WAV generation:
+
+```bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --codec-runtime-mode mlx-decode \
+  --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
+  --preflight \
+  --json
+```
+
+Use the first failing surface to choose the fallback:
+
+- upstream import / `DACVAECodec`: install upstream Irodori-TTS in the active venv or set `PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}`
+- tokenizer / Hugging Face cache: check network/cache access for the reported `text_tokenizer_repo` and, for VoiceDesign, `caption_tokenizer_repo`
+- hosted RF-DiT weights: confirm `irodori_mlx_manifest.json`, `model_config.json`, `tokenizer_config.json`, `weights.npz`, `conversion_metadata.json`, `checksums.sha256`, and `license_review.status: "approved"`; otherwise use local conversion with `--weights`
+- hosted DACVAE codec: confirm `irodori_dacvae_codec_manifest.json`, `dacvae-codec.npz`, `codec_metadata.json`, `checksums.sha256`, and `license_review.status: "approved"`; otherwise use `--codec-runtime-mode persistent` or a local `--codec-path`
+
 ## Quickstart: Local Conversion Fallback
 
 Use this path when a hosted repo is unavailable, unapproved, private, or outside the audited candidate families. Local conversion is a user-managed fallback; it does not make the input checkpoint or local paths part of this repository's public support surface.

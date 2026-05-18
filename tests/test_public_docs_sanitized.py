@@ -60,6 +60,24 @@ class PublicDocsSanitizedTests(unittest.TestCase):
             with self.subTest(term=term):
                 self.assertIn(term, readme)
 
+    def test_readme_first_run_troubleshooting_documents_preflight(self):
+        readme = (self.root / "README.md").read_text(encoding="utf-8")
+
+        required_terms = [
+            "### If the quickstart fails",
+            "--preflight",
+            "skips tokenizer loading, MLX weight loading, DACVAE bridge construction, and WAV generation",
+            "text_tokenizer_repo",
+            "caption_tokenizer_repo",
+            "irodori_mlx_manifest.json",
+            "license_review.status: \"approved\"",
+            "irodori_dacvae_codec_manifest.json",
+            "--codec-runtime-mode persistent",
+        ]
+        for term in required_terms:
+            with self.subTest(term=term):
+                self.assertIn(term, readme)
+
 
 if __name__ == "__main__":
     unittest.main()
