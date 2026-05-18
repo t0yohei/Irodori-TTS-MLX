@@ -8,6 +8,7 @@ The current user-facing entry points are:
 - [dacvae_bridge.md](dacvae_bridge.md): generation CLI, codec runtime modes, JSON configuration, and persistent batch generation.
 - [checkpoint_support.md](checkpoint_support.md): supported checkpoint families and unsupported/local-only boundaries.
 - [packaging.md](packaging.md): reproducible install and console script setup.
+- [public_api_stability.md](public_api_stability.md): alpha CLI contract and unsupported Python API boundary.
 
 ## Runtime And Model Path
 

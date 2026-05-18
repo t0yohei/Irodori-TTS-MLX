@@ -262,7 +262,12 @@ JSON output now includes `duration_mode`, `requested_seconds`,
 `boundaries.codec.capabilities` so automation can tell which duration rule,
 codec path, MLX artifact availability, and PyTorch fallback policy were used.
 
-## Python API
+## Internal runtime example
+
+The following import path is useful for repository development and tests, but it
+is not a stable public Python API. Downstream package users should call the
+installed console scripts documented above and in
+[public_api_stability.md](public_api_stability.md).
 
 ```python
 from irodori_mlx.runtime import GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig

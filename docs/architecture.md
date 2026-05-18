@@ -20,7 +20,7 @@ v0 should include:
 - A bridge that uses the upstream PyTorch DACVAE path for:
   - reference audio encoding
   - generated latent decoding
-- A CLI-first generation flow backed by a small Python API.
+- A CLI-first generation flow backed by internal reusable Python modules.
 - Baseline and benchmark documentation against upstream PyTorch/MPS behavior.
 
 ## Non-goals
@@ -69,13 +69,16 @@ reference WAV ────────► PyTorch DACVAE encode ─────�
 | DACVAE reference encoding | PyTorch bridge | Explicitly not ported in v0. |
 | DACVAE waveform decoding | PyTorch bridge | Explicitly not ported in v0. |
 | CLI | Project code | First user-facing interface. |
-| Python API | Project code | Internal reusable layer for CLI; not stable before prototype validation. |
+| Python modules | Project code | Internal reusable layer for CLI; not a stable public API during alpha. |
 
 ## API direction
 
-The v0 interface should be CLI-first while keeping the implementation reusable from Python.
+The v0 interface is CLI-first while keeping the implementation reusable inside
+the repository. The public support boundary is documented in
+[public_api_stability.md](public_api_stability.md): downstream users should rely
+on installed console scripts and documented artifact layouts, not Python module imports.
 
-Planned CLI shape, subject to change:
+CLI shape:
 
 ```bash
 irodori-tts-generate \
@@ -85,20 +88,9 @@ irodori-tts-generate \
   --output output.wav
 ```
 
-Planned Python shape, subject to change:
-
-```python
-from irodori_mlx import IrodoriGenerator
-
-generator = IrodoriGenerator.from_pretrained("Aratako/Irodori-TTS-500M-v2")
-generator.generate(
-    text="今日はいい天気ですね。",
-    ref_wav="reference.wav",
-    output_wav="output.wav",
-)
-```
-
-No stable API should be promised until the first end-to-end prototype works and the model boundary has been benchmarked.
+No stable Python API should be promised until a separate design issue names the
+supported modules, classes, functions, data contracts, versioning policy, and
+deprecation expectations.
 
 ## Implementation sequence
 

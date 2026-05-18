@@ -77,6 +77,9 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn("Python 3.12", packaging_doc)
         self.assertIn("Python 3.13", packaging_doc)
         self.assertIn("Python 3.14", packaging_doc)
+        self.assertIn("installed console scripts", packaging_doc)
+        self.assertIn("not a stable public Python API", packaging_doc)
+        self.assertIn("public_api_stability.md", packaging_doc)
 
     @unittest.skipIf(sys.version_info < (3, 11), "project console scripts require Python >= 3.11")
     @unittest.skipUnless(HAS_BUILD_MODULE, "clean wheel smoke requires the optional build package")

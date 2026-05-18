@@ -25,6 +25,21 @@ The project currently supports:
 
 The default audio codec path still imports upstream `irodori_tts.codec.DACVAECodec`. Experimental local MLX codec artifact modes exist for v0.2 codec-port work, but this repository does not bundle codec weights or claim broad acoustic parity for arbitrary codec artifacts.
 
+## Public API Stability
+
+During the alpha phase, the only stable-ish user contract is the installed CLI:
+`irodori-tts-generate`, `irodori-tts-convert`, `irodori-tts-convert-dacvae-codec`,
+`irodori-tts-convert-dacvae-decoder`, `irodori-tts-inspect`, and
+`irodori-tts-adapt-mlx-audio`, plus the documented artifact layouts, manifests,
+metadata, and JSON outputs those commands use.
+
+The `irodori_mlx` package, its top-level exports, and `scripts.*` modules are
+internal implementation surfaces for the CLI, tests, and repository development.
+They are importable, but they are not supported as a stable public Python API
+yet and may change without deprecation in alpha releases. See
+[docs/public_api_stability.md](docs/public_api_stability.md) for the full
+boundary.
+
 ## Current Support Matrix
 
 | Surface | Status | Public support boundary |
@@ -274,6 +289,7 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 - RF sampler: [docs/rf_sampler.md](docs/rf_sampler.md)
 - Benchmarking: [docs/benchmark.md](docs/benchmark.md)
 - Packaging: [docs/packaging.md](docs/packaging.md)
+- Public API stability boundary: [docs/public_api_stability.md](docs/public_api_stability.md)
 - License and distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
 - v0.2 cross-repository delivery plan and downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 

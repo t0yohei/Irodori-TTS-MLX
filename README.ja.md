@@ -25,6 +25,20 @@
 
 デフォルトの codec path は upstream `irodori_tts.codec.DACVAECodec` に依存します。v0.2 codec-port 用の local MLX codec artifact mode はありますが、この repo は codec weights を同梱せず、任意 codec artifact の acoustic parity も保証しません。
 
+## Public API の安定性
+
+alpha 期間中に stable-ish な user contract として扱うのは、installed CLI
+（`irodori-tts-generate`、`irodori-tts-convert`、
+`irodori-tts-convert-dacvae-codec`、`irodori-tts-convert-dacvae-decoder`、
+`irodori-tts-inspect`、`irodori-tts-adapt-mlx-audio`）と、それらが使う
+documented artifact layout、manifest、metadata、JSON output だけです。
+
+`irodori_mlx` package、top-level export、`scripts.*` module は CLI、test、
+repository development のための internal implementation surface です。import
+はできますが、stable public Python API としてはまだ support しません。alpha
+release では deprecation なしに変更・移動・rename・削除される可能性があります。
+詳細な境界は [docs/public_api_stability.md](docs/public_api_stability.md) を参照してください。
+
 ## 対応 checkpoint
 
 対応対象は、この repo で layout と runtime semantics を明示検証している family に限ります。
@@ -225,6 +239,7 @@ python scripts/benchmark.py --self-test
 - RF sampler: [docs/rf_sampler.md](docs/rf_sampler.md)
 - Benchmark: [docs/benchmark.md](docs/benchmark.md)
 - Packaging: [docs/packaging.md](docs/packaging.md)
+- Public API stability boundary: [docs/public_api_stability.md](docs/public_api_stability.md)
 - License / distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
 - v0.2 cross-repository delivery plan / downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 
