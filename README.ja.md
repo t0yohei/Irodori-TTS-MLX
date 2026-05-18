@@ -298,7 +298,6 @@ python scripts/benchmark.py --self-test
 - Packaging: [docs/packaging.md](docs/packaging.md)
 - Public API stability boundary: [docs/public_api_stability.md](docs/public_api_stability.md)
 - License / distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
-- Historical v0.2 cross-repository delivery plan / downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 
 ## 対象外
 

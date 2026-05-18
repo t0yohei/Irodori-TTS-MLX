@@ -20,10 +20,8 @@ This compares the default persistent batch path against `--cleanup-between-reque
 | cleanup off | 19.72 s | 10192.0 ms | 0.85 GiB | 1918.2 ms | 873.8 ms | 1005.2 ms | 717.4 / 1231.2 ms |
 | cleanup on | 14.35 s | 6289.4 ms | 2.92 GiB | 1602.0 ms | 831.1 ms | 735.7 ms | 712.8 / 745.2 ms |
 
-Raw generated reports:
-
-- [cleanup off](2026-05-18-apple-silicon-persistent-batch-cleanup-off.md)
-- [cleanup on](2026-05-18-apple-silicon-persistent-batch-cleanup-on.md)
+The per-request source reports were removed after this comparison captured the
+decision-relevant medians, ranges, command shape, and recommendation.
 
 ## Interpretation
 

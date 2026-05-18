@@ -39,7 +39,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--issue-url", default="https://github.com/t0yohei/Irodori-TTS-MLX/issues/217")
     parser.add_argument("--parent-url", default="https://github.com/t0yohei/Irodori-TTS-MLX/issues/220")
     parser.add_argument("--baseline-url", default="2026-05-14-apple-silicon-num-steps-v3-text.md")
-    parser.add_argument("--persistent-baseline-url", default="2026-05-18-apple-silicon-persistent-batch-runtime-cleanup.md")
+    parser.add_argument(
+        "--persistent-baseline-url",
+        default="2026-05-18-apple-silicon-persistent-batch-runtime-cleanup-comparison.md",
+    )
     return parser.parse_args()
 
 
@@ -173,4 +176,3 @@ if __name__ == "__main__":
     except UltraFastSweepReportError as exc:
         print(f"error: {exc}")
         raise SystemExit(1) from exc
-
