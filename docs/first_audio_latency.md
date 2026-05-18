@@ -28,7 +28,7 @@ Existing Apple Silicon reports already separate one-shot wall clock, persistent 
 
 - One-shot v3 no-reference 12-step report: `sample_rf` 1010.7 ms, `decode_dacvae` 1194.5 ms, `total_to_decode` 2243.4 ms.
 - One-shot v3 no-reference 8-step report: `sample_rf` 678.6 ms, `decode_dacvae` 1099.3 ms, `total_to_decode` 1818.5 ms.
-- Persistent v3 no-reference `mlx-decode` report after runtime cleanup: measured `sample_rf` median 834.1 ms, `decode_dacvae` median 801.9 ms, `total_to_decode` median 1670.2 ms, process wall 25.56 s for five requests.
+- Persistent v3 no-reference MLX codec report after runtime cleanup: measured `sample_rf` median 834.1 ms, `decode_dacvae` median 801.9 ms, `total_to_decode` median 1670.2 ms, process wall 25.56 s for five requests.
 
 These numbers mean first playable audio is not currently earlier than complete-WAV availability for a single short prompt. Even if RF sampling drops below one second, the current full-latent DACVAE boundary still puts first audio behind decode and serialization.
 
@@ -61,7 +61,7 @@ python3 scripts/benchmark_persistent_batch.py \
   --num-steps 8 \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
-  --codec-runtime-mode mlx-decode \
+  --codec-runtime-mode mlx \
   --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
   --codec-device cpu \

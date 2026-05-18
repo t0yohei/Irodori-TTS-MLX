@@ -88,7 +88,7 @@ This repository does **not** redistribute Irodori-TTS checkpoints, Semantic-DACV
 
 Converted weights are derived artifacts from upstream checkpoints. Do not commit them to this repository unless the project license and upstream model terms explicitly allow it.
 
-For v0.2 hosted converted weights, the eligibility decision framework and audited candidate list live in [docs/preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md). Anything outside that audited list remains local-conversion-only until separately reviewed.
+For hosted converted weights, the eligibility decision framework and audited candidate list live in [docs/preconverted_weights_redistribution_audit.md](preconverted_weights_redistribution_audit.md). Anything outside that audited list remains local-conversion-only until separately reviewed.
 
 The repository's own source code and documentation are MIT-licensed, but that license does not extend to upstream or user-supplied artifacts. See [docs/license_and_distribution.md](license_and_distribution.md) for the v0.1 license and distribution policy.
 

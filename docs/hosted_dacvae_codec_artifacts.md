@@ -2,7 +2,7 @@
 
 Issue: [#188 Publish and pin hosted DACVAE codec artifact](https://github.com/t0yohei/Irodori-TTS-MLX/issues/188)
 
-This page records the v0.2 public DACVAE codec hosted-artifact status. The machine-readable in-package contract is `irodori_mlx.hosted_artifacts.HOSTED_DACVAE_CODEC_ARTIFACT`.
+This page records the current public DACVAE codec hosted-artifact status. The machine-readable in-package contract is `irodori_mlx.hosted_artifacts.HOSTED_DACVAE_CODEC_ARTIFACT`.
 
 ## Current status
 
@@ -51,7 +51,7 @@ Use the pinned revision in public examples:
 ```bash
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
-  --codec-runtime-mode mlx-decode \
+  --codec-runtime-mode mlx \
   --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
   --text "こんにちは。" \

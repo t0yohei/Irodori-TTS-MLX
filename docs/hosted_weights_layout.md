@@ -3,7 +3,7 @@
 Issue: [#79 Define the hosted MLX weights repository layout](https://github.com/t0yohei/Irodori-TTS-MLX/issues/79)
 Parent: [#78 v0.2: Support pre-converted MLX weights from Hugging Face](https://github.com/t0yohei/Irodori-TTS-MLX/issues/78)
 
-This page is the v0.2 contract for a repository that hosts **pre-converted MLX RF-DiT weights** for `irodori-tts-mlx`.
+This page is the current contract for a repository that hosts **pre-converted MLX RF-DiT weights** for `irodori-tts-mlx`.
 It defines the file names, metadata, provenance notes, and path conventions that follow-up loader work can rely on.
 It does **not** approve publishing any weights by itself; every hosted artifact still needs a separate upstream-license and redistribution review before upload.
 DACVAE codec artifacts are intentionally separate from this RF-DiT weights layout; see [codec_artifact_layout.md](codec_artifact_layout.md) for the local/hosted codec pointer format.
@@ -140,7 +140,7 @@ The manifest is the loader source of truth. Required shape:
   },
   "runtime": {
     "minimum_irodori_tts_mlx_version": "0.2.0",
-    "requires_upstream_dacvae_bridge": true,
+    "requires_upstream_dacvae_bridge": false,
     "requires_reference_audio": false,
     "supports_no_reference": true,
     "supports_caption": false,
@@ -223,7 +223,7 @@ irodori-tts-generate \
 
 ## Family-specific notes
 
-| Family | Hosted eligibility for v0.2 | Required differences |
+| Family | Hosted eligibility | Required differences |
 | --- | --- | --- |
 | VoiceDesign v2 (`Aratako/Irodori-TTS-500M-v2-VoiceDesign`) | Recommended first candidate after redistribution and tokenizer/metadata review | `supports_caption: true`; caption-tokenizer metadata required; README must document `--caption` usage. |
 | v3 (`Aratako/Irodori-TTS-500M-v3`) | Eligible after manifest/license approval; validate the no-reference predicted-duration path before publication | `supports_predicted_duration: true`; `use_duration_predictor: true`; no-reference smoke path should be documented. |

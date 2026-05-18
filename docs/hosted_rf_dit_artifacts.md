@@ -3,7 +3,7 @@
 Issue: [#187 Publish approved hosted RF-DiT artifact for v3](https://github.com/t0yohei/Irodori-TTS-MLX/issues/187)
 Parent: [#160 v0.2 follow-up: DACVAE codec, packaging, and hosted artifacts](https://github.com/t0yohei/Irodori-TTS-MLX/issues/160)
 
-This page records the v0.2 public RF-DiT hosted-artifact status that runtime users may rely on. It does not upload weights, create model repositories, or approve any private/local artifact path. The machine-readable in-package contract is irodori_mlx.hosted_artifacts.HOSTED_RF_DIT_ARTIFACTS.
+This page records the current public RF-DiT hosted-artifact status that runtime users may rely on. It does not upload weights, create model repositories, or approve any private/local artifact path. The machine-readable in-package contract is irodori_mlx.hosted_artifacts.HOSTED_RF_DIT_ARTIFACTS.
 
 ## Publication status
 

@@ -85,7 +85,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[runtime]"
 ```
 
-For package users installing a release artifact instead of contributing from a checkout, install the built wheel or sdist in a clean environment and use the installed `irodori-tts-*` console scripts. Contributor editable installs, build validation, and the v0.2 release-artifact checklist live in [docs/packaging.md](docs/packaging.md).
+For package users installing a release artifact instead of contributing from a checkout, install the built wheel or sdist in a clean environment and use the installed `irodori-tts-*` console scripts. Contributor editable installs, build validation, and the v0.3 alpha release-artifact checklist live in [docs/packaging.md](docs/packaging.md).
 
 Install extra tooling only for the workflows that need it:
 
@@ -287,7 +287,7 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - DACVAE bridge and generation CLI: [docs/dacvae_bridge.md](docs/dacvae_bridge.md)
-- v0.2 hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
+- Hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
 - Hosted weights/codec artifact usage and local conversion fallback: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
 - Hosted RF-DiT artifact publication status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
 - Hosted DACVAE codec artifact publication status: [docs/hosted_dacvae_codec_artifacts.md](docs/hosted_dacvae_codec_artifacts.md)
@@ -303,7 +303,7 @@ Use the installed console scripts for normal workflows. Direct `python scripts/*
 - Packaging: [docs/packaging.md](docs/packaging.md)
 - Public API stability boundary: [docs/public_api_stability.md](docs/public_api_stability.md)
 - License and distribution policy: [docs/license_and_distribution.md](docs/license_and_distribution.md)
-- v0.2 cross-repository delivery plan and downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
+- Historical v0.2 cross-repository delivery plan and downstream consumer handoff boundary: [docs/v0_2_delivery_plan.md](docs/v0_2_delivery_plan.md)
 
 ## Non-goals
 
