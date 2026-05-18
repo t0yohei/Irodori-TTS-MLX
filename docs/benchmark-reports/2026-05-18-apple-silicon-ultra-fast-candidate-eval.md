@@ -14,7 +14,7 @@ with real v3 hosted weights and the hosted MLX DACVAE decode artifact.
 - Implemented `--preset ultra-fast` equivalent: `issue-220-ultra-fast-steps-6-joint-cfg-1` at 1198.2 ms.
 - Both 6-step predicted-duration candidates are well below the prior 8-step one-shot v3 no-reference anchor, but human listening found audible non-Japanese/Chinese-like artifacts at the beginning or end across the candidate set. Treat the predicted-duration ultra-fast candidates as rejected for this short prompt until the duration policy is changed.
 - The remaining latency floor is still DACVAE decode/materialization: measured audio write is only 1-2 ms median across these runs.
-- A manual-duration follow-up with `--seconds 2.5` is promising as a latency path: the implemented `6/joint/1` shape measured 768.3 ms median `total_to_decode`, and the `8/reduced/1` control measured 848.0 ms. These files still need listening review before changing the preset guidance.
+- A manual-duration follow-up with `--seconds 2.5` removed the Chinese-like artifact in listening. The implemented `6/joint/1` shape measured 768.3 ms median `total_to_decode`, and the `8/reduced/1` control measured 848.0 ms. Human listening preferred `8/reduced/1 --seconds 2.5` when accounting for audio quality.
 - Baselines: [#64 v3 one-shot](2026-05-14-apple-silicon-num-steps-v3-text.md) and [persistent mlx-decode baseline](2026-05-18-apple-silicon-persistent-batch-runtime-cleanup.md).
 
 ## Environment
@@ -67,13 +67,15 @@ instead of predicted duration:
 
 | Case | Steps | CFG mode | CFG text | Request wall | sample_rf | DACVAE decode | Decode model | Audio write | Output duration | Status |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| issue-220-ultra-fast-steps-6-joint-cfg-1-seconds-2p5 | 6 | joint | 1 | 768.3 ms | 257.3 ms | 499.6 ms | 437.0 ms | 1.4 ms | 2.50 s | needs listening |
-| issue-220-ultra-fast-steps-8-reduced-cfg-1-seconds-2p5 | 8 | reduced | 1 | 848.0 ms | 331.5 ms | 521.3 ms | 431.1 ms | 3.5 ms | 2.50 s | needs listening |
+| issue-220-ultra-fast-steps-6-joint-cfg-1-seconds-2p5 | 6 | joint | 1 | 768.3 ms | 257.3 ms | 499.6 ms | 437.0 ms | 1.4 ms | 2.50 s | artifact fixed; lower quality |
+| issue-220-ultra-fast-steps-8-reduced-cfg-1-seconds-2p5 | 8 | reduced | 1 | 848.0 ms | 331.5 ms | 521.3 ms | 431.1 ms | 3.5 ms | 2.50 s | preferred listening candidate |
 
 These numbers show that explicit short duration can bring complete-WAV latency
 below one second, but it changes the UX contract: `ultra-fast` would need either
 a short-prompt duration cap/scale or documentation telling users to combine it
-with a manual duration for very short prompts.
+with a manual duration for very short prompts. Listening feedback currently
+favors the 8-step reduced-CFG control over the lower-latency 6-step joint-CFG
+candidate because the 8-step output has the better quality/speed tradeoff.
 
 ## Listening Artifacts
 
@@ -93,11 +95,11 @@ manual-duration `seconds-2p5` files should be the next listening target.
 ## Recommendation
 
 Keep `--preset ultra-fast` experimental and do not promote the predicted-duration
-short-prompt path. For the next gate, listen to the `6/joint/1 --seconds 2.5`
-measured samples first. If those are acceptable, the likely product direction is
-not a different CFG preset; it is an ultra-fast short-prompt duration policy. If
-they still contain artifacts, fall back to the `8/reduced/1 --seconds 2.5`
-control before spending more time on lower-step CFG variants.
+short-prompt path. The best current candidate is `8/reduced/1 --seconds 2.5`:
+it stays under one second in this run while avoiding the Chinese-like artifacts
+and sounding better than the 6-step manual-duration sample. The likely product
+direction is therefore a short-prompt duration policy plus a quality-biased
+ultra-fast mapping, not simply the lowest-latency 6-step setting.
 
 ## Evidence Fields
 
