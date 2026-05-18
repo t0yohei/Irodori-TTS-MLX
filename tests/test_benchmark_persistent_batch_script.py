@@ -90,8 +90,28 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
     def test_build_json_summary_computes_throughput(self):
         requests = (
             bench.RequestResult(1, "warmup", "/tmp/1.wav", "one", 1, 12, {"total_to_decode": 10.0}, None, "mlx"),
-            bench.RequestResult(2, "measured", "/tmp/2.wav", "two", 2, 12, {"total_to_decode": 8.0}, None, "mlx"),
-            bench.RequestResult(3, "measured", "/tmp/3.wav", "three", 3, 12, {"total_to_decode": 12.0}, None, "mlx"),
+            bench.RequestResult(
+                2,
+                "measured",
+                "/tmp/2.wav",
+                "two",
+                2,
+                12,
+                {"total_to_decode": 8.0, "decode_dacvae_materialization": 3.0},
+                None,
+                "mlx",
+            ),
+            bench.RequestResult(
+                3,
+                "measured",
+                "/tmp/3.wav",
+                "three",
+                3,
+                12,
+                {"total_to_decode": 12.0, "decode_dacvae_materialization": 5.0},
+                None,
+                "mlx",
+            ),
         )
         result = bench.BatchRunResult(
             command="python ...",
@@ -115,6 +135,9 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
         report = bench.build_report(result, args=self._args())
         self.assertIn("Persistent Batch Benchmark Report", report)
         self.assertIn("100.000 req/s", report)
+        self.assertIn("MLX decode subphase aggregates", report)
+        self.assertIn("| materialization/sync |", report)
+        self.assertIn("4.0 ms", report)
 
     def test_self_test_path(self):
         self.assertEqual(bench.run_self_test(), 0)

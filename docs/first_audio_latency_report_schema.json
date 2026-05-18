@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Irodori TTS MLX first-audio latency report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "scenario",
+    "architecture",
+    "latency_ms",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "scenario": {
+      "type": "object",
+      "required": [
+        "checkpoint_family",
+        "reference_mode",
+        "text",
+        "num_steps",
+        "codec_runtime_mode"
+      ],
+      "properties": {
+        "checkpoint_family": { "type": "string" },
+        "reference_mode": { "enum": ["no-reference", "reference"] },
+        "text": { "type": "string" },
+        "num_steps": { "type": "integer", "minimum": 1 },
+        "codec_runtime_mode": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "architecture": {
+      "type": "object",
+      "required": [
+        "first_audio_mode",
+        "first_audio_equals_complete_wav"
+      ],
+      "properties": {
+        "first_audio_mode": {
+          "enum": ["complete-wav", "segment", "chunk", "unknown"]
+        },
+        "first_audio_equals_complete_wav": { "type": "boolean" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "latency_ms": {
+      "type": "object",
+      "required": [
+        "first_audio_available_ms",
+        "complete_wav_available_ms",
+        "rf_sampling_ms",
+        "decode_to_wav_ms"
+      ],
+      "properties": {
+        "one_shot_wall_clock_ms": { "type": ["number", "null"], "minimum": 0 },
+        "persistent_request_latency_ms": { "type": ["number", "null"], "minimum": 0 },
+        "rf_sampling_ms": { "type": ["number", "null"], "minimum": 0 },
+        "dacvae_decode_ms": { "type": ["number", "null"], "minimum": 0 },
+        "audio_serialization_write_ms": { "type": ["number", "null"], "minimum": 0 },
+        "decode_to_wav_ms": { "type": ["number", "null"], "minimum": 0 },
+        "first_audio_available_ms": { "type": ["number", "null"], "minimum": 0 },
+        "complete_wav_available_ms": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "command",
+        "metadata_json",
+        "report"
+      ],
+      "properties": {
+        "command": { "type": "string" },
+        "metadata_json": { "type": ["string", "null"] },
+        "report": { "type": ["string", "null"] },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

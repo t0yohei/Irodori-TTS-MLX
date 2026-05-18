@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -59,6 +60,14 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
         self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], "owner/codec")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
+
+    def test_parse_args_defaults_to_runnable_pytorch_codec_mode(self):
+        args = bench.parse_args(["--weights-repo", "owner/repo"])
+        self.assertEqual(args.codec_runtime_mode, "persistent")
+
+    def test_script_adds_repo_root_to_import_path_for_worker_mode(self):
+        self.assertEqual(bench.ROOT, Path(bench.__file__).resolve().parents[1])
+        self.assertIn(str(bench.ROOT), sys.path)
 
     def test_parse_response_records_persistent_latency_and_timing_split(self):
         payload = {

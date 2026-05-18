@@ -16,6 +16,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 DEFAULT_TEXT = "今日はいい天気ですね。"
 DEFAULT_CODEC_REPO = "Aratako/Semantic-DACVAE-Japanese-32dim"
 
@@ -81,7 +85,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--codec-runtime-mode",
         choices=("persistent", "subprocess", "mlx", "mlx-decode", "mlx-decode-subprocess"),
-        default="mlx-decode",
+        default="persistent",
     )
     parser.add_argument("--codec-path")
     parser.add_argument("--codec-artifact-dir")
@@ -256,10 +260,18 @@ def run_worker(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ru_maxrss_value_to_bytes(value: int, *, platform: str = sys.platform) -> int | None:
+    if not value:
+        return None
+    if platform == "darwin":
+        return int(value)
+    return int(value) * 1024
+
+
 def _child_max_rss_bytes() -> int | None:
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     value = int(getattr(usage, "ru_maxrss", 0) or 0)
-    return value or None
+    return _ru_maxrss_value_to_bytes(value)
 
 
 def parse_response(payload: dict[str, Any], *, index: int, phase: str, latency_ms: float) -> RequestResult:
@@ -540,6 +552,8 @@ def run_self_test() -> int:
     summary = build_json_summary(result, args=args)
     assert summary["aggregates"]["measured_persistent_request_latency_ms"]["median"] == 150.0
     assert summary["aggregates"]["measured_audio_write_ms"]["median"] == 6.0
+    assert _ru_maxrss_value_to_bytes(1234, platform="linux") == 1263616
+    assert _ru_maxrss_value_to_bytes(1234, platform="darwin") == 1234
     report = build_report(result, args=args)
     assert "Persistent Local Serving Benchmark Report" in report
     assert "audio_write" in report
@@ -553,7 +567,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_self_test()
     if args.worker:
         return run_worker(args)
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = ROOT
     output_dir = ensure_directory((repo_root / args.output_dir).resolve())
     result = run_serving(args, repo_root, output_dir)
     summary = build_json_summary(result, args=args)
