@@ -601,23 +601,6 @@ def resolve_weights_layout_source(
     return None
 
 
-def resolve_preconverted_weights_args(args: argparse.Namespace) -> argparse.Namespace:
-    """Compatibility adapter for the pre-v0.2 generate_wav tests/docs path."""
-
-    layout = resolve_weights_layout_source(
-        weights_dir=args.weights_dir,
-        weights_repo=args.weights_repo,
-        revision=getattr(args, "weights_revision", None),
-    )
-    if layout is None:
-        return args
-    args._resolved_weights_layout = layout
-    args.weights = str(layout.weights_path)
-    if not getattr(args, "model_config_json_cli_override", False):
-        args.model_config_json = str(layout.model_config_path)
-    return args
-
-
 def _download_codec_repo_snapshot(repo_id: str, *, revision: str | None = None):
     from irodori_mlx.hosted_codec import snapshot_codec_repo
 

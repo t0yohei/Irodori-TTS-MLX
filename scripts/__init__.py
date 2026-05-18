@@ -1,1 +1,1 @@
-"""Developer script modules preserved for compatibility and console entry points."""
+"""Developer script modules used by console entry points and tests."""
