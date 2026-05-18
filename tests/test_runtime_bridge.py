@@ -114,12 +114,16 @@ class FakeBridge:
         self.encoded.append((str(path), max_seconds, normalize_db, ensure_max))
         return mx.ones((1, 7, self.latent_dim), dtype=mx.float32)
 
-    def decode_to_wav(self, latents, output_path, *, max_samples=None):
+    def decode_to_wav_timed(self, latents, output_path, *, max_samples=None):
         self.decoded.append((latents, output_path, max_samples))
         self.last_decode_timings_ms = {"decode_dacvae_materialization": 4.0}
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"fake wav")
+        return path, {"decode_dacvae_model": 2.0, "audio_write": 1.0}
+
+    def decode_to_wav(self, latents, output_path, *, max_samples=None):
+        path, _ = self.decode_to_wav_timed(latents, output_path, max_samples=max_samples)
         return path
 
 
@@ -603,6 +607,8 @@ class RuntimeBridgeTests(unittest.TestCase):
                     "decode_dacvae_host_transfer",
                     "decode_dacvae_postprocess",
                     "decode_dacvae_wav_serialization",
+                    "decode_dacvae_model",
+                    "audio_write",
                     "decode_dacvae_cleanup",
                     "decode_dacvae_model",
                     "audio_write_wav",
@@ -1212,6 +1218,50 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertEqual(tuple(encoded.shape), (1, 7, 4))
 
     @require_mlx
+    def test_mlx_decode_only_timed_decode_falls_back_for_untimed_bridge(self):
+        class UntimedDecodeBridge:
+            sample_rate = 8000
+            hop_length = 2
+            latent_dim = 4
+
+            def __init__(self):
+                self.decoded = []
+
+            def decode_to_wav(self, latents, output_path, *, max_samples=None):
+                self.decoded.append((latents, output_path, max_samples))
+                path = Path(output_path)
+                path.write_bytes(b"fake wav")
+                return path
+
+        decode_bridge = UntimedDecodeBridge()
+        bridge = object.__new__(MLXDACVAEDecodeOnlyBridge)
+        bridge.decode_bridge = decode_bridge
+        with tempfile.TemporaryDirectory() as td:
+            output, timings = bridge.decode_to_wav_timed(
+                mx.zeros((1, 2, 4), dtype=mx.float32),
+                Path(td) / "out.wav",
+                max_samples=4,
+            )
+        self.assertEqual(timings, {})
+        self.assertEqual(len(decode_bridge.decoded), 1)
+        self.assertEqual(output.name, "out.wav")
+
+    @require_mlx
+    def test_mlx_decode_only_timed_decode_preserves_inner_last_timings(self):
+        decode_bridge = FakeBridge()
+        bridge = object.__new__(MLXDACVAEDecodeOnlyBridge)
+        bridge.decode_bridge = decode_bridge
+        bridge.last_decode_timings_ms = {}
+        with tempfile.TemporaryDirectory() as td:
+            _, timings = bridge.decode_to_wav_timed(
+                mx.zeros((1, 2, 4), dtype=mx.float32),
+                Path(td) / "out.wav",
+                max_samples=4,
+            )
+        self.assertEqual(timings, {"decode_dacvae_model": 2.0, "audio_write": 1.0})
+        self.assertEqual(bridge.last_decode_timings_ms, {"decode_dacvae_materialization": 4.0})
+
+    @require_mlx
     def test_normalize_text_matches_upstream_ascii_ellipsis_after_nfkc(self):
         self.assertEqual(normalize_text("待って........."), "待って………")
         self.assertEqual(normalize_text("待って......."), "待って…….")
@@ -1359,6 +1409,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIn("prepare_reference_condition", result.timings_ms)
         self.assertIn("sample_rf", result.timings_ms)
         self.assertIn("decode_dacvae", result.timings_ms)
+        self.assertEqual(result.timings_ms["decode_dacvae_model"], 2.0)
+        self.assertEqual(result.timings_ms["audio_write"], 1.0)
         self.assertEqual(result.timings_ms["decode_dacvae_materialization"], 4.0)
         self.assertIn("total_to_decode", result.timings_ms)
         self.assertEqual(result.duration_mode, "manual")

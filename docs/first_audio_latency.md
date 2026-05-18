@@ -1,6 +1,6 @@
 # First-Audio Latency Versus Complete-WAV Latency
 
-Issue: [#222](https://github.com/t0yohei/Irodori-TTS-MLX/issues/222)  
+Issue: [#222](https://github.com/t0yohei/Irodori-TTS-MLX/issues/222)
 Parent epic: [#220](https://github.com/t0yohei/Irodori-TTS-MLX/issues/220)
 
 ## Decision

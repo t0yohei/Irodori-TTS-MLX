@@ -21,6 +21,7 @@ We now have both:
 - the persistent batch generation measurement from [docs/benchmark-reports/2026-05-18-apple-silicon-persistent-batch.md](benchmark-reports/2026-05-18-apple-silicon-persistent-batch.md)
 - the persistent batch cleanup comparison from [docs/benchmark-reports/2026-05-18-apple-silicon-persistent-batch-cleanup-comparison.md](benchmark-reports/2026-05-18-apple-silicon-persistent-batch-cleanup-comparison.md)
 - the persistent batch runtime decode cleanup comparison from [docs/benchmark-reports/2026-05-18-apple-silicon-persistent-batch-runtime-cleanup-comparison.md](benchmark-reports/2026-05-18-apple-silicon-persistent-batch-runtime-cleanup-comparison.md)
+- the persistent local serving benchmark contract from [docs/benchmark-reports/2026-05-18-persistent-local-serving-benchmark-contract.md](benchmark-reports/2026-05-18-persistent-local-serving-benchmark-contract.md)
 - the MLX DACVAE decode subphase profile from [docs/benchmark-reports/2026-05-18-apple-silicon-dacvae-decode-profile.md](benchmark-reports/2026-05-18-apple-silicon-dacvae-decode-profile.md)
 - persistent batch generation is now documented in [dacvae_bridge.md](dacvae_bridge.md); the old one-off persistent-batch report was removed because no current summary or test referenced it
 
@@ -178,7 +179,9 @@ So the current best mitigation is a simpler one than the original architectural 
 Use `scripts/benchmark.py` to run a reproducible benchmark harness with repeated-run support, warmup labeling, and simple scaling sweeps.
 For environment setup, use the packaged benchmark flow in [docs/packaging.md](packaging.md): Python 3.11 through 3.14 are supported for packaging, while the benchmark examples continue to use Python 3.11 as the reference environment. Create a venv, install `-e ".[bench]"`, and make upstream `irodori_tts` importable from the same environment.
 
-Use scripts/benchmark_persistent_batch.py when the question is repeated generation through one initialized runtime. It wraps scripts/generate_wav.py --requests-json, records one process-level wall clock and max RSS, and summarizes first-request, warmup, measured steady-state, and throughput metrics. This is the right harness for estimating the benefit of a future persistent server or worker because model, tokenizer, hosted artifact, and codec setup are paid once for the whole batch instead of once per output.
+Use scripts/benchmark_persistent_batch.py when the question is repeated generation through one initialized runtime. It wraps scripts/generate_wav.py --requests-json, records one process-level wall clock and max RSS, and summarizes first-request, warmup, measured steady-state, and throughput metrics. This remains useful for process-level batch amortization.
+
+Use scripts/benchmark_persistent_serving.py when the question is local serving request latency. It starts one JSON-line worker process, waits for runtime initialization once, then measures per-request roundtrip latency over stdin/stdout. Its schema keeps persistent request latency separate from RF sampling, DACVAE decode, DACVAE model decode, WAV write, total_to_decode, startup, and max RSS. This is the headline harness for the sub-second latency track because it excludes fresh CLI/process setup from each request.
 
 Add `--cleanup-between-requests` to the persistent batch benchmark to forward an explicit MLX request boundary into `scripts/generate_wav.py`. The boundary synchronizes MLX, runs Python garbage collection, and clears reusable MLX cache memory after each generated request. Use it to test whether repeated-request latency drift is caused by request-local MLX residency outside the normal runtime cleanup boundaries.
 
@@ -193,6 +196,10 @@ This validates timing parsing and report generation without any model dependenci
 Persistent batch self-test:
 
     python3 scripts/benchmark_persistent_batch.py --self-test
+
+Persistent serving self-test:
+
+    python3 scripts/benchmark_persistent_serving.py --self-test
 
 ### Upstream PyTorch benchmark
 
@@ -269,6 +276,10 @@ python3 scripts/benchmark.py \
 Persistent hosted batch example:
 
     PYTHONPATH=/path/to/Irodori-TTS:$PYTHONPATH python3 scripts/benchmark_persistent_batch.py --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 --codec-runtime-mode mlx-decode --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 --text '今日はいい天気ですね。' --omit-seconds --num-steps 12 --warmup-requests 1 --requests 4 --case-label v3-mlx-decode-persistent-batch --output-dir benchmark-runs/persistent-batch-v3 --report docs/benchmark-latest-persistent-batch.md
+
+Persistent serving v3 no-reference `mlx-decode` example:
+
+    PYTHONPATH=/path/to/Irodori-TTS:$PYTHONPATH python3 scripts/benchmark_persistent_serving.py --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 --codec-runtime-mode mlx-decode --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 --text '今日はいい天気ですね。' --omit-seconds --num-steps 12 --warmup-requests 1 --requests 4 --case-label v3-mlx-decode-persistent-serving --output-dir benchmark-runs/persistent-serving-v3 --report docs/benchmark-latest-persistent-serving.md
 
 The persistent batch report includes process throughput, measured generation throughput, setup/load overhead for the whole process, and request-level total_to_decode, sample_rf, encode_dacvae, and decode_dacvae aggregates. The process wall/RSS values are intentionally not copied onto each request; they belong to the whole batch.
 
