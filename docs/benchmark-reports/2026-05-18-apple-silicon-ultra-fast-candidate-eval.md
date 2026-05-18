@@ -1,0 +1,90 @@
+# Apple Silicon ultra-fast candidate evaluation
+
+Issue: [#217](https://github.com/t0yohei/Irodori-TTS-MLX/issues/217)
+Parent: [#220](https://github.com/t0yohei/Irodori-TTS-MLX/issues/220)
+
+## Summary
+
+This is the first real Apple Silicon candidate run after adding the
+experimental `--preset ultra-fast` switch. It measures the four candidates
+identified in the earlier [low-step/CFG sweep plan](2026-05-18-apple-silicon-ultra-fast-low-step-cfg-sweep.md)
+with real v3 hosted weights and the hosted MLX DACVAE decode artifact.
+
+- Fastest measured request latency: `issue-220-ultra-fast-steps-6-reduced-cfg-1` at 1168.7 ms.
+- Implemented `--preset ultra-fast` equivalent: `issue-220-ultra-fast-steps-6-joint-cfg-1` at 1198.2 ms.
+- Both 6-step candidates are well below the prior 8-step one-shot v3 no-reference anchor, but they still need human listening/parity review before the preset can be promoted beyond experimental.
+- The remaining latency floor is still DACVAE decode/materialization: measured audio write is only 1-2 ms median across these runs.
+- Baselines: [#64 v3 one-shot](2026-05-14-apple-silicon-num-steps-v3-text.md) and [persistent mlx-decode baseline](2026-05-18-apple-silicon-persistent-batch-runtime-cleanup.md).
+
+## Environment
+
+- machine: Apple Silicon arm64
+- benchmark Python: Python 3.11.15
+- text: `今日はいい天気ですね。`
+- checkpoint family: v3
+- duration mode: predicted duration (`--seconds` omitted)
+- RF-DiT weights repo: `t0yohei/Irodori-TTS-MLX-500M-v3`
+- RF-DiT weights revision: `078ffb11ffad92e6dde237a6abef730f4341b359`
+- DACVAE codec artifact repo: `t0yohei/Irodori-TTS-MLX-DACVAE-Codec`
+- DACVAE codec artifact revision: `bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78`
+- codec runtime mode: `mlx-decode`
+- request shape: 1 warmup request + 4 measured requests per candidate
+- seed start: `20260512`
+
+## Ranked Candidates
+
+| Rank | Case | Steps | CFG mode | CFG text | Request wall | sample_rf | DACVAE decode | Decode model | Audio write | Output duration | Quality proxy |
+| ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 1 | issue-220-ultra-fast-steps-6-reduced-cfg-1 | 6 | reduced | 1 | 1168.7 ms | 351.5 ms | 779.2 ms | 709.2 ms | 1.8 ms | 4.34 s | experimental-fastest |
+| 2 | issue-220-ultra-fast-steps-6-joint-cfg-1 | 6 | joint | 1 | 1198.2 ms | 361.8 ms | 803.3 ms | 736.8 ms | 1.4 ms | 4.48 s | experimental-fastest |
+| 3 | issue-220-ultra-fast-steps-8-reduced-cfg-1 | 8 | reduced | 1 | 1287.4 ms | 463.0 ms | 789.6 ms | 714.6 ms | 1.3 ms | 4.36 s | plausibly-usable |
+| 4 | issue-220-ultra-fast-steps-8-independent-cfg-2 | 8 | independent | 2 | 1310.4 ms | 469.3 ms | 798.2 ms | 723.9 ms | 1.9 ms | 4.44 s | plausibly-usable |
+
+## Readout
+
+`6/reduced/1` is the latency winner, but it is not the implemented preset.
+The current `ultra-fast` mapping uses `6/joint/1`, which is only about 30 ms
+slower in this run while keeping the originally selected joint-guidance shape.
+That makes the existing preset a reasonable first listening candidate.
+
+The 8-step candidates are slower by about 90-140 ms versus `6/joint/1`.
+They remain useful as safer comparison samples for listening review, especially
+if the 6-step outputs sound unstable.
+
+Measured output duration stayed close to the same short-prompt band for all
+candidates (4.34-4.48 s median). This catches gross duration failure, but it is
+not an audio-quality score.
+
+## Listening Artifacts
+
+Generated WAV files are intentionally not committed to the repository. They are
+available in the local benchmark output tree from this run:
+
+    benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-6-joint-cfg-1/
+    benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-6-reduced-cfg-1/
+    benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-reduced-cfg-1/
+    benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-independent-cfg-2/
+
+Use the request 02-05 WAVs in each directory for measured samples; request 01 is
+the warmup sample. A human listening pass should check intelligibility, obvious
+noise/artifacts, and whether the short prompt still sounds natural enough for a
+latency-first candidate.
+
+## Recommendation
+
+Keep `--preset ultra-fast` experimental. For the next gate, listen to the
+`6/joint/1` measured samples first. If they are acceptable, keep the preset as
+implemented and document it as the candidate for sub-second follow-up work. If
+they are not acceptable, compare `6/reduced/1` and the two 8-step controls
+before changing the preset mapping.
+
+## Evidence Fields
+
+Each source summary must include invocation.num_steps, invocation.cfg_guidance_mode, invocation.cfg_scale_text, process.wall_seconds, aggregates.measured_total_to_decode_ms, aggregates.measured_sample_rf_ms, aggregates.measured_decode_dacvae_ms, and, for current reports, aggregates.measured_audio_write_ms plus aggregates.measured_output_duration_seconds.
+
+## Source Summaries
+
+- issue-220-ultra-fast-steps-6-reduced-cfg-1: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-6-reduced-cfg-1/persistent-batch-summary.json
+- issue-220-ultra-fast-steps-6-joint-cfg-1: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-6-joint-cfg-1/persistent-batch-summary.json
+- issue-220-ultra-fast-steps-8-reduced-cfg-1: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-reduced-cfg-1/persistent-batch-summary.json
+- issue-220-ultra-fast-steps-8-independent-cfg-2: benchmark-runs/issue-220-ultra-fast-candidate-eval/issue-220-ultra-fast-steps-8-independent-cfg-2/persistent-batch-summary.json
