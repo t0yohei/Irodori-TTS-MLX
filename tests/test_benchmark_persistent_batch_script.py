@@ -100,6 +100,32 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
         self.assertIn("CFG caption scale: 3.0", report)
         self.assertIn("CFG speaker scale: 5.0", report)
 
+    def test_build_json_summary_persists_effective_default_companion_cfg_scales(self):
+        args = self._args()
+        args.caption = "calm"
+        args.reference_wav = "/tmp/ref.wav"
+        result = bench.BatchRunResult(
+            command="python ...",
+            cwd="/tmp/repo",
+            request_count=0,
+            warmup_requests=0,
+            measured_requests=0,
+            metadata_json="/tmp/metadata.json",
+            requests_json="/tmp/requests.json",
+            stdout_log="/tmp/stdout.log",
+            stderr_log="/tmp/stderr.log",
+            status="dry-run",
+            wall_seconds=None,
+            max_rss_bytes=None,
+            process_setup_overhead_ms=None,
+            requests=(),
+        )
+
+        summary = bench.build_json_summary(result, args=args)
+
+        self.assertEqual(summary["invocation"]["cfg_scale_caption"], 3.0)
+        self.assertEqual(summary["invocation"]["cfg_scale_speaker"], 5.0)
+
     def test_build_command_forwards_hosted_codec_artifact(self):
         args = self._args()
         argv, env = bench.build_command(args, Path("/tmp/requests.json"), Path("/tmp/metadata.json"))
