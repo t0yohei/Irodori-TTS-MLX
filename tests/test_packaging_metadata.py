@@ -40,6 +40,9 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn('dev = [', pyproject)
         self.assertIn('"torch>=2.6,<3"', pyproject)
         self.assertIn('"transformers>=4.51,<5"', pyproject)
+        self.assertIn('"sentencepiece>=0.1.99,<0.2; python_version < \'3.12\'"', pyproject)
+        self.assertIn('"sentencepiece>=0.2,<1; python_version >= \'3.12\'"', pyproject)
+        self.assertNotIn('"sentencepiece>=0.2,<1",', pyproject)
         self.assertIn('"safetensors>=0.4,<1"', pyproject)
         self.assertIn('"pytest>=8,<9"', pyproject)
 
@@ -80,6 +83,10 @@ class PackagingMetadataTests(unittest.TestCase):
         self.assertIn("installed console scripts", packaging_doc)
         self.assertIn("not a stable public Python API", packaging_doc)
         self.assertIn("public_api_stability.md", packaging_doc)
+        self.assertIn("sentencepiece>=0.1.99,<0.2", packaging_doc)
+        self.assertIn("Python 3.11", packaging_doc)
+        self.assertIn("Python 3.12 and newer", packaging_doc)
+        self.assertIn("upstream-compatible", packaging_doc)
 
     @unittest.skipIf(sys.version_info < (3, 11), "project console scripts require Python >= 3.11")
     @unittest.skipUnless(HAS_BUILD_MODULE, "clean wheel smoke requires the optional build package")

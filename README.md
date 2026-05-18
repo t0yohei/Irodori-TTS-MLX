@@ -97,6 +97,12 @@ python -m pip install -e ../Irodori-TTS
 # export PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-}
 ```
 
+On Python 3.11, the `runtime`, `bench`, and `dev` extras pin
+`sentencepiece>=0.1.99,<0.2` to stay compatible with upstream `irodori-tts`
+when both projects are installed in the same virtual environment. On Python
+3.12 and newer, the extras keep `sentencepiece>=0.2,<1` for wheel availability;
+use Python 3.11 when installing upstream `irodori-tts` into the same venv.
+
 The bridge runtime needs upstream `irodori_tts.codec.DACVAECodec` for the default `persistent` and `subprocess` codec modes. For reproducible setup details, see [docs/packaging.md](docs/packaging.md) and [docs/upstream_dependency.md](docs/upstream_dependency.md).
 
 ## Quickstart: Hosted Weights
