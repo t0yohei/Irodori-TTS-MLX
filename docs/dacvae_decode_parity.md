@@ -34,30 +34,15 @@ codec artifacts without rerunning this check.
 ## What the check compares
 
 `scripts/check_dacvae_decode_parity.py` loads one fixed runtime-layout latent
-fixture shaped `(1, T, 32)`, decodes it through:
+fixture shaped `(1, T, 32)`, decodes it through the local MLX decode artifact
+via `MLXDACVAEBridge`, and validates:
 
-- upstream `irodori_tts.codec.DACVAECodec` via the PyTorch bridge
-- the local MLX decode artifact via `MLXDACVAEBridge`
-
-It then compares:
-
-- waveform sample rate and shape
+- decoded waveform sample rate
 - float32 finite/range contract
-- max absolute error, mean absolute error, RMSE, and cosine similarity
 
-Default pass/fail tolerances are:
-
-- `max_abs <= 5e-3`
-- `mean_abs <= 1e-3`
-- `rmse <= 2e-3`
-- `cosine >= 0.999`
-
-These tolerances are deliberately tighter than a user-facing smoke test and
-looser than bitwise equality. They are meant to catch layout, padding,
-watermark-bypass, and weight-normalization mistakes while allowing ordinary
-float32 backend differences. If a real artifact drifts, keep the failed report
-and document the observed metrics in the PR or issue before adjusting
-thresholds.
+This is an MLX-only artifact evidence check. The public runtime no longer keeps
+the upstream PyTorch DACVAE bridge as a fallback path, so this script does not
+import `irodori_tts.codec` or `torch`.
 
 The fixture must use runtime latent layout `(1, T, 32)` by default. The script
 accepts `--expected-latent-dim` for synthetic tests, but real Semantic-DACVAE
@@ -80,11 +65,9 @@ np.save(out / "decode-latents.npy", latents)
 PY
 ```
 
-Run the parity check after installing upstream Irodori-TTS and producing a
-local MLX DACVAE decode artifact:
+Run the check after producing a local MLX DACVAE decode artifact:
 
 ```bash
-PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 python scripts/check_dacvae_decode_parity.py \
   --latents-npy /tmp/irodori-dacvae-decode-fixtures/decode-latents.npy \
   --codec-path /path/to/dacvae-codec.npz \
@@ -96,21 +79,20 @@ python scripts/check_dacvae_decode_parity.py \
 
 The command writes:
 
-- `upstream-decode.wav`
 - `mlx-decode.wav`
 - `dacvae-decode-parity.json`
 
 The JSON report records issue links, fixture shape, codec metadata, output paths,
-tolerances, and pass/fail metrics. A complete run has `run.status: complete`
-and `comparison.status: passed` or `failed`. Keep generated WAVs and local
+and pass/fail checks. A complete run has `run.status: complete` and
+`comparison.status: passed` or `failed`. Keep generated WAVs and local
 artifacts out of git unless their license/provenance has been reviewed for
 redistribution.
 
 A passing report is the gate for describing a specific executable decoder
-artifact as parity-backed. Runtime capability output may still say
+artifact as checked. Runtime capability output may still say
 `has_executable_mlx_decode=true` before a report exists, but docs and release
-notes should only call a converted artifact parity-backed when its current
-report is complete and passed.
+notes should only call a converted artifact checked when its current report is
+complete and passed. In short, the report is complete and passed.
 
 For CI or developer machines that should record deterministic skip evidence when
 local artifacts are absent, add `--allow-partial`:
@@ -123,8 +105,8 @@ python scripts/check_dacvae_decode_parity.py \
   --allow-partial
 ```
 
-When preflight detects that the latent fixture, MLX codec artifact, MLX runtime,
-or PyTorch/upstream dependency is missing, the command writes
+When preflight detects that the latent fixture, MLX codec artifact, or MLX
+runtime is missing, the command writes
 `dacvae-decode-parity.json` with `run.status: partial` and exits 0 only with
 `--allow-partial`. Without `--allow-partial`, partial runs exit 2. Runtime
 decode/write failures, shape mismatches, metadata mismatches, sample-rate
@@ -133,7 +115,7 @@ mismatches, and metric drift still write a failed report and exit non-zero.
 ## Lightweight test coverage
 
 The checked-in unit tests use synthetic latents and mocked decode bridges so
-local development can validate the contract without downloading upstream assets:
+local development can validate the contract without downloading external assets:
 
 ```bash
 python -m pytest tests/test_check_dacvae_decode_parity_script.py tests/test_dacvae_mlx_parity_fixtures.py

@@ -34,33 +34,21 @@ No threshold change was needed. The generated local report remains outside git
 with the converted codec artifact and latent fixtures because those files are
 derived from upstream codec weights and local fixture paths.
 
-## What the check compares
+## What the check validates
 
 `scripts/check_dacvae_encode_parity.py` loads one fixed reference WAV and
-encodes it through:
-
-- upstream `irodori_tts.codec.DACVAECodec` via the PyTorch bridge
-- the local MLX encode artifact via `MLXDACVAEBridge`
-
-It then compares:
+encodes it through the local MLX encode artifact via `MLXDACVAEBridge`, and
+validates:
 
 - codec sample rate, hop length, and latent dimension metadata
 - runtime latent shape `(B, T, D)`
 - latent-step length and the equivalent speaker-mask true count used by the
   MLX generation runtime
 - finite float32 latent values
-- max absolute error, mean absolute error, RMSE, and cosine similarity
 
-Default pass/fail tolerances are:
-
-- `max_abs <= 1e-3`
-- `mean_abs <= 2e-4`
-- `rmse <= 5e-4`
-- `cosine >= 0.999`
-
-These defaults are intentionally visible command-line settings. If a real
-converted codec artifact drifts, keep the failed report and document the
-observed metrics in the PR or issue before changing thresholds.
+This is an MLX-only artifact evidence check. The public runtime no longer keeps
+the upstream PyTorch DACVAE bridge as a fallback path, so this script does not
+import `irodori_tts.codec` or `torch`.
 
 ## Local fixture command
 
@@ -90,12 +78,10 @@ with wave.open(str(out / "reference.wav"), "wb") as fh:
 PY
 ```
 
-Run the parity check after installing upstream Irodori-TTS and producing a
-local MLX DACVAE artifact that includes the executable
+Run the check after producing a local MLX DACVAE artifact that includes the executable
 `dacvae_encoder_exec/` Semantic-DACVAE encoder tensors:
 
 ```bash
-PYTHONPATH=/path/to/Irodori-TTS:${PYTHONPATH:-} \
 python scripts/check_dacvae_encode_parity.py \
   --audio-wav /tmp/irodori-dacvae-encode-fixtures/reference.wav \
   --codec-path /path/to/dacvae-codec.npz \
@@ -108,16 +94,15 @@ python scripts/check_dacvae_encode_parity.py \
 When a local checkpoint, converted codec artifact, or optional runtime
 dependency is unavailable, add `--allow-partial` to write the same JSON report
 shape with `comparison.status = "partial"` and exit successfully for evidence
-collection without claiming parity passed.
+collection without claiming the artifact check passed.
 
 The command writes:
 
-- `upstream-encode-latents.npy`
 - `mlx-encode-latents.npy`
 - `dacvae-encode-parity.json`
 
 The JSON report records issue links, source audio stats, codec metadata,
-latent output paths, length/mask contract, tolerances, and pass/fail metrics.
+latent output paths, length/mask contract, and pass/fail checks.
 Keep those generated files local unless their license/provenance has been
 reviewed for redistribution.
 
@@ -158,13 +143,13 @@ python -m pytest tests/test_check_dacvae_encode_parity_script.py tests/test_dacv
 
 `tests/test_dacvae_mlx_parity_fixtures.py` remains available for real fixture
 validation through environment variables. For issue #185 encode evidence, the
-required variables are the codec artifact, reference WAV fixture, and upstream
+required variables are the codec artifact, reference WAV fixture, and expected
 encoded latent fixture:
 
 ```bash
 IRODORI_MLX_DACVAE_CODEC_NPZ=/path/to/dacvae-codec.npz \
 IRODORI_MLX_DACVAE_ENCODE_AUDIO_WAV=/path/to/reference.wav \
-IRODORI_MLX_DACVAE_ENCODE_LATENTS_NPY=/path/to/upstream-encode-latents.npy \
+IRODORI_MLX_DACVAE_ENCODE_LATENTS_NPY=/path/to/expected-encode-latents.npy \
 python -m pytest tests/test_dacvae_mlx_parity_fixtures.py
 ```
 

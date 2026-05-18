@@ -79,7 +79,7 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
         self.assertFalse(result["checks"]["latent_steps"])
         self.assertFalse(result["checks"]["max_abs"])
 
-    def test_encode_pair_uses_same_audio_for_upstream_and_mlx_and_writes_latents(self):
+    def test_encode_pair_uses_audio_for_mlx_and_writes_latents(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             audio_path = root / "ref.wav"
@@ -104,7 +104,6 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
                 ]
             )
 
-            upstream = FakeEncodeBridge(offset=0.0)
             mlx = FakeEncodeBridge(offset=0.0)
             fake_audio = np.array([0.25, -0.5, 0.75, -1.0], dtype=np.float32)
             with mock.patch.object(
@@ -114,25 +113,20 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
             ), mock.patch.object(
                 check_dacvae_encode_parity, "_load_audio_numpy", return_value=(fake_audio, 8000)
             ), mock.patch.object(
-                check_dacvae_encode_parity, "PyTorchDACVAEBridge", return_value=upstream
-            ) as upstream_factory, mock.patch.object(
                 check_dacvae_encode_parity, "MLXDACVAEBridge", return_value=mlx
             ) as mlx_factory:
                 report = check_dacvae_encode_parity.encode_pair(args)
 
-        upstream_factory.assert_called_once()
         mlx_factory.assert_called_once()
-        self.assertEqual(upstream.calls, [(str(audio_path), 0.25, -16.0, True)])
         self.assertEqual(mlx.calls, [(str(audio_path), 0.25, -16.0, True)])
         self.assertEqual(report["run"]["status"], "complete")
         self.assertEqual(report["schema_version"], check_dacvae_encode_parity.SCHEMA_VERSION)
         self.assertEqual(report["source_issue"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/185")
         self.assertEqual(report["parent_epic"], "https://github.com/t0yohei/Irodori-TTS-MLX/issues/169")
         self.assertEqual(report["comparison"]["status"], "passed")
-        self.assertEqual(report["comparison"]["metrics"]["upstream"]["shape"], [1, 1, 2])
+        self.assertEqual(report["comparison"]["metrics"]["mlx"]["shape"], [1, 1, 2])
         self.assertTrue(report["codec"]["metadata_checks"]["sample_rate"])
         self.assertEqual(report["codec"]["expected_latent_dim"], 2)
-        self.assertEqual(report["outputs"]["upstream_latents_npy"].split("/")[-1], "upstream-encode-latents.npy")
         self.assertEqual(report["outputs"]["mlx_latents_npy"].split("/")[-1], "mlx-encode-latents.npy")
 
     def test_main_returns_nonzero_for_metric_failure_and_persists_json(self):
@@ -188,7 +182,7 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
             self.assertFalse(report["codec"]["mlx_codec"]["exists"])
             self.assertEqual(report["comparison"]["status"], "partial")
 
-    def test_main_writes_partial_report_for_import_time_dependency_failure(self):
+    def test_main_writes_partial_report_for_missing_mlx_before_runtime_import(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             audio_path = root / "ref.wav"
@@ -196,12 +190,20 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
             write_wav(audio_path)
             codec_path.write_bytes(b"fake codec")
 
-            def fake_import(module_name):
-                if module_name == "irodori_tts.codec":
-                    raise ModuleNotFoundError("No module named 'einops'")
-                return object()
+            original_find_spec = check_dacvae_encode_parity.importlib.util.find_spec
 
-            with mock.patch.object(check_dacvae_encode_parity.importlib, "import_module", side_effect=fake_import):
+            def fake_find_spec(module_name):
+                if module_name == "mlx":
+                    return None
+                return original_find_spec(module_name)
+
+            with mock.patch.object(
+                check_dacvae_encode_parity.importlib.util, "find_spec", side_effect=fake_find_spec
+            ), mock.patch.object(
+                check_dacvae_encode_parity,
+                "_load_runtime_encode_dependencies",
+                side_effect=AssertionError("runtime import should be deferred until after preflight"),
+            ):
                 rc = check_dacvae_encode_parity.main(
                     [
                         "--audio-wav",
@@ -218,7 +220,7 @@ class DACVAEEncodeParityScriptTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(report["run"]["status"], "partial")
             self.assertEqual(report["comparison"]["status"], "partial")
-            self.assertIn("Upstream irodori_tts.codec dependency", report["run"]["reason"])
+            self.assertIn("MLX runtime dependency", report["run"]["reason"])
 
     def test_main_does_not_treat_runtime_encode_errors_as_partial(self):
         with tempfile.TemporaryDirectory() as td:

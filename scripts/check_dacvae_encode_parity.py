@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Compare upstream PyTorch and MLX DACVAE encode outputs for fixed audio."""
+"""Check MLX DACVAE encode output for fixed audio."""
 
 from __future__ import annotations
 
 import argparse
-import importlib
+import importlib.util
 import json
 import sys
 from dataclasses import asdict, dataclass
@@ -24,7 +24,6 @@ DEFAULT_EXPECTED_LATENT_DIM = 32
 
 DACVAEBridgeConfig: Any = None
 MLXDACVAEBridge: Any = None
-PyTorchDACVAEBridge: Any = None
 _load_audio_numpy: Any = None
 
 
@@ -33,22 +32,17 @@ class PartialPreconditionError(RuntimeError):
 
 
 def _load_runtime_encode_dependencies() -> None:
-    global DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy
-    if all(
-        dependency is not None
-        for dependency in (DACVAEBridgeConfig, MLXDACVAEBridge, PyTorchDACVAEBridge, _load_audio_numpy)
-    ):
+    global DACVAEBridgeConfig, MLXDACVAEBridge, _load_audio_numpy
+    if all(dependency is not None for dependency in (DACVAEBridgeConfig, MLXDACVAEBridge, _load_audio_numpy)):
         return
     from irodori_mlx.runtime import (  # noqa: E402
         DACVAEBridgeConfig as runtime_config,
         MLXDACVAEBridge as mlx_bridge,
-        PyTorchDACVAEBridge as pytorch_bridge,
         _load_audio_numpy as runtime_load_audio_numpy,
     )
 
     DACVAEBridgeConfig = runtime_config
     MLXDACVAEBridge = mlx_bridge
-    PyTorchDACVAEBridge = pytorch_bridge
     _load_audio_numpy = runtime_load_audio_numpy
 
 
@@ -60,20 +54,17 @@ def _require_existing_path(path: str | Path, label: str) -> None:
 
 def _require_module(module_name: str, detail: str) -> None:
     try:
-        importlib.import_module(module_name)
+        found = importlib.util.find_spec(module_name)
     except (ImportError, ModuleNotFoundError, ValueError) as exc:
         raise PartialPreconditionError(detail) from exc
+    if found is None:
+        raise PartialPreconditionError(detail)
 
 
 def _preflight_encode_pair(args: argparse.Namespace) -> None:
     _require_existing_path(args.audio_wav, "Fixed DACVAE encode reference WAV fixture")
     _require_existing_path(args.codec_path, "Converted MLX DACVAE codec artifact")
     _require_module("mlx", "MLX runtime dependency is required for DACVAE encode parity.")
-    _require_module(
-        "irodori_tts.codec",
-        "Upstream irodori_tts.codec dependency is required for DACVAE encode parity.",
-    )
-    _require_module("torch", "PyTorch runtime dependency is required for DACVAE encode parity.")
 
 
 def _path_metadata(path: str | Path | None) -> dict[str, Any]:
@@ -194,15 +185,6 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
     normalize_db = None if args.normalize_db is None else float(args.normalize_db)
     ensure_max = bool(args.ensure_max)
 
-    upstream_config = DACVAEBridgeConfig(
-        codec_repo=args.codec_repo,
-        codec_device=args.codec_device,
-        runtime_mode="persistent",
-        deterministic_encode=True,
-        deterministic_decode=True,
-        enable_watermark=False,
-        normalize_db=normalize_db,
-    )
     mlx_config = DACVAEBridgeConfig(
         codec_repo=args.codec_repo,
         codec_path=str(Path(args.codec_path).expanduser()),
@@ -213,50 +195,39 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
         enable_watermark=False,
         normalize_db=normalize_db,
     )
-    upstream_bridge = PyTorchDACVAEBridge(config=upstream_config)
     mlx_bridge = MLXDACVAEBridge(config=mlx_config)
-    if int(upstream_bridge.sample_rate) != int(mlx_bridge.sample_rate):
-        raise ValueError(f"sample_rate mismatch: upstream={upstream_bridge.sample_rate}, mlx={mlx_bridge.sample_rate}")
-    if int(upstream_bridge.hop_length) != int(mlx_bridge.hop_length):
-        raise ValueError(f"hop_length mismatch: upstream={upstream_bridge.hop_length}, mlx={mlx_bridge.hop_length}")
-    if int(upstream_bridge.latent_dim) != int(mlx_bridge.latent_dim):
-        raise ValueError(f"latent_dim mismatch: upstream={upstream_bridge.latent_dim}, mlx={mlx_bridge.latent_dim}")
-    if int(upstream_bridge.latent_dim) != int(args.expected_latent_dim):
+    if int(mlx_bridge.latent_dim) != int(args.expected_latent_dim):
         raise ValueError(
-            "Encode parity expected Semantic-DACVAE runtime-layout latents shaped "
-            f"(1,T,{int(args.expected_latent_dim)}), got latent_dim={upstream_bridge.latent_dim}"
+            "Encode check expected Semantic-DACVAE runtime-layout latents shaped "
+            f"(1,T,{int(args.expected_latent_dim)}), got latent_dim={mlx_bridge.latent_dim}"
         )
 
-    upstream_latents = upstream_bridge.encode_reference(
-        audio_path,
-        max_seconds=args.max_seconds,
-        normalize_db=normalize_db,
-        ensure_max=ensure_max,
-    )
     mlx_latents = mlx_bridge.encode_reference(
         audio_path,
         max_seconds=args.max_seconds,
         normalize_db=normalize_db,
         ensure_max=ensure_max,
     )
-    upstream_np = np.asarray(upstream_latents, dtype=np.float32)
     mlx_np = np.asarray(mlx_latents, dtype=np.float32)
-    upstream_path = output_dir / "upstream-encode-latents.npy"
     mlx_path = output_dir / "mlx-encode-latents.npy"
-    np.save(upstream_path, upstream_np)
     np.save(mlx_path, mlx_np)
-    tolerances = EncodeParityTolerances(
-        max_abs=float(args.max_abs_tolerance),
-        mean_abs=float(args.mean_abs_tolerance),
-        rmse=float(args.rmse_tolerance),
-        min_cosine=float(args.min_cosine),
-    )
-    comparison = compare_latents(
-        upstream_np,
-        mlx_np,
-        hop_length=int(upstream_bridge.hop_length),
-        tolerances=tolerances,
-    )
+    stats = _latent_stats(mlx_np)
+    checks = {
+        "rank": mlx_np.ndim == 3,
+        "batch": mlx_np.ndim == 3 and int(mlx_np.shape[0]) == 1,
+        "latent_dim": mlx_np.ndim == 3 and int(mlx_np.shape[2]) == int(args.expected_latent_dim),
+        "finite": bool(stats["finite"]),
+    }
+    comparison = {
+        "status": "passed" if all(checks.values()) else "failed",
+        "checks": checks,
+        "metrics": {"mlx": stats},
+        "length_contract": {
+            "hop_length": int(mlx_bridge.hop_length),
+            "latent_steps_mlx": int(mlx_np.shape[1]) if mlx_np.ndim == 3 else None,
+            "speaker_mask_true_count_mlx": int(mlx_np.shape[1]) if mlx_np.ndim == 3 else None,
+        },
+    }
     return {
         "schema_version": SCHEMA_VERSION,
         "source_issue": SOURCE_ISSUE,
@@ -270,9 +241,9 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "repo": args.codec_repo,
             "device": args.codec_device,
             "mlx_codec_path": str(Path(args.codec_path).expanduser()),
-            "sample_rate": int(upstream_bridge.sample_rate),
-            "hop_length": int(upstream_bridge.hop_length),
-            "latent_dim": int(upstream_bridge.latent_dim),
+            "sample_rate": int(mlx_bridge.sample_rate),
+            "hop_length": int(mlx_bridge.hop_length),
+            "latent_dim": int(mlx_bridge.latent_dim),
             "expected_latent_dim": int(args.expected_latent_dim),
             "metadata_checks": {
                 "sample_rate": True,
@@ -285,7 +256,6 @@ def encode_pair(args: argparse.Namespace) -> dict[str, Any]:
             "max_seconds": args.max_seconds,
         },
         "outputs": {
-            "upstream_latents_npy": str(upstream_path),
             "mlx_latents_npy": str(mlx_path),
         },
         "comparison": comparison,
@@ -318,7 +288,6 @@ def build_incomplete_report(args: argparse.Namespace, exc: Exception) -> dict[st
             "max_seconds": args.max_seconds,
         },
         "outputs": {
-            "upstream_latents_npy": None,
             "mlx_latents_npy": None,
         },
         "comparison": {

@@ -63,14 +63,14 @@ irodori-tts-generate \
 
 The published artifact was converted locally from `weights.pth` with `scripts/convert_dacvae_decoder.py`.
 
-Decode parity against the upstream PyTorch bridge passed:
+Decode artifact evidence from the previous upstream comparison passed:
 
 - max_abs: `3.0517578125e-05`
 - mean_abs: `1.4040205087439972e-07`
 - rmse: `2.0699590095318854e-06`
 - cosine: `0.9999999403953552`
 
-Encode parity against the upstream PyTorch bridge passed:
+Encode artifact evidence from the previous upstream comparison passed:
 
 - max_abs: `1.33514404296875e-05`
 - mean_abs: `2.287564711878076e-06`

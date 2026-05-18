@@ -19,11 +19,7 @@ class DACVAEDecodeParityDocTests(unittest.TestCase):
         for term in (
             "`(1, T, 32)`",
             "`--expected-latent-dim`",
-            "`max_abs <= 5e-3`",
-            "`mean_abs <= 1e-3`",
-            "`rmse <= 2e-3`",
-            "`cosine >= 0.999`",
-            "upstream-decode.wav",
+            "MLX-only artifact evidence check",
             "mlx-decode.wav",
             "dacvae-decode-parity.json",
         ):
