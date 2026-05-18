@@ -968,7 +968,6 @@ class MLXDACVAEBridge:
                     "decode_dacvae_materialization",
                     "decode_dacvae_host_transfer",
                     "decode_dacvae_postprocess",
-                    "decode_dacvae_cleanup",
                 )
             )
             self.last_decode_timings_ms = timings_ms
