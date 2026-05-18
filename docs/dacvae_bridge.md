@@ -52,14 +52,14 @@ python3 scripts/generate_wav.py \
 
 The user-facing preset surface is intentionally small:
 
-- `--preset ultra-fast` → experimental latency-first `--num-steps 6 --cfg-guidance-mode joint --cfg-scale-text 1 --cfg-scale-caption 0 --cfg-scale-speaker 0`
+- `--preset ultra-fast` → experimental latency/quality candidate `--num-steps 8`, with normal CFG defaults and a 2.5s short-prompt auto-duration cap when neither `--seconds` nor `--duration-scale` is explicitly supplied
 - `--preset fast` → `--num-steps 12`
 - `--preset balanced` → `--num-steps 24`
 - `--preset quality` → `--num-steps 40`
 
 These mappings come from the Apple Silicon local sweep in
 [docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md).
-`ultra-fast` is the exception: it is deliberately experimental and follows the latency-first candidate from the #217/#220 sweep contract rather than a quality-validated default.
+`ultra-fast` is the exception: it is deliberately experimental and follows the #220 listening update where 8-step short-prompt output with a 2.5s duration cap was preferred over the lower-latency 6-step sample. A follow-up CFG comparison found the reduced-CFG speedup small enough to keep the normal CFG defaults.
 If you need exact control, pass `--num-steps` or the CFG flags explicitly and they will override the preset.
 
 For repeatable local workflows, put common arguments in a JSON preset and only

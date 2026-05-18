@@ -43,7 +43,7 @@ v3 uses the runtime semantics implemented under issue #52:
 
 This matters for validation because a v3 smoke run should usually **omit `--seconds`** if you want to prove that the predictor path still works.
 
-For short prompts, a predicted duration that is too long can make RF-DiT fill the extra time by repeating the final phrase. The runtime does not clamp predicted duration automatically, but it prints an advisory warning when a short prompt resolves much longer than a conservative text-length estimate. If playback repeats the end of the prompt, rerun with an explicit shorter duration such as `--seconds 2.5`, or keep predicted duration and start by scaling it with `--duration-scale 0.75`.
+For short prompts, a predicted duration that is too long can make RF-DiT fill the extra time by repeating the final phrase. The normal runtime does not clamp predicted duration automatically; it prints an advisory warning when a short prompt resolves much longer than a conservative text-length estimate. If playback repeats the end of the prompt, rerun with an explicit shorter duration such as `--seconds 2.5`, or keep prediction but start by scaling it with `--duration-scale 0.75`. The experimental `--preset ultra-fast` is the one exception: when neither `--seconds` nor `--duration-scale` is explicitly supplied, it caps short-prompt automatic duration at 2.5s based on the #220 listening evaluation.
 
 ## Manual validation workflow
 

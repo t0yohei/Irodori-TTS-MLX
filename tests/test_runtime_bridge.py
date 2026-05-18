@@ -1583,6 +1583,90 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertIn("--seconds", messages)
 
     @require_mlx
+    def test_runtime_caps_auto_duration_for_short_prompt_when_requested(self):
+        cfg = replace(
+            tiny_config(),
+            use_duration_predictor=True,
+            duration_aux_dim=14,
+            duration_hidden_dim=8,
+            duration_layers=1,
+            duration_dropout=0.0,
+            duration_attention_heads=2,
+        )
+        bridge = FakeBridge()
+        model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(300.0)))
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+            model=model,
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            result = runtime.generate(
+                GenerationRequest(
+                    text="今日はいい天気ですね。",
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=None,
+                    duration_scale=1.0,
+                    max_auto_seconds=2.5,
+                    max_auto_estimate_seconds=3.0,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        messages = "\n".join(result.messages)
+        self.assertEqual(result.duration_mode, "predicted")
+        self.assertEqual(result.latent_steps, 125)
+        self.assertAlmostEqual(result.resolved_seconds, 2.5, places=3)
+        self.assertIn("auto duration cap active", messages)
+
+    @require_mlx
+    def test_runtime_does_not_cap_auto_duration_for_long_prompt(self):
+        cfg = replace(
+            tiny_config(),
+            use_duration_predictor=True,
+            duration_aux_dim=14,
+            duration_hidden_dim=8,
+            duration_layers=1,
+            duration_dropout=0.0,
+            duration_attention_heads=2,
+        )
+        bridge = FakeBridge()
+        model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(300.0)))
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=64),
+            model=model,
+            bridge=bridge,
+            tokenizer=FakeTokenizer(),
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            result = runtime.generate(
+                GenerationRequest(
+                    text="今日は音声生成のテストです。" * 8,
+                    output_wav=str(Path(td) / "out.wav"),
+                    no_reference=True,
+                    seconds=None,
+                    duration_scale=1.0,
+                    max_auto_seconds=2.5,
+                    max_auto_estimate_seconds=3.0,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        messages = "\n".join(result.messages)
+        self.assertEqual(result.duration_mode, "predicted")
+        self.assertEqual(result.latent_steps, 300)
+        self.assertAlmostEqual(result.resolved_seconds, 6.0, places=3)
+        self.assertNotIn("auto duration cap active", messages)
+
+    @require_mlx
     def test_runtime_estimates_fallback_duration_when_predictor_is_unavailable(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
         bridge = FakeBridge()

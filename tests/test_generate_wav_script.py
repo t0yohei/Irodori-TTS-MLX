@@ -173,6 +173,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             enable_watermark=False,
             seconds=0.1,
             duration_scale=1.0,
+            duration_scale_explicit=False,
             num_steps=1,
             cfg_scale_text=0.0,
             cfg_scale_caption=0.0,
@@ -660,11 +661,11 @@ class GenerateWavScriptTests(unittest.TestCase):
         )
 
         self.assertEqual(args.preset, "ultra-fast")
-        self.assertEqual(args.num_steps, 6)
-        self.assertEqual(args.cfg_guidance_mode, "joint")
-        self.assertEqual(args.cfg_scale_text, 1.0)
-        self.assertEqual(args.cfg_scale_caption, 0.0)
-        self.assertEqual(args.cfg_scale_speaker, 0.0)
+        self.assertEqual(args.num_steps, 8)
+        self.assertEqual(args.cfg_guidance_mode, "independent")
+        self.assertEqual(args.cfg_scale_text, 3.0)
+        self.assertEqual(args.cfg_scale_caption, 3.0)
+        self.assertEqual(args.cfg_scale_speaker, 5.0)
 
     def test_parse_args_manual_cfg_overrides_ultra_fast_preset(self):
         args = generate_wav.parse_args(
@@ -770,6 +771,7 @@ class GenerateWavScriptTests(unittest.TestCase):
 
     def test_build_generation_request_applies_ultra_fast_request_preset_defaults(self):
         args = self._args("default.wav")
+        args.seconds = None
         args.num_steps = 40
         args.cfg_guidance_mode = "independent"
         args.cfg_scale_text = 3.0
@@ -786,20 +788,38 @@ class GenerateWavScriptTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(request.num_steps, 6)
-        self.assertEqual(request.cfg_guidance_mode, "joint")
-        self.assertEqual(request.cfg_scale_text, 1.0)
-        self.assertEqual(request.cfg_scale_caption, 0.0)
-        self.assertEqual(request.cfg_scale_speaker, 0.0)
+        self.assertEqual(request.num_steps, 8)
+        self.assertEqual(request.cfg_guidance_mode, "independent")
+        self.assertEqual(request.cfg_scale_text, 3.0)
+        self.assertEqual(request.cfg_scale_caption, 3.0)
+        self.assertEqual(request.cfg_scale_speaker, 5.0)
+        self.assertEqual(request.max_auto_seconds, 2.5)
+        self.assertEqual(request.max_auto_estimate_seconds, 3.0)
 
-    def test_build_generation_request_restores_baseline_cfg_after_ultra_fast_preset(self):
+    def test_build_generation_request_does_not_cap_ultra_fast_with_duration_override(self):
+        args = self._args("default.wav")
+        args.num_steps = 40
+
+        request = generate_wav.build_generation_request(
+            args,
+            {
+                "text": "override",
+                "output": "override.wav",
+                "preset": "ultra-fast",
+                "duration_scale": 0.75,
+            },
+        )
+
+        self.assertIsNone(request.max_auto_seconds)
+
+    def test_build_generation_request_keeps_default_cfg_after_ultra_fast_preset(self):
         args = self._args("default.wav")
         args.preset = "ultra-fast"
-        args.num_steps = 6
-        args.cfg_guidance_mode = "joint"
-        args.cfg_scale_text = 1.0
-        args.cfg_scale_caption = 0.0
-        args.cfg_scale_speaker = 0.0
+        args.num_steps = 8
+        args.cfg_guidance_mode = "independent"
+        args.cfg_scale_text = 3.0
+        args.cfg_scale_caption = 3.0
+        args.cfg_scale_speaker = 5.0
 
         request = generate_wav.build_generation_request(
             args,
@@ -819,7 +839,7 @@ class GenerateWavScriptTests(unittest.TestCase):
     def test_build_generation_request_preserves_custom_cfg_for_standard_request_preset(self):
         args = self._args("default.wav")
         args.preset = "ultra-fast"
-        args.num_steps = 6
+        args.num_steps = 8
         args.cfg_guidance_mode = "reduced"
         args.cfg_scale_text = 2.0
         args.cfg_scale_caption = 4.0

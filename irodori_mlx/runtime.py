@@ -77,6 +77,8 @@ class GenerationRequest:
     caption: str | None = None
     seconds: float | None = None
     duration_scale: float = 1.0
+    max_auto_seconds: float | None = None
+    max_auto_estimate_seconds: float | None = None
     num_steps: int = 40
     cfg_scale_text: float = 3.0
     cfg_scale_caption: float = 3.0
@@ -1300,6 +1302,13 @@ class MLXDACVAERuntime:
             raise ValueError(f"seconds must be positive when provided, got {request.seconds!r}")
         if float(request.duration_scale) <= 0:
             raise ValueError(f"duration_scale must be positive, got {request.duration_scale!r}")
+        if request.max_auto_seconds is not None and float(request.max_auto_seconds) <= 0:
+            raise ValueError(f"max_auto_seconds must be positive when provided, got {request.max_auto_seconds!r}")
+        if request.max_auto_estimate_seconds is not None and float(request.max_auto_estimate_seconds) <= 0:
+            raise ValueError(
+                "max_auto_estimate_seconds must be positive when provided, "
+                f"got {request.max_auto_estimate_seconds!r}"
+            )
         if request.reference_wav is None and not request.no_reference and self.config.model_config.use_speaker_condition:
             raise ValueError("Specify reference_wav, or set no_reference=True for an unconditional speaker path.")
 
@@ -1386,8 +1395,30 @@ class MLXDACVAERuntime:
             )
             pred_frames = float(_as_numpy(mx.expm1(pred_log_frames).astype(mx.float32)).mean())
             scaled_frames = max(1.0, pred_frames * float(request.duration_scale))
+            max_auto_seconds = None if request.max_auto_seconds is None else float(request.max_auto_seconds)
+            max_auto_estimate_seconds = (
+                max_auto_seconds
+                if request.max_auto_estimate_seconds is None
+                else float(request.max_auto_estimate_seconds)
+            )
+            auto_duration_cap_active = False
+            if max_auto_seconds is not None:
+                baseline_seconds = estimate_fallback_duration_seconds(normalized_text)
+                if baseline_seconds <= max_auto_estimate_seconds:
+                    max_auto_frames = max(1.0, max_auto_seconds * float(self.bridge.sample_rate) / float(self.bridge.hop_length))
+                    if scaled_frames > max_auto_frames:
+                        messages.append(
+                            "auto duration cap active for short prompt: "
+                            f"predicted_frames={pred_frames:.1f}, scale={float(request.duration_scale):.3f}, "
+                            f"estimate={baseline_seconds:.3f}s, max_estimate={max_auto_estimate_seconds:.3f}s, "
+                            f"max_seconds={max_auto_seconds:.3f}"
+                        )
+                        scaled_frames = max_auto_frames
+                        auto_duration_cap_active = True
             latent_steps = max(1, int(round(scaled_frames)))
             target_samples = int(latent_steps * self.bridge.hop_length)
+            if auto_duration_cap_active and max_auto_seconds is not None:
+                target_samples = min(target_samples, max(1, int(max_auto_seconds * float(self.bridge.sample_rate))))
             resolved_seconds = float(target_samples) / float(self.bridge.sample_rate)
             timings_ms["predict_duration"] = (time.perf_counter() - started) * 1000.0
             messages.append(
