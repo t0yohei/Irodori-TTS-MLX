@@ -18,6 +18,7 @@ We now have both:
 - the local Apple Silicon `num_steps` preset sweep for v3 + VoiceDesign from [docs/benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md](benchmark-reports/2026-05-14-apple-silicon-num-steps-presets.md)
 - the real hosted/pre-converted weights loading measurement from [docs/benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md](benchmark-reports/2026-05-16-apple-silicon-hosted-weights.md)
 - the codec runtime mode comparison from [docs/benchmark-reports/2026-05-18-apple-silicon-codec-runtime-modes.md](benchmark-reports/2026-05-18-apple-silicon-codec-runtime-modes.md)
+- the persistent batch generation measurement from [docs/benchmark-reports/2026-05-18-apple-silicon-persistent-batch.md](benchmark-reports/2026-05-18-apple-silicon-persistent-batch.md)
 - persistent batch generation is now documented in [dacvae_bridge.md](dacvae_bridge.md); the old one-off persistent-batch report was removed because no current summary or test referenced it
 
 Current read:
@@ -41,6 +42,8 @@ For day-to-day local generation defaults, the later `num_steps` sweep now sugges
 The v0.2 hosted weights measurement shows that hosted loading is a setup/UX improvement rather than a generation-latency optimization: the first hosted run is dominated by the artifact download, while warm hosted repo, local hosted-layout directory, and direct local `.npz` fallback all produce similar `sample_rf` and `total_to_decode` timings.
 
 The v0.2 codec runtime mode measurement shows a similar split: MLX codec artifacts do not change RF sampling time, but they can reduce PyTorch dependency surface and peak RSS. In the measured v3 reference-audio run, full `mlx` encode/decode reduced warm max RSS from about 4.33 GiB to 3.08 GiB versus the PyTorch bridge and lowered codec encode/decode timings. Treat this as a deployment and memory-pressure improvement first; larger repeated runs are still needed before claiming a broad codec-speed win.
+
+The persistent batch measurement shows that simply reusing one runtime is not yet enough to claim a server/worker speed win. A five-request `mlx-decode` batch amortized setup modestly at the process level, but request-level `decode_dacvae` drifted upward after the first request. The next optimization should target per-request MLX codec cleanup or decode residency behavior inside the persistent process.
 
 ## Existing upstream baseline numbers
 
@@ -170,6 +173,8 @@ So the current best mitigation is a simpler one than the original architectural 
 Use `scripts/benchmark.py` to run a reproducible benchmark harness with repeated-run support, warmup labeling, and simple scaling sweeps.
 For environment setup, use the packaged benchmark flow in [docs/packaging.md](packaging.md): Python 3.11 through 3.14 are supported for packaging, while the benchmark examples continue to use Python 3.11 as the reference environment. Create a venv, install `-e ".[bench]"`, and make upstream `irodori_tts` importable from the same environment.
 
+Use scripts/benchmark_persistent_batch.py when the question is repeated generation through one initialized runtime. It wraps scripts/generate_wav.py --requests-json, records one process-level wall clock and max RSS, and summarizes first-request, warmup, measured steady-state, and throughput metrics. This is the right harness for estimating the benefit of a future persistent server or worker because model, tokenizer, hosted artifact, and codec setup are paid once for the whole batch instead of once per output.
+
 ### Self-test
 
 ```bash
@@ -177,6 +182,10 @@ python3 scripts/benchmark.py --self-test
 ```
 
 This validates timing parsing and report generation without any model dependencies.
+
+Persistent batch self-test:
+
+    python3 scripts/benchmark_persistent_batch.py --self-test
 
 ### Upstream PyTorch benchmark
 
@@ -249,6 +258,12 @@ python3 scripts/benchmark.py \
   --num-steps 24 \
   --case-label local-hosted-layout-voicedesign
 ```
+
+Persistent hosted batch example:
+
+    PYTHONPATH=/path/to/Irodori-TTS:$PYTHONPATH python3 scripts/benchmark_persistent_batch.py --mlx-python /path/to/Irodori-TTS-MLX/.venv/bin/python --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 --codec-runtime-mode mlx-decode --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 --text '今日はいい天気ですね。' --omit-seconds --num-steps 12 --warmup-requests 1 --requests 4 --case-label v3-mlx-decode-persistent-batch --output-dir benchmark-runs/persistent-batch-v3 --report docs/benchmark-latest-persistent-batch.md
+
+The persistent batch report includes process throughput, measured generation throughput, setup/load overhead for the whole process, and request-level total_to_decode, sample_rf, encode_dacvae, and decode_dacvae aggregates. The process wall/RSS values are intentionally not copied onto each request; they belong to the whole batch.
 
 ### Repeated runs and warm-cache tracking
 
