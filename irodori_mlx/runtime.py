@@ -907,15 +907,26 @@ class MLXDACVAEBridge:
             raise ValueError(f"MLX DACVAE decode currently supports batch size 1, got {latents.shape[0]}")
         if int(latents.shape[2]) != int(self.latent_dim):
             raise ValueError(f"Expected latent_dim={self.latent_dim}, got {latents.shape[2]}")
-        if self.semantic_decoder is not None:
-            waveform = self.semantic_decoder(latents.astype(mx.float32))
-            samples = _as_numpy(waveform[0, :, 0]).astype("float32", copy=False)
-        else:
-            frames = latents[0].astype(mx.float32) @ self.decode_basis + self.decode_bias
-            samples = _as_numpy(frames.reshape((-1,))).astype("float32", copy=False)
-        if max_samples is not None:
-            samples = samples[: int(max_samples)]
-        return save_wav_numpy(output_path, samples, self.sample_rate)
+        waveform = None
+        frames = None
+        samples = None
+        try:
+            if self.semantic_decoder is not None:
+                waveform = self.semantic_decoder(latents.astype(mx.float32))
+                mx.eval(waveform)
+                samples = _as_numpy(waveform[0, :, 0]).astype("float32", copy=False)
+            else:
+                frames = latents[0].astype(mx.float32) @ self.decode_basis + self.decode_bias
+                mx.eval(frames)
+                samples = _as_numpy(frames.reshape((-1,))).astype("float32", copy=False)
+            if max_samples is not None:
+                samples = samples[: int(max_samples)]
+            return save_wav_numpy(output_path, samples, self.sample_rate)
+        finally:
+            del waveform
+            del frames
+            del samples
+            release_mlx_runtime_memory()
 
 
 class MLXDACVAEDecodeOnlyBridge:

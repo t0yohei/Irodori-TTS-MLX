@@ -567,6 +567,34 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertNotIn("irodori_tts", imported_roots)
 
     @require_mlx
+    def test_mlx_dacvae_bridge_releases_decode_intermediates_after_writing_wav(self):
+        with tempfile.TemporaryDirectory() as td:
+            codec_path = Path(td) / "codec.npz"
+            output_path = Path(td) / "out.wav"
+            np.savez(
+                codec_path,
+                metadata_json=np.array(json.dumps({"sample_rate": 8000, "hop_length": 4, "latent_dim": 2})),
+                sample_rate=np.array(8000),
+                hop_length=np.array(4),
+                latent_dim=np.array(2),
+                decode_basis=np.array([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]], dtype=np.float32),
+                decode_bias=np.array([0.01, 0.02, 0.03, 0.04], dtype=np.float32),
+                encode_basis=np.array([[1.0, 0.0], [0.0, 1.0], [0.5, 0.0], [0.0, 0.5]], dtype=np.float32),
+                encode_bias=np.array([0.0, 0.0], dtype=np.float32),
+            )
+            bridge = MLXDACVAEBridge(
+                config=DACVAEBridgeConfig(runtime_mode="mlx-decode", codec_path=str(codec_path)),
+                require_encode=False,
+            )
+            cleanup_calls = []
+
+            with patch("irodori_mlx.runtime.release_mlx_runtime_memory", side_effect=lambda: cleanup_calls.append("cleanup")):
+                bridge.decode_to_wav(mx.ones((1, 2, 2), dtype=mx.float32), output_path, max_samples=5)
+
+            self.assertTrue(output_path.exists())
+            self.assertEqual(cleanup_calls, ["cleanup"])
+
+    @require_mlx
     def test_mlx_dacvae_bridge_loads_executable_semantic_decoder_artifact(self):
         from irodori_mlx.dacvae import (
             EXECUTABLE_DECODER_PREFIX,
