@@ -149,13 +149,7 @@ uv run python infer.py \
 
 ## 7. Report the result
 
-Copy `docs/baseline-report-template.md` into a dated report, for example:
-
-```bash
-cp docs/baseline-report-template.md baseline-runs/2026-05-11-apple-silicon-baseline.md
-```
-
-Fill the template with:
+Create a dated Markdown report under `docs/baseline-reports/` only when the result is safe to publish and still useful as a current reference. Include:
 
 - environment details from `baseline-runs/env.json`
 - upstream commit and checkpoint identifiers
@@ -166,7 +160,7 @@ Fill the template with:
 - generated output paths and whether artifacts are shared externally
 - known upstream or MPS limitations
 
-Commit only documentation or small text reports that are safe to publish. Keep generated WAV files and caches outside git.
+Commit only documentation or small text reports that are safe to publish. Keep generated WAV files and caches outside git. One-off local notes belong in ignored `baseline-runs/`, not in the public docs tree.
 
 ## Known limitations to watch for
 
