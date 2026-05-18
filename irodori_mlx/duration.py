@@ -149,6 +149,62 @@ def estimate_fallback_duration_seconds(
     return min(float(max_seconds), max(float(min_seconds), estimated))
 
 
+def estimate_voicedesign_duration_seconds(
+    text: str,
+    *,
+    caption: str | None = None,
+    min_seconds: float = 1.6,
+    max_seconds: float = 10.0,
+) -> float:
+    """Estimate VoiceDesign v2 duration from spoken text plus conservative caption hints.
+
+    Caption text describes style, not extra spoken content, so it must not be
+    counted as part of the transcript.  It can only nudge the text-derived
+    estimate when common speed/style hints imply slower or faster delivery.
+    """
+
+    estimated = estimate_fallback_duration_seconds(
+        text,
+        min_seconds=min_seconds,
+        max_seconds=max_seconds,
+    )
+    normalized_caption = str(caption or "").strip().lower()
+    if not normalized_caption:
+        return estimated
+
+    multiplier = 1.0
+    slow_hints = (
+        "ゆっくり",
+        "遅め",
+        "遅く",
+        "slow",
+        "slowly",
+        "calm",
+        "relaxed",
+        "落ち着",
+        "穏やか",
+        "やわらか",
+    )
+    fast_hints = (
+        "速め",
+        "速く",
+        "早口",
+        "テンポよく",
+        "元気",
+        "明る",
+        "fast",
+        "quick",
+        "quickly",
+        "energetic",
+    )
+    if any(hint in normalized_caption for hint in slow_hints):
+        multiplier *= 1.08
+    if any(hint in normalized_caption for hint in fast_hints):
+        multiplier *= 0.92
+
+    return min(float(max_seconds), max(float(min_seconds), estimated * multiplier))
+
+
 def build_duration_features(
     texts: Sequence[str] | Iterable[str],
     *,

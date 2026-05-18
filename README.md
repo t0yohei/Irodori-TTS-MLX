@@ -264,6 +264,8 @@ irodori-tts-generate \
 
 The adapter currently supports unquantized v2/base and VoiceDesign layouts. Quantized mlx-audio artifacts are rejected until quantized runtime support is designed.
 
+For VoiceDesign v2, omitting `--seconds` uses `duration_mode: "estimated"`: the runtime estimates duration primarily from `--text` and applies only small caption style-hint adjustments. Use `--seconds` for an exact duration or `--duration-scale` when a prompt clips or leaves too much tail.
+
 ## Main Commands
 
 ```bash
