@@ -1222,12 +1222,14 @@ class MLXDACVAERuntime:
                 messages.append("speaker reference disabled; using unconditional speaker mask")
             else:
                 assert request.reference_wav is not None
+                encode_started = time.perf_counter()
                 raw_ref = self.bridge.encode_reference(
                     request.reference_wav,
                     max_seconds=request.max_reference_seconds,
                     normalize_db=self.config.codec.normalize_db,
                     ensure_max=True,
                 )
+                timings_ms["encode_dacvae"] = (time.perf_counter() - encode_started) * 1000.0
                 ref_latent = patch_latents_drop_tail(raw_ref, int(self.config.model_config.latent_patch_size))
                 ref_mask = mx.ones((1, ref_latent.shape[1]), dtype=mx.bool_)
         timings_ms["prepare_reference_condition"] = (time.perf_counter() - started) * 1000.0

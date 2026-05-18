@@ -69,6 +69,10 @@ class BenchmarkScriptTests(unittest.TestCase):
             codec_repo="codec-repo",
             codec_device="cpu",
             codec_runtime_mode="persistent",
+            codec_path=None,
+            codec_artifact_dir=None,
+            codec_artifact_repo=None,
+            codec_artifact_revision=None,
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -269,6 +273,10 @@ class BenchmarkScriptTests(unittest.TestCase):
             codec_repo="codec-repo",
             codec_device="cpu",
             codec_runtime_mode="persistent",
+            codec_path=None,
+            codec_artifact_dir=None,
+            codec_artifact_repo=None,
+            codec_artifact_revision=None,
             model_config_json=None,
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
@@ -276,6 +284,66 @@ class BenchmarkScriptTests(unittest.TestCase):
             mlx_python="python3",
         )
         with self.assertRaisesRegex(benchmark.BenchmarkError, "choose only one MLX weights source"):
+            benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=2.0, num_steps=12)
+
+    def test_build_mlx_command_supports_hosted_codec_artifact_revision(self):
+        args = Namespace(
+            weights=None,
+            weights_dir=None,
+            weights_repo="owner/irodori-hosted",
+            weights_revision="weights123",
+            reference_wav=None,
+            text="hello",
+            caption=None,
+            seconds=5.0,
+            num_steps=40,
+            seed=123,
+            codec_repo="codec-repo",
+            codec_device="cpu",
+            codec_runtime_mode="mlx-decode",
+            codec_path=None,
+            codec_artifact_dir=None,
+            codec_artifact_repo="owner/codec-hosted",
+            codec_artifact_revision="codec123",
+            model_config_json=None,
+            text_tokenizer_repo=None,
+            caption_tokenizer_repo=None,
+            upstream_root=None,
+            mlx_python="python3",
+        )
+        argv, _env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=None, num_steps=12)
+        self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx-decode")
+        self.assertIn("--codec-artifact-repo", argv)
+        self.assertEqual(argv[argv.index("--codec-artifact-repo") + 1], "owner/codec-hosted")
+        self.assertIn("--codec-artifact-revision", argv)
+        self.assertEqual(argv[argv.index("--codec-artifact-revision") + 1], "codec123")
+
+    def test_build_mlx_command_rejects_codec_revision_without_repo(self):
+        args = Namespace(
+            weights="weights.npz",
+            weights_dir=None,
+            weights_repo=None,
+            weights_revision=None,
+            reference_wav=None,
+            text="hello",
+            caption=None,
+            seconds=5.0,
+            num_steps=40,
+            seed=123,
+            codec_repo="codec-repo",
+            codec_device="cpu",
+            codec_runtime_mode="mlx-decode",
+            codec_path=None,
+            codec_artifact_dir=None,
+            codec_artifact_repo=None,
+            codec_artifact_revision="codec123",
+            model_config_json=None,
+            text_tokenizer_repo=None,
+            caption_tokenizer_repo=None,
+            upstream_root=None,
+            mlx_python="python3",
+        )
+        with self.assertRaisesRegex(benchmark.BenchmarkError, "--codec-artifact-revision requires --codec-artifact-repo"):
             benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=2.0, num_steps=12)
 
     def test_resolve_cache_state_auto_separates_cold_and_warm(self):
@@ -371,14 +439,16 @@ class BenchmarkScriptTests(unittest.TestCase):
                 stdout_log="/tmp/out.stdout.log",
                 stderr_log="/tmp/out.stderr.log",
                 status="passed",
-                timings_ms={"sample_rf": 1200.0, "decode_dacvae": 340.0, "total_to_decode": 1700.0},
+                timings_ms={"sample_rf": 1200.0, "encode_dacvae": 240.0, "decode_dacvae": 340.0, "total_to_decode": 1700.0},
                 wall_seconds=3.25,
                 max_rss_bytes=1024,
             )
         ]
         report = benchmark.build_report(results, text="hello", seed=1, repeat=1, warmup_runs=0, cache_state_mode="auto")
         self.assertIn("Aggregate results", report)
-        self.assertIn("| mlx-case | measured | warm | 1 | 1200.0 ms | 1200.0 ms / 1200.0 ms |", report)
+        self.assertIn("setup/load median", report)
+        self.assertIn("codec encode median", report)
+        self.assertIn("| mlx-case | measured | warm | 1 | 1550.0 ms | 1200.0 ms | 1200.0 ms / 1200.0 ms | 240.0 ms | 340.0 ms | 1700.0 ms |", report)
         self.assertIn("Raw runs:", report)
         self.assertIn("python scripts/generate_wav.py ...", report)
 
@@ -455,6 +525,10 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights_repo=None,
             weights_revision=None,
             codec_runtime_mode="persistent",
+            codec_path=None,
+            codec_artifact_dir=None,
+            codec_artifact_repo=None,
+            codec_artifact_revision=None,
         )
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "summary.json"
@@ -466,6 +540,7 @@ class BenchmarkScriptTests(unittest.TestCase):
         self.assertEqual(payload["invocation"]["caption"], "soft voice")
         self.assertTrue(payload["invocation"]["omit_seconds"])
         self.assertEqual(payload["invocation"]["codec_runtime_mode"], "persistent")
+        self.assertIsNone(payload["invocation"]["codec_artifact_repo"])
         self.assertEqual(payload["results"][0]["case_name"], "mlx-case")
         self.assertEqual(payload["aggregates"][0]["timings_ms"]["sample_rf"]["median"], 1000.0)
 
