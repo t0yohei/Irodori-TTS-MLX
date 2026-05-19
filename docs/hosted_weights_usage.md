@@ -160,6 +160,33 @@ python scripts/generate_wav.py \
 
 For v3, verify that `$WORK/model_config.json` includes `"use_duration_predictor": true`, then use `--no-reference` and omit `--seconds` when you want predicted duration. For VoiceDesign, verify that it includes `"use_caption_condition": true`, add the `--caption` argument described in [caption_condition_support.md](caption_condition_support.md), and omit `--seconds` to use the bounded text-length fallback unless you need a manual duration override.
 
+For repeated generation with the same reference speaker, cache DACVAE encoder
+latents into a small MLX `.npz` artifact and pass `--ref-latent` instead of
+`--reference-wav`:
+
+```bash
+python - <<'PY'
+import numpy as np
+
+raw_reference_latent = np.load("/tmp/upstream-reference-latent.npy")
+np.savez("/tmp/reference-latent.npz", reference_latent=raw_reference_latent.astype("float32"))
+PY
+
+python scripts/generate_wav.py \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
+  --text "こんにちは。今日は良い天気です。" \
+  --ref-latent /tmp/reference-latent.npz \
+  --output "$WORK/irodori-local-cached-reference.wav" \
+  --metadata-json "$WORK/irodori-local-cached-reference.json" \
+  --preset balanced
+```
+
+The reference latent `.npz` must contain `reference_latent`, `ref_latent`, or
+`latents` with shape `(T, latent_dim)` or `(1, T, latent_dim)`. The tensor is
+the raw DACVAE encoder latent before RF-DiT patching; arbitrary upstream `.pt`
+latent files are outside the runtime contract.
+
 ## Provenance and licensing checklist
 
 Every hosted converted weights README/model card should make these points clear:

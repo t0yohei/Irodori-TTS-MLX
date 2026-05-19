@@ -62,6 +62,7 @@ CONFIG_KEYS = {
     "text",
     "preset",
     "reference_wav",
+    "ref_latent",
     "ref_embed",
     "no_reference",
     "caption",
@@ -104,6 +105,7 @@ REQUEST_KEYS = {
     "text",
     "preset",
     "reference_wav",
+    "ref_latent",
     "ref_embed",
     "no_reference",
     "caption",
@@ -127,6 +129,7 @@ OPTIONAL_STRING_KEYS = {
     "weights_repo",
     "weights_revision",
     "reference_wav",
+    "ref_latent",
     "ref_embed",
     "caption",
     "model_config_json",
@@ -419,6 +422,15 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     )
     parser.add_argument("--reference-wav", default=config.get("reference_wav"), help="Speaker/reference audio path for DACVAE encoding.")
     parser.add_argument(
+        "--ref-latent",
+        dest="ref_latent",
+        default=config.get("ref_latent"),
+        help=(
+            "MLX .npz cached reference latent artifact. The artifact stores DACVAE encoder latents "
+            "and bypasses reference WAV encoding."
+        ),
+    )
+    parser.add_argument(
         "--ref-embed",
         dest="ref_embed",
         default=config.get("ref_embed"),
@@ -615,13 +627,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         name
         for name, value in (
             ("--reference-wav", args.reference_wav),
+            ("--ref-latent", args.ref_latent),
             ("--ref-embed", args.ref_embed),
             ("--no-reference", args.no_reference),
         )
         if bool(value)
     ]
     if len(selected_reference_inputs) > 1:
-        parser.error("choose only one of --reference-wav, --ref-embed, or --no-reference")
+        parser.error("choose only one of --reference-wav, --ref-latent, --ref-embed, or --no-reference")
     selected_weights = [value for value in (args.weights, args.weights_dir, args.weights_repo) if value is not None and str(value).strip()]
     if not selected_weights:
         parser.error("choose one of --weights, --weights-dir, or --weights-repo")
@@ -980,19 +993,21 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
     if output is None or not str(output).strip():
         raise ValueError("generation request requires a non-empty output field")
     reference_wav = _merged_request_value(args, overrides, "reference_wav")
+    ref_latent = _merged_request_value(args, overrides, "ref_latent")
     ref_embed = _merged_request_value(args, overrides, "ref_embed")
     no_reference = bool(_merged_request_value(args, overrides, "no_reference"))
     selected_reference_inputs = [
         name
         for name, value in (
             ("reference_wav", reference_wav),
+            ("ref_latent", ref_latent),
             ("ref_embed", ref_embed),
             ("no_reference", no_reference),
         )
         if bool(value)
     ]
     if len(selected_reference_inputs) > 1:
-        raise ValueError("generation request can set only one of reference_wav, ref_embed, or no_reference")
+        raise ValueError("generation request can set only one of reference_wav, ref_latent, ref_embed, or no_reference")
     preset = _merged_request_value(args, overrides, "preset")
     preset_defaults = PRESET_DEFAULTS.get(preset, {}) if preset else {}
     num_steps = int(_merged_request_preset_value(args, overrides, preset_defaults, preset, "num_steps"))
@@ -1021,6 +1036,7 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         text=str(text),
         output_wav=str(output),
         reference_wav=reference_wav,
+        ref_latent=ref_latent,
         ref_embed=ref_embed,
         no_reference=no_reference,
         caption=_merged_request_value(args, overrides, "caption"),
@@ -1052,6 +1068,7 @@ def validate_checkpoint_family_request(
     family_label = model_config.checkpoint_family_label
     capabilities = ", ".join(model_config.checkpoint_capabilities)
     reference_wav = _request_value(args, overrides, "reference_wav")
+    ref_latent = _request_value(args, overrides, "ref_latent")
     ref_embed = _request_value(args, overrides, "ref_embed")
     no_reference = bool(_request_value(args, overrides, "no_reference"))
     caption = _request_value(args, overrides, "caption")
@@ -1060,6 +1077,7 @@ def validate_checkpoint_family_request(
         name
         for name, value in (
             ("reference_wav", reference_wav),
+            ("ref_latent", ref_latent),
             ("ref_embed", ref_embed),
             ("no_reference", no_reference),
         )
@@ -1067,7 +1085,7 @@ def validate_checkpoint_family_request(
     ]
     if len(selected_reference_inputs) > 1:
         raise SystemExit(
-            f"error: generation request #{index}: choose only one of --reference-wav, --ref-embed, or --no-reference"
+            f"error: generation request #{index}: choose only one of --reference-wav, --ref-latent, --ref-embed, or --no-reference"
         )
 
     if caption is not None and str(caption).strip() and not model_config.use_caption_condition:
@@ -1086,13 +1104,18 @@ def validate_checkpoint_family_request(
                 f"error: generation request #{index}: {family_label} is caption/no-reference only; "
                 "remove --ref-embed and provide --caption"
             )
+        if ref_latent:
+            raise SystemExit(
+                f"error: generation request #{index}: {family_label} is caption/no-reference only; "
+                "remove --ref-latent and provide --caption"
+            )
         if caption is None or not str(caption).strip():
             raise SystemExit(
                 f"error: generation request #{index}: {family_label} requires --caption because speaker reference audio is not supported"
             )
-    elif model_config.use_speaker_condition and not no_reference and not reference_wav and not ref_embed:
+    elif model_config.use_speaker_condition and not no_reference and not reference_wav and not ref_latent and not ref_embed:
         raise SystemExit(
-            f"error: generation request #{index}: {family_label} requires --reference-wav or --ref-embed unless --no-reference is true "
+            f"error: generation request #{index}: {family_label} requires --reference-wav, --ref-latent, or --ref-embed unless --no-reference is true "
             f"(capabilities: {capabilities})"
         )
 
@@ -1141,13 +1164,14 @@ def main() -> int:
         request_overrides = [{}]
     for index, item in enumerate(request_overrides, start=1):
         request_reference = item.get("reference_wav", args.reference_wav)
+        request_ref_latent = item.get("ref_latent", args.ref_latent)
         request_ref_embed = item.get("ref_embed", args.ref_embed)
         request_no_reference = bool(item.get("no_reference", args.no_reference))
         request_caption = item.get("caption", args.caption)
         if layout_runtime is not None:
-            if layout_runtime.get("requires_reference_audio") and not (request_reference or request_ref_embed):
+            if layout_runtime.get("requires_reference_audio") and not (request_reference or request_ref_latent or request_ref_embed):
                 raise SystemExit(
-                    f"error: generation request #{index}: selected weights layout requires reference_wav or ref_embed"
+                    f"error: generation request #{index}: selected weights layout requires reference_wav, ref_latent, or ref_embed"
                 )
             if not layout_runtime.get("supports_no_reference", False) and request_no_reference:
                 raise SystemExit(

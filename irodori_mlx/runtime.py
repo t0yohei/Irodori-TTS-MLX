@@ -70,6 +70,7 @@ class GenerationRequest:
     text: str
     output_wav: str
     reference_wav: str | None = None
+    ref_latent: str | None = None
     no_reference: bool = False
     caption: str | None = None
     seconds: float | None = None
@@ -189,6 +190,12 @@ SPEAKER_EMBED_TENSOR_KEYS = (
     "speaker",
 )
 
+REFERENCE_LATENT_TENSOR_KEYS = (
+    "reference_latent",
+    "ref_latent",
+    "latents",
+)
+
 
 def _select_speaker_embedding_tensor(tensors: dict[str, object], path: Path) -> tuple[str, object]:
     for key in SPEAKER_EMBED_TENSOR_KEYS:
@@ -259,6 +266,66 @@ def load_speaker_embedding_safetensors(path: str | Path, *, speaker_dim: int) ->
         "shape": [int(dim) for dim in arr.shape],
     }
     return speaker_state, speaker_mask, metadata
+
+
+def _select_reference_latent_tensor(tensors: dict[str, object], path: Path) -> tuple[str, object]:
+    for key in REFERENCE_LATENT_TENSOR_KEYS:
+        if key in tensors:
+            return key, tensors[key]
+    allowed = ", ".join(REFERENCE_LATENT_TENSOR_KEYS)
+    present = ", ".join(sorted(tensors)) or "<none>"
+    raise ValueError(
+        f"Reference latent artifact {path} must contain one of: {allowed}. "
+        f"Found: {present}"
+    )
+
+
+def load_reference_latent_npz(path: str | Path, *, latent_dim: int) -> tuple[mx.array, mx.array, dict[str, object]]:
+    """Load an MLX cached reference latent artifact.
+
+    The public artifact boundary is a NumPy .npz file containing DACVAE encoder
+    latents before RF-DiT patching. Accepted tensor keys are intentionally small
+    and explicit so the runtime does not grow arbitrary upstream .pt compatibility.
+    """
+
+    latent_path = Path(path).expanduser()
+    try:
+        import numpy as np
+    except ImportError as exc:  # pragma: no cover - numpy is a base dependency.
+        raise RuntimeError("numpy is required to load reference latent artifacts.") from exc
+    try:
+        with np.load(latent_path, allow_pickle=False) as archive:
+            tensors = {name: archive[name] for name in archive.files}
+    except Exception as exc:
+        raise ValueError(f"Could not load reference latent .npz file: {latent_path}: {exc}") from exc
+    if not tensors:
+        raise ValueError(f"Reference latent .npz file has no arrays: {latent_path}")
+
+    tensor_key, value = _select_reference_latent_tensor(tensors, latent_path)
+    arr = np.asarray(value, dtype=np.float32)
+    if arr.ndim == 2:
+        arr = arr[None, :, :]
+    elif arr.ndim == 3:
+        if int(arr.shape[0]) != 1:
+            raise ValueError(
+                f"Reference latent batch dimension must be 1 for single-request generation, got shape={arr.shape}"
+            )
+    else:
+        raise ValueError(f"Reference latent tensor must have shape (T,D) or (1,T,D), got shape={arr.shape}")
+    if int(arr.shape[1]) <= 0:
+        raise ValueError(f"Reference latent sequence length must be positive, got shape={arr.shape}")
+    if int(arr.shape[-1]) != int(latent_dim):
+        raise ValueError(f"Reference latent last dimension must match latent_dim={latent_dim}, got shape={arr.shape}")
+
+    ref_latent = mx.array(arr, dtype=mx.float32)
+    ref_mask = mx.ones((1, int(arr.shape[1])), dtype=mx.bool_)
+    mx.eval(ref_latent, ref_mask)
+    metadata: dict[str, object] = {
+        "path": str(latent_path),
+        "tensor_key": tensor_key,
+        "shape": [int(dim) for dim in arr.shape],
+    }
+    return ref_latent, ref_mask, metadata
 
 
 def load_mlx_model(config: ModelConfig, weights_path: str | Path) -> TextToLatentRFDiT:
@@ -966,18 +1033,23 @@ class MLXDACVAERuntime:
                 "max_auto_estimate_seconds must be positive when provided, "
                 f"got {request.max_auto_estimate_seconds!r}"
             )
-        if request.ref_embed and (request.reference_wav is not None or request.no_reference):
-            raise ValueError("Specify only one of ref_embed, reference_wav, or no_reference.")
+        if request.ref_embed and (request.reference_wav is not None or request.ref_latent is not None or request.no_reference):
+            raise ValueError("Specify only one of ref_embed, ref_latent, reference_wav, or no_reference.")
         if request.ref_embed and not self.config.model_config.use_speaker_condition:
             raise ValueError("ref_embed requires a speaker-conditioned checkpoint.")
+        if request.ref_latent and not self.config.model_config.use_speaker_condition:
+            raise ValueError("ref_latent requires a speaker-conditioned checkpoint.")
+        if request.ref_latent and (request.reference_wav is not None or request.no_reference):
+            raise ValueError("Specify only one of ref_latent, reference_wav, or no_reference.")
         if (
             request.reference_wav is None
+            and request.ref_latent is None
             and request.ref_embed is None
             and not request.no_reference
             and self.config.model_config.use_speaker_condition
         ):
             raise ValueError(
-                "Specify reference_wav, ref_embed, or set no_reference=True for an unconditional speaker path."
+                "Specify reference_wav, ref_latent, ref_embed, or set no_reference=True for an unconditional speaker path."
             )
 
         normalized_text = normalize_text(request.text).strip()
@@ -1003,6 +1075,7 @@ class MLXDACVAERuntime:
         ref_latent = ref_mask = None
         speaker_state = speaker_mask = None
         speaker_embed_metadata: dict[str, object] | None = None
+        reference_latent_metadata: dict[str, object] | None = None
         speaker_condition_source = "none"
         started = time.perf_counter()
         if self.config.model_config.use_speaker_condition:
@@ -1032,6 +1105,20 @@ class MLXDACVAERuntime:
                 messages.append(
                     "speaker embedding loaded: "
                     f"tensor={speaker_embed_metadata['tensor_key']} shape={speaker_embed_metadata['shape']}"
+                )
+            elif request.ref_latent is not None:
+                latent_started = time.perf_counter()
+                raw_ref, ref_mask, reference_latent_metadata = load_reference_latent_npz(
+                    request.ref_latent,
+                    latent_dim=int(self.config.model_config.latent_dim),
+                )
+                timings_ms["load_reference_latent"] = (time.perf_counter() - latent_started) * 1000.0
+                ref_latent = patch_latents_drop_tail(raw_ref, int(self.config.model_config.latent_patch_size))
+                ref_mask = mx.ones((1, ref_latent.shape[1]), dtype=mx.bool_)
+                speaker_condition_source = "reference_latent"
+                messages.append(
+                    "reference latent loaded: "
+                    f"tensor={reference_latent_metadata['tensor_key']} shape={reference_latent_metadata['shape']}"
                 )
             else:
                 assert request.reference_wav is not None
@@ -1197,7 +1284,10 @@ class MLXDACVAERuntime:
         codec_boundaries = self.describe_boundaries()["codec"]
         codec_encode_backend = (
             "not-required"
-            if request.no_reference or request.ref_embed is not None or not self.config.model_config.use_speaker_condition
+            if request.no_reference
+            or request.ref_embed is not None
+            or request.ref_latent is not None
+            or not self.config.model_config.use_speaker_condition
             else str(codec_boundaries["encode_backend"])
         )
         return GenerationResult(
