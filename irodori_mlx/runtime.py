@@ -83,6 +83,8 @@ class GenerationRequest:
     cfg_guidance_mode: str = "independent"
     cfg_min_t: float = 0.5
     cfg_max_t: float = 1.0
+    t_schedule_mode: str = "linear"
+    sway_coeff: float = -1.0
     seed: int = 0
     max_reference_seconds: float | None = 30.0
     use_context_kv_cache: bool = True
@@ -104,6 +106,8 @@ class GenerationResult:
     codec_backend: str = "mlx"
     codec_encode_backend: str = "mlx"
     codec_decode_backend: str = "mlx"
+    t_schedule_mode: str = "linear"
+    sway_coeff: float = -1.0
     requested_seconds: float | None = None
     resolved_seconds: float | None = None
     timings_ms: dict[str, float] | None = None
@@ -1177,6 +1181,8 @@ class MLXDACVAERuntime:
             cfg_guidance_mode=request.cfg_guidance_mode,
             cfg_min_t=float(request.cfg_min_t),
             cfg_max_t=float(request.cfg_max_t),
+            t_schedule_mode=request.t_schedule_mode,
+            sway_coeff=float(request.sway_coeff),
             seed=int(request.seed),
             use_context_kv_cache=bool(request.use_context_kv_cache),
         )
@@ -1218,6 +1224,8 @@ class MLXDACVAERuntime:
             codec_backend=str(codec_boundaries["decode_backend"]),
             codec_encode_backend=codec_encode_backend,
             codec_decode_backend=str(codec_boundaries["decode_backend"]),
+            t_schedule_mode=request.t_schedule_mode,
+            sway_coeff=float(request.sway_coeff),
         )
 
     def describe_boundaries(self) -> dict[str, object]:
@@ -1264,6 +1272,8 @@ def iter_messages(result: GenerationResult) -> Iterable[str]:
     yield f"checkpoint_family: {result.checkpoint_family}"
     yield "checkpoint_capabilities: " + ", ".join(result.checkpoint_capabilities)
     yield f"duration_mode: {result.duration_mode}"
+    yield f"t_schedule_mode: {result.t_schedule_mode}"
+    yield f"sway_coeff: {result.sway_coeff}"
     if getattr(result, "codec_backend", None):
         yield f"codec_backend: {result.codec_backend}"
     if getattr(result, "codec_encode_backend", None):

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -88,6 +89,8 @@ CONFIG_KEYS = {
     "cfg_guidance_mode",
     "cfg_min_t",
     "cfg_max_t",
+    "t_schedule_mode",
+    "sway_coeff",
     "seed",
     "max_reference_seconds",
     "no_context_kv_cache",
@@ -116,6 +119,8 @@ REQUEST_KEYS = {
     "cfg_guidance_mode",
     "cfg_min_t",
     "cfg_max_t",
+    "t_schedule_mode",
+    "sway_coeff",
     "seed",
     "max_reference_seconds",
     "no_context_kv_cache",
@@ -159,6 +164,7 @@ FLOAT_KEYS = {
     "cfg_scale_speaker",
     "cfg_min_t",
     "cfg_max_t",
+    "sway_coeff",
     "max_reference_seconds",
 }
 NULLABLE_FLOAT_KEYS = {"seconds"}
@@ -166,6 +172,7 @@ CHOICE_KEYS = {
     "preset": {"ultra-fast", "fast", "balanced", "quality"},
     "codec_runtime_mode": {"mlx"},
     "cfg_guidance_mode": {"independent", "joint", "reduced"},
+    "t_schedule_mode": {"linear", "sway"},
 }
 
 PRESET_DEFAULTS = {
@@ -513,6 +520,8 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument("--cfg-guidance-mode", default=_default(config, "cfg_guidance_mode", "independent"), choices=("independent", "joint", "reduced"), help="Guidance mixing strategy.")
     parser.add_argument("--cfg-min-t", type=float, default=float(_default(config, "cfg_min_t", 0.5)), help="Lower timestep bound for CFG application.")
     parser.add_argument("--cfg-max-t", type=float, default=float(_default(config, "cfg_max_t", 1.0)), help="Upper timestep bound for CFG application.")
+    parser.add_argument("--t-schedule-mode", default=_default(config, "t_schedule_mode", "linear"), choices=("linear", "sway"), help="RF timestep schedule. Use sway for upstream-validated low-step recipes.")
+    parser.add_argument("--sway-coeff", type=float, default=float(_default(config, "sway_coeff", -1.0)), help="Sway Sampling coefficient used when --t-schedule-mode=sway.")
     parser.add_argument("--seed", type=int, default=int(_default(config, "seed", 0)), help="Random seed for latent sampling.")
     parser.add_argument("--max-reference-seconds", type=float, default=float(_default(config, "max_reference_seconds", 30.0)), help="Trim reference audio to this many seconds before DACVAE encode.")
     _add_configurable_bool(
@@ -652,6 +661,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--duration-scale must be > 0")
     if args.num_steps <= 0:
         parser.error("--num-steps must be > 0")
+    if not math.isfinite(float(args.sway_coeff)):
+        parser.error("--sway-coeff must be finite")
     if args.text_max_length <= 0:
         parser.error("--text-max-length must be > 0")
     if args.caption_max_length is not None and int(args.caption_max_length) <= 0:
@@ -907,6 +918,8 @@ def _result_to_dict(result: Any) -> dict[str, Any]:
         "codec_backend": getattr(result, "codec_backend", None),
         "codec_encode_backend": getattr(result, "codec_encode_backend", None),
         "codec_decode_backend": getattr(result, "codec_decode_backend", None),
+        "t_schedule_mode": getattr(result, "t_schedule_mode", None),
+        "sway_coeff": getattr(result, "sway_coeff", None),
         "requested_seconds": getattr(result, "requested_seconds", None),
         "resolved_seconds": getattr(result, "resolved_seconds", None),
         "timings_ms": result.timings_ms,
@@ -1000,6 +1013,8 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
     cfg_scale_text = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_text")
     cfg_scale_caption = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_caption")
     cfg_scale_speaker = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_speaker")
+    t_schedule_mode = _merged_request_value(args, overrides, "t_schedule_mode")
+    sway_coeff = float(_merged_request_value(args, overrides, "sway_coeff"))
     seconds = _merged_request_value(args, overrides, "seconds")
     duration_scale = float(_merged_request_value(args, overrides, "duration_scale"))
     duration_scale_explicit = bool(getattr(args, "duration_scale_explicit", False)) or "duration_scale" in overrides
@@ -1015,6 +1030,11 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         raise ValueError("duration_scale must be > 0")
     if num_steps <= 0:
         raise ValueError("num_steps must be > 0")
+    if t_schedule_mode not in CHOICE_KEYS["t_schedule_mode"]:
+        allowed = ", ".join(sorted(CHOICE_KEYS["t_schedule_mode"]))
+        raise ValueError(f"t_schedule_mode must be one of: {allowed}")
+    if not math.isfinite(sway_coeff):
+        raise ValueError("sway_coeff must be finite")
     if max_reference_seconds is not None and float(max_reference_seconds) <= 0:
         raise ValueError("max_reference_seconds must be > 0 when provided")
     return GenerationRequest(
@@ -1035,6 +1055,8 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         cfg_guidance_mode=cfg_guidance_mode,
         cfg_min_t=float(_merged_request_value(args, overrides, "cfg_min_t")),
         cfg_max_t=float(_merged_request_value(args, overrides, "cfg_max_t")),
+        t_schedule_mode=t_schedule_mode,
+        sway_coeff=sway_coeff,
         seed=int(_merged_request_value(args, overrides, "seed")),
         max_reference_seconds=max_reference_seconds,
         use_context_kv_cache=not bool(_merged_request_value(args, overrides, "no_context_kv_cache")),
