@@ -26,6 +26,7 @@ try:
         describe_codec_capabilities,
         inspect_mlx_codec_artifact,
         load_speaker_embedding_safetensors,
+        load_reference_latent_npz,
         load_mlx_model,
         load_model_config_json,
     )
@@ -1019,6 +1020,25 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(metadata["tensor_key"], "speaker_state")
 
     @require_mlx
+    def test_load_reference_latent_npz_accepts_unbatched_latents(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "reference-latent.npz"
+            np.savez(path, reference_latent=np.ones((3, 4), dtype=np.float32))
+            ref_latent, ref_mask, metadata = load_reference_latent_npz(path, latent_dim=4)
+
+        self.assertEqual(tuple(ref_latent.shape), (1, 3, 4))
+        np.testing.assert_array_equal(np.array(ref_mask), np.array([[True, True, True]]))
+        self.assertEqual(metadata["tensor_key"], "reference_latent")
+
+    @require_mlx
+    def test_load_reference_latent_npz_rejects_wrong_latent_dim(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "reference-latent.npz"
+            np.savez(path, reference_latent=np.ones((1, 3, 5), dtype=np.float32))
+            with self.assertRaisesRegex(ValueError, "latent_dim=4"):
+                load_reference_latent_npz(path, latent_dim=4)
+
+    @require_mlx
     def test_runtime_uses_ref_embed_without_dacvae_encode(self):
         cfg = tiny_config()
         bridge = FakeBridge()
@@ -1061,6 +1081,79 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(result.codec_encode_backend, "not-required")
 
     @require_mlx
+    def test_runtime_uses_ref_latent_without_dacvae_encode(self):
+        cfg = tiny_config()
+        bridge = FakeBridge()
+        captured = {}
+
+        def fake_sample(_model, **kwargs):
+            captured.update(kwargs)
+            return mx.zeros((1, int(kwargs["sequence_length"]), cfg.patched_latent_dim), dtype=mx.float32)
+
+        with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
+            path = Path(td) / "reference-latent.npz"
+            np.savez(path, reference_latent=np.ones((1, 5, cfg.latent_dim), dtype=np.float32))
+            runtime = MLXDACVAERuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+                model=FakeModel(cfg),
+                bridge=bridge,
+                tokenizer=FakeTokenizer(),
+            )
+            result = runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    ref_latent=str(path),
+                    seconds=0.02,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(bridge.encoded, [])
+        self.assertEqual(tuple(captured["ref_latent"].shape), (1, 2, cfg.patched_latent_dim))
+        np.testing.assert_array_equal(np.array(captured["ref_mask"]), np.array([[True, True]]))
+        self.assertEqual(result.speaker_condition_source, "reference_latent")
+        self.assertEqual(result.codec_encode_backend, "not-required")
+
+    @require_mlx
+    def test_runtime_treats_empty_ref_latent_as_absent(self):
+        cfg = tiny_config()
+        bridge = FakeBridge()
+        captured = {}
+
+        def fake_sample(_model, **kwargs):
+            captured.update(kwargs)
+            return mx.zeros((1, int(kwargs["sequence_length"]), cfg.patched_latent_dim), dtype=mx.float32)
+
+        with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
+            ref_path = Path(td) / "ref.wav"
+            runtime = MLXDACVAERuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+                model=FakeModel(cfg),
+                bridge=bridge,
+                tokenizer=FakeTokenizer(),
+            )
+            result = runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    reference_wav=str(ref_path),
+                    ref_latent="",
+                    seconds=0.02,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(bridge.encoded, [(str(ref_path), 30.0, -16.0, True)])
+        self.assertEqual(tuple(captured["ref_latent"].shape), (1, 3, cfg.patched_latent_dim))
+        self.assertEqual(result.speaker_condition_source, "reference_wav")
+        self.assertEqual(result.codec_encode_backend, "mlx")
+
+    @require_mlx
     def test_runtime_rejects_ref_embed_for_caption_checkpoint(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
         runtime = MLXDACVAERuntime(
@@ -1076,6 +1169,28 @@ class RuntimeBridgeTests(unittest.TestCase):
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
                     ref_embed=str(Path(td) / "voice.speaker.safetensors"),
+                    caption="calm",
+                    seconds=0.02,
+                    num_steps=1,
+                )
+            )
+
+    @require_mlx
+    def test_runtime_rejects_ref_latent_for_caption_checkpoint(self):
+        cfg = replace(tiny_config(), use_caption_condition=True)
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            model=FakeModel(cfg),
+            bridge=FakeBridge(),
+            tokenizer=FakeTokenizer(),
+            caption_tokenizer=FakeTokenizer(),
+        )
+        with tempfile.TemporaryDirectory() as td, self.assertRaisesRegex(ValueError, "ref_latent requires"):
+            runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    ref_latent=str(Path(td) / "reference-latent.npz"),
                     caption="calm",
                     seconds=0.02,
                     num_steps=1,

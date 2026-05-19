@@ -41,6 +41,7 @@ v3 uses the runtime semantics implemented under issue #52:
 - `--duration-scale` only affects that predicted path.
 - Older checkpoint families without the duration predictor keep the historical fixed-duration fallback when `--seconds` is omitted.
 - `--ref-embed` can supply an upstream-trained Speaker Inversion speaker-state embedding directly; it bypasses reference-audio DACVAE encoding while still conditioning v3 duration prediction and RF sampling on that speaker state.
+- `--ref-latent` can supply a cached MLX reference latent `.npz`; it bypasses reference-audio DACVAE encoding while preserving the reference-audio speaker-conditioning path.
 
 This matters for validation because a v3 smoke run should usually **omit `--seconds`** if you want to prove that the predictor path still works.
 
@@ -69,9 +70,51 @@ For this validation path, leave out `--seconds` on purpose. The resulting JSON s
 
 - `result.duration_mode == "predicted"`
 - `request.seconds == null`
-- `result.speaker_condition_source == "none"` for this no-reference smoke, or `"embedding"` when validating a `--ref-embed` Speaker Inversion artifact
+- `result.speaker_condition_source == "none"` for this no-reference smoke, `"reference_latent"` when validating a `--ref-latent` artifact, or `"embedding"` when validating a `--ref-embed` Speaker Inversion artifact
 
 If you want exact length control instead, add `--seconds N` and expect `duration_mode == "manual"`.
+
+## Cached reference latent workflow
+
+Use `--ref-latent` when upstream validation has already selected a reference
+speaker and repeated MLX inference should skip reference WAV encoding. The MLX
+runtime intentionally supports a small `.npz` contract instead of loading
+arbitrary upstream `.pt` files:
+
+- file extension: `.npz`
+- required tensor key: one of `reference_latent`, `ref_latent`, or `latents`
+- tensor shape: `(T, latent_dim)` or `(1, T, latent_dim)`
+- tensor meaning: raw DACVAE encoder latents before RF-DiT latent patching
+
+Create the cache with the same DACVAE encoder/artifact family used for runtime
+generation. A minimal local conversion from an existing NumPy array looks like:
+
+```bash
+python - <<'PY'
+import numpy as np
+
+raw_reference_latent = np.load("/tmp/upstream-reference-latent.npy")
+np.savez("/tmp/reference-latent.npz", reference_latent=raw_reference_latent.astype("float32"))
+PY
+```
+
+Then reuse it:
+
+```bash
+python3 scripts/generate_wav.py \
+  --weights /tmp/irodori-v3.npz \
+  --model-config-json /path/to/v3-model-config.json \
+  --text "こんにちは。今日は良い天気です。" \
+  --ref-latent /tmp/reference-latent.npz \
+  --output /tmp/irodori-v3-ref-latent.wav \
+  --metadata-json /tmp/irodori-v3-ref-latent.json \
+  --preset balanced
+```
+
+The metadata should report `result.speaker_condition_source ==
+"reference_latent"` and `result.codec_encode_backend == "not-required"`.
+`--ref-latent` is mutually exclusive with `--reference-wav`,
+`--ref-embed`, and `--no-reference`.
 
 ## Hosted CI-assisted validation
 

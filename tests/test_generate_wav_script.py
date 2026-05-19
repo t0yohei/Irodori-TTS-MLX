@@ -30,10 +30,16 @@ class _FakeRuntime:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake wav")
         decode_backend = "mlx"
-        if request.no_reference or request.ref_embed or not self.config.model_config.use_speaker_condition:
+        if request.no_reference or request.ref_embed or request.ref_latent or not self.config.model_config.use_speaker_condition:
             encode_backend = "not-required"
         else:
             encode_backend = "mlx"
+        if request.ref_embed:
+            speaker_source = "embedding"
+        elif request.ref_latent:
+            speaker_source = "reference_latent"
+        else:
+            speaker_source = "none"
         return type(
             "Result",
             (),
@@ -46,7 +52,7 @@ class _FakeRuntime:
                 "seed": request.seed,
                 "timings_ms": {"sample_rf": 12.5, "total_to_decode": 20.0},
                 "messages": ["ok"],
-                "speaker_condition_source": "embedding" if request.ref_embed else "none",
+                "speaker_condition_source": speaker_source,
                 "codec_backend": decode_backend,
                 "codec_encode_backend": encode_backend,
                 "codec_decode_backend": decode_backend,
@@ -152,6 +158,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             text="hello",
             preset=None,
             reference_wav=None,
+            ref_latent=None,
             ref_embed=None,
             no_reference=False,
             caption="calm",
@@ -690,6 +697,34 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
         self.assertEqual(payload["result"]["speaker_condition_source"], "embedding")
 
+    def test_main_metadata_marks_ref_latent_as_not_required_encode(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "metadata.json"
+            args = self._args(str(Path(td) / "out.wav"))
+            args.ref_latent = str(Path(td) / "reference-latent.npz")
+            args.caption = None
+            args.codec_runtime_mode = "mlx"
+            args.metadata_json = str(metadata_path)
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["request"]["ref_latent"], str(Path(td) / "reference-latent.npz"))
+        self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
+        self.assertEqual(payload["result"]["speaker_condition_source"], "reference_latent")
+
     def test_main_rejects_layout_no_reference_when_manifest_requires_reference(self):
         with tempfile.TemporaryDirectory() as td:
             args = self._args(str(Path(td) / "out.wav"))
@@ -707,7 +742,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             )()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "resolve_weights_layout_source", return_value=resolved
-            ), self.assertRaisesRegex(SystemExit, "requires reference_wav or ref_embed"):
+            ), self.assertRaisesRegex(SystemExit, "requires reference_wav, ref_latent, or ref_embed"):
                 generate_wav.main()
 
     def test_parse_args_applies_preset_num_steps(self):
@@ -1037,6 +1072,45 @@ class GenerateWavScriptTests(unittest.TestCase):
                     "voice.speaker.safetensors",
                 ]
             )
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--reference-wav",
+                    "ref.wav",
+                    "--ref-latent",
+                    "reference-latent.npz",
+                ]
+            )
+
+    def test_parse_args_accepts_ref_latent_from_config_and_request_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            requests_path = Path(td) / "requests.json"
+            cfg_path.write_text(
+                json.dumps(
+                    {
+                        "weights": "weights.npz",
+                        "requests_json": str(requests_path),
+                        "ref_latent": "default-reference-latent.npz",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            requests_path.write_text(
+                '[{"text": "hello", "output": "out.wav", "ref_latent": "request-reference-latent.npz"}]',
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path)])
+            requests = generate_wav.load_generation_requests_json(str(requests_path))
+
+        self.assertEqual(args.ref_latent, "default-reference-latent.npz")
+        self.assertEqual(requests[0]["ref_latent"], "request-reference-latent.npz")
 
     def test_parse_args_rejects_invalid_boolean_config_value(self):
         with tempfile.TemporaryDirectory() as td:
