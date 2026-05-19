@@ -251,7 +251,7 @@ def build_ui() -> Any:
             cfg_scale_text = gr.Number(label="CFG scale text override")
             cfg_scale_caption = gr.Number(label="CFG scale caption override")
             cfg_scale_speaker = gr.Number(label="CFG scale speaker override")
-            cfg_guidance_mode = gr.Dropdown(["", "independent", "joint", "reduced"], value="", label="CFG guidance mode override")
+            cfg_guidance_mode = gr.Dropdown(["", "independent", "joint", "alternating", "reduced"], value="", label="CFG guidance mode override")
             cfg_min_t = gr.Number(label="CFG min t", value=0.5)
             cfg_max_t = gr.Number(label="CFG max t", value=1.0)
         output_dir = gr.Textbox(label="Output directory", placeholder="Leave blank to use a temporary directory")
