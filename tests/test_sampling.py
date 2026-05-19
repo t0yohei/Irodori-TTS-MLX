@@ -11,7 +11,12 @@ try:
     from irodori_mlx.config import ModelConfig
     from irodori_mlx.encoders import EncodedConditions
     from irodori_mlx.model import TextToLatentRFDiT
-    from irodori_mlx.sampling import euler_timestep_schedule, sample_euler_rf_cfg
+    from irodori_mlx.sampling import (
+        euler_timestep_schedule,
+        sample_euler_rf_cfg,
+        scale_speaker_kv_cache,
+        temporal_score_rescale,
+    )
 
     HAS_MLX = True
 except Exception as exc:  # pragma: no cover - exercised only on machines without MLX.
@@ -61,7 +66,17 @@ class FakeSamplerModel:
 
     def build_context_kv_cache(self, *, text_state, speaker_state, caption_state=None):
         self.cache_builds += 1
-        return [(text_state, speaker_state, caption_state)]
+        if self.cfg.use_speaker_condition:
+            return [
+                (
+                    text_state,
+                    mx.ones_like(text_state),
+                    speaker_state,
+                    mx.ones_like(speaker_state),
+                    caption_state,
+                )
+            ]
+        return [(text_state, mx.ones_like(text_state), caption_state)]
 
     def forward_with_encoded_conditions(
         self,
@@ -137,6 +152,48 @@ class CaptionContentSamplerModel(FakeSamplerModel):
         return mx.broadcast_to(caption_score[:, None, None].astype(x_t.dtype), x_t.shape)
 
 
+class CacheSpeakerScaleSamplerModel(FakeSamplerModel):
+    def __init__(self):
+        super().__init__(caption=False, speaker=True)
+
+    def build_context_kv_cache(self, *, text_state, speaker_state, caption_state=None):
+        self.cache_builds += 1
+        batch = int(text_state.shape[0])
+        return [
+            (
+                mx.zeros((batch, 1, 1, 1), dtype=mx.float32),
+                mx.zeros((batch, 1, 1, 1), dtype=mx.float32),
+                mx.ones((batch, 1, 1, 1), dtype=mx.float32),
+                mx.ones((batch, 1, 1, 1), dtype=mx.float32),
+            )
+        ]
+
+    def forward_with_encoded_conditions(
+        self,
+        *,
+        x_t,
+        t,
+        text_state,
+        text_mask,
+        speaker_state,
+        speaker_mask,
+        caption_state=None,
+        caption_mask=None,
+        context_kv_cache=None,
+    ):
+        self.calls.append(
+            {
+                "batch": int(x_t.shape[0]),
+                "t": to_np(t),
+                "cached": context_kv_cache is not None,
+            }
+        )
+        text_on = mx.any(text_mask, axis=1).astype(x_t.dtype)
+        speaker_k = context_kv_cache[0][2].reshape((x_t.shape[0], -1)).mean(axis=1).astype(x_t.dtype)
+        scalar = text_on + 10.0 * speaker_k
+        return mx.broadcast_to(scalar[:, None, None], x_t.shape)
+
+
 class SamplingTests(unittest.TestCase):
     def tiny_config(self) -> ModelConfig:
         return ModelConfig(
@@ -178,6 +235,46 @@ class SamplingTests(unittest.TestCase):
     def test_invalid_schedule_mode_raises(self):
         with self.assertRaisesRegex(ValueError, "Unsupported t_schedule_mode"):
             euler_timestep_schedule(4, mode="zigzag")
+
+    @require_mlx
+    def test_temporal_score_rescale_matches_upstream_formula(self):
+        v = mx.array([[[2.0, -1.0]]], dtype=mx.float32)
+        x_t = mx.array([[[0.5, 1.5]]], dtype=mx.float32)
+
+        out = temporal_score_rescale(v_pred=v, x_t=x_t, t=0.5, rescale_k=2.0, rescale_sigma=0.5)
+
+        one_minus_t = 0.5
+        snr = (one_minus_t * one_minus_t) / (0.5 * 0.5)
+        sigma_sq = 0.5 * 0.5
+        ratio = (snr * sigma_sq + 1.0) / (snr * sigma_sq / 2.0 + 1.0)
+        expected = (ratio * (one_minus_t * to_np(v) + to_np(x_t)) - to_np(x_t)) / one_minus_t
+        np.testing.assert_allclose(to_np(out), expected, rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_scale_speaker_kv_cache_scales_only_requested_layers(self):
+        cache = [
+            (
+                mx.ones((1, 1, 1), dtype=mx.float32),
+                mx.ones((1, 1, 1), dtype=mx.float32) * 2,
+                mx.ones((1, 1, 1), dtype=mx.float32) * 3,
+                mx.ones((1, 1, 1), dtype=mx.float32) * 4,
+            ),
+            (
+                mx.ones((1, 1, 1), dtype=mx.float32) * 5,
+                mx.ones((1, 1, 1), dtype=mx.float32) * 6,
+                mx.ones((1, 1, 1), dtype=mx.float32) * 7,
+                mx.ones((1, 1, 1), dtype=mx.float32) * 8,
+            ),
+        ]
+
+        scaled = scale_speaker_kv_cache(cache, scale=10.0, max_layers=1)
+
+        self.assertEqual(float(scaled[0][0].item()), 1.0)
+        self.assertEqual(float(scaled[0][1].item()), 2.0)
+        self.assertEqual(float(scaled[0][2].item()), 30.0)
+        self.assertEqual(float(scaled[0][3].item()), 40.0)
+        self.assertEqual(float(scaled[1][2].item()), 7.0)
+        self.assertEqual(float(cache[0][2].item()), 3.0)
 
     @require_mlx
     def test_non_finite_sway_coeff_raises(self):
@@ -563,6 +660,100 @@ class SamplingTests(unittest.TestCase):
 
         self.assertEqual(out.shape, (1, 1, 2))
         self.assertEqual([call["batch"] for call in model.calls], [1, 1])
+
+    @require_mlx
+    def test_sampler_applies_temporal_score_rescale(self):
+        model = FakeSamplerModel(caption=False, speaker=False)
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=None,
+            ref_mask=None,
+            sequence_length=1,
+            num_steps=1,
+            cfg_scale_text=0.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
+            seed=7,
+            use_context_kv_cache=False,
+            rescale_k=2.0,
+            rescale_sigma=0.5,
+        )
+
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(7))
+        v = mx.ones_like(init)
+        schedule = euler_timestep_schedule(1)
+        t = schedule[0]
+        v = temporal_score_rescale(v_pred=v, x_t=init, t=t, rescale_k=2.0, rescale_sigma=0.5)
+        expected = init + v * (schedule[1] - schedule[0])
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_sampler_forces_cache_when_speaker_kv_scale_is_enabled(self):
+        model = FakeSamplerModel(caption=False, speaker=True)
+        sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=1,
+            cfg_scale_text=0.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
+            seed=7,
+            use_context_kv_cache=False,
+            speaker_kv_scale=1.5,
+        )
+
+        self.assertGreater(model.cache_builds, 0)
+        self.assertTrue(all(call["cached"] for call in model.calls))
+
+    @require_mlx
+    def test_sampler_leaves_joint_uncond_speaker_cache_unscaled(self):
+        model = CacheSpeakerScaleSamplerModel()
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=1,
+            cfg_scale_text=2.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
+            cfg_guidance_mode="joint",
+            seed=7,
+            use_context_kv_cache=False,
+            speaker_kv_scale=3.0,
+        )
+
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(7))
+        v_cond = 31.0
+        v_uncond = 10.0
+        expected = init + (v_cond + 2.0 * (v_cond - v_uncond)) * (0.0 - 0.999)
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_sampler_rejects_invalid_quality_knobs(self):
+        common = dict(
+            model=FakeSamplerModel(caption=False, speaker=False),
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=None,
+            ref_mask=None,
+            sequence_length=1,
+            num_steps=1,
+        )
+        with self.assertRaisesRegex(ValueError, "rescale_k and rescale_sigma"):
+            sample_euler_rf_cfg(**common, rescale_k=2.0)
+        with self.assertRaisesRegex(ValueError, "rescale_k must be > 0"):
+            sample_euler_rf_cfg(**common, rescale_k=float("nan"), rescale_sigma=0.5)
+        with self.assertRaisesRegex(ValueError, "speaker-conditioned"):
+            sample_euler_rf_cfg(**common, speaker_kv_scale=1.5)
 
 
 if __name__ == "__main__":

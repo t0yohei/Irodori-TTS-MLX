@@ -53,6 +53,52 @@ def euler_timestep_schedule(
     return schedule
 
 
+def temporal_score_rescale(
+    *,
+    v_pred: mx.array,
+    x_t: mx.array,
+    t: float | mx.array,
+    rescale_k: float,
+    rescale_sigma: float,
+) -> mx.array:
+    """Apply upstream temporal score rescaling to the predicted RF velocity."""
+    t_value = float(t.item()) if hasattr(t, "item") else float(t)
+    if t_value >= 1.0:
+        return v_pred
+    one_minus_t = 1.0 - t_value
+    snr = (one_minus_t * one_minus_t) / (t_value * t_value)
+    sigma_sq = float(rescale_sigma) * float(rescale_sigma)
+    ratio = (snr * sigma_sq + 1.0) / (snr * sigma_sq / float(rescale_k) + 1.0)
+    return (ratio * (one_minus_t * v_pred + x_t) - x_t) / one_minus_t
+
+
+def scale_speaker_kv_cache(
+    context_kv_cache: list[tuple[mx.array, ...]] | None,
+    *,
+    scale: float,
+    max_layers: int | None = None,
+) -> list[tuple[mx.array, ...]]:
+    """Return a context K/V cache with speaker K/V tensors scaled."""
+    if context_kv_cache is None:
+        raise ValueError("speaker_kv_scale requires context K/V caches.")
+    if max_layers is None:
+        n_layers = len(context_kv_cache)
+    else:
+        n_layers = max(0, min(int(max_layers), len(context_kv_cache)))
+    scaled: list[tuple[mx.array, ...]] = []
+    for i, layer_kv in enumerate(context_kv_cache):
+        if i >= n_layers:
+            scaled.append(layer_kv)
+            continue
+        if len(layer_kv) < 4:
+            raise ValueError(f"Expected at least 4 tensors in context KV cache entry, got {len(layer_kv)}")
+        values = list(layer_kv)
+        values[2] = values[2] * float(scale)
+        values[3] = values[3] * float(scale)
+        scaled.append(tuple(values))
+    return scaled
+
+
 def _as_mode(cfg_guidance_mode: str) -> str:
     mode = str(cfg_guidance_mode).strip().lower()
     if mode not in {"independent", "joint", "alternating", "reduced"}:
@@ -165,6 +211,11 @@ def sample_euler_rf_cfg(
     use_context_kv_cache: bool = True,
     t_schedule_mode: str = "linear",
     sway_coeff: float = -1.0,
+    rescale_k: float | None = None,
+    rescale_sigma: float | None = None,
+    speaker_kv_scale: float | None = None,
+    speaker_kv_min_t: float | None = None,
+    speaker_kv_max_layers: int | None = None,
 ) -> mx.array:
     """Sample patched RF latents with Euler steps and classifier-free guidance.
 
@@ -177,6 +228,24 @@ def sample_euler_rf_cfg(
     mode = _as_mode(cfg_guidance_mode)
     if not model.cfg.use_speaker_condition:
         cfg_scale_speaker = 0.0
+        if speaker_kv_scale is not None:
+            raise ValueError("speaker_kv_scale requires a speaker-conditioned checkpoint.")
+    if (rescale_k is None) != (rescale_sigma is None):
+        raise ValueError("rescale_k and rescale_sigma must be set together.")
+    if rescale_k is not None and (not math.isfinite(float(rescale_k)) or float(rescale_k) <= 0):
+        raise ValueError(f"rescale_k must be > 0, got {rescale_k!r}.")
+    if rescale_sigma is not None and (not math.isfinite(float(rescale_sigma)) or float(rescale_sigma) <= 0):
+        raise ValueError(f"rescale_sigma must be > 0, got {rescale_sigma!r}.")
+    if speaker_kv_scale is not None:
+        if not math.isfinite(float(speaker_kv_scale)) or float(speaker_kv_scale) <= 0:
+            raise ValueError(f"speaker_kv_scale must be > 0, got {speaker_kv_scale!r}.")
+        if speaker_kv_min_t is None:
+            speaker_kv_min_t = 0.9
+        if not math.isfinite(float(speaker_kv_min_t)) or not (0.0 <= float(speaker_kv_min_t) <= 1.0):
+            raise ValueError(f"speaker_kv_min_t must be in [0, 1], got {speaker_kv_min_t!r}.")
+        if speaker_kv_max_layers is not None and int(speaker_kv_max_layers) < 0:
+            raise ValueError(f"speaker_kv_max_layers must be >= 0, got {speaker_kv_max_layers!r}.")
+        use_context_kv_cache = True
 
     batch_size = int(text_input_ids.shape[0])
     latent_dim = int(model.cfg.patched_latent_dim)
@@ -242,9 +311,19 @@ def sample_euler_rf_cfg(
         enabled.append(("caption", float(cfg_scale_caption)))
 
     cond_cache = _build_cache(model, cond, use_context_kv_cache=use_context_kv_cache)
+    cond_cache_scaled = (
+        scale_speaker_kv_cache(
+            cond_cache,
+            scale=float(speaker_kv_scale),
+            max_layers=speaker_kv_max_layers,
+        )
+        if speaker_kv_scale is not None
+        else cond_cache
+    )
     independent_names = ["cond"]
     independent_bundle = cond
     independent_cache = None
+    independent_cache_scaled = None
     joint_uncond = None
     joint_cache = None
     alternating_bundles: dict[str, _ConditionBundle] = {}
@@ -264,6 +343,15 @@ def sample_euler_rf_cfg(
             )
         independent_bundle = _concat_bundles(bundles)
         independent_cache = _build_cache(model, independent_bundle, use_context_kv_cache=use_context_kv_cache)
+        independent_cache_scaled = (
+            scale_speaker_kv_cache(
+                independent_cache,
+                scale=float(speaker_kv_scale),
+                max_layers=speaker_kv_max_layers,
+            )
+            if speaker_kv_scale is not None
+            else independent_cache
+        )
     elif mode in {"joint", "reduced"} and enabled:
         if mode == "joint" and len(enabled) > 1:
             scales = [scale for _name, scale in enabled]
@@ -285,6 +373,17 @@ def sample_euler_rf_cfg(
             alternating_bundles[name] = bundle
             alternating_caches[name] = _build_cache(model, bundle, use_context_kv_cache=use_context_kv_cache)
 
+    def _cache_for_t(
+        base: list[tuple[mx.array, ...]] | None,
+        scaled: list[tuple[mx.array, ...]] | None,
+        t_value: float,
+    ) -> list[tuple[mx.array, ...]] | None:
+        if speaker_kv_scale is None:
+            return base
+        if speaker_kv_min_t is None or t_value >= float(speaker_kv_min_t):
+            return scaled
+        return base
+
     schedule = euler_timestep_schedule(
         int(num_steps),
         mode=t_schedule_mode,
@@ -295,7 +394,10 @@ def sample_euler_rf_cfg(
         t = schedule[i]
         t_next = schedule[i + 1]
         tt = mx.full((batch_size,), t, dtype=x_t.dtype)
-        use_cfg = bool(enabled) and (float(cfg_min_t) <= float(t.item()) <= float(cfg_max_t))
+        t_value = float(t.item())
+        use_cfg = bool(enabled) and (float(cfg_min_t) <= t_value <= float(cfg_max_t))
+        cond_cache_step = _cache_for_t(cond_cache, cond_cache_scaled, t_value)
+        independent_cache_step = _cache_for_t(independent_cache, independent_cache_scaled, t_value)
 
         if use_cfg and mode == "independent":
             cfg_mult = len(independent_names)
@@ -306,7 +408,7 @@ def sample_euler_rf_cfg(
                 x_t=x_t_cfg,
                 t=tt_cfg,
                 bundle=independent_bundle,
-                context_kv_cache=independent_cache,
+                context_kv_cache=independent_cache_step,
             )
             chunks = mx.split(v_out, cfg_mult, axis=0)
             v = chunks[0]
@@ -316,7 +418,7 @@ def sample_euler_rf_cfg(
             for name, chunk in zip(independent_names[1:], chunks[1:]):
                 v = v + scales[name] * (chunks[0] - chunk)
         elif use_cfg and mode in {"joint", "reduced"}:
-            v_cond = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache)
+            v_cond = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache_step)
             if joint_uncond is None:
                 v = v_cond
             else:
@@ -336,7 +438,16 @@ def sample_euler_rf_cfg(
             )
             v = v_cond + alt_scale * (v_cond - v_uncond)
         else:
-            v = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache)
+            v = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache_step)
+
+        if rescale_k is not None and rescale_sigma is not None:
+            v = temporal_score_rescale(
+                v_pred=v,
+                x_t=x_t,
+                t=t,
+                rescale_k=float(rescale_k),
+                rescale_sigma=float(rescale_sigma),
+            )
 
         x_t = x_t + v * (t_next - t)
 

@@ -89,6 +89,8 @@ For v3, omit `--seconds` to use predicted duration. If a very short prompt repea
 
 Upstream-validated low-step recipes that use Sway Sampling can be carried into the MLX runtime with `--t-schedule-mode sway --sway-coeff -1.0`. The default remains `--t-schedule-mode linear`; matching upstream's timestep schedule is useful for recipe parity, but exact audio parity can still differ because the MLX runtime uses separate codec artifacts and execution details.
 
+Upstream-validated temporal and speaker quality recipes can also pass through `--rescale-k`, `--rescale-sigma`, `--speaker-kv-scale`, `--speaker-kv-min-t`, and `--speaker-kv-max-layers`. These controls are intended for carrying known upstream recipes into MLX inference; keep primary tuning and validation in upstream Irodori-TTS before relying on a recipe in this optimized runtime.
+
 Speaker Inversion embeddings trained and validated with upstream Irodori-TTS can be reused for MLX inference with `--ref-embed`. The embedding must be a `.speaker.safetensors` file containing one speaker-state tensor with shape `(speaker_dim)`, `(sequence, speaker_dim)`, or `(1, sequence, speaker_dim)`. `--ref-embed` is mutually exclusive with `--reference-wav` and `--no-reference`; it bypasses DACVAE reference encoding and records `speaker_condition_source: "embedding"` in JSON metadata.
 
 ~~~bash
