@@ -86,6 +86,7 @@ class GenerationRequest:
     seed: int = 0
     max_reference_seconds: float | None = 30.0
     use_context_kv_cache: bool = True
+    ref_embed: str | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,7 @@ class GenerationResult:
     duration_mode: str
     checkpoint_family: str
     checkpoint_capabilities: tuple[str, ...]
+    speaker_condition_source: str = "none"
     codec_backend: str = "mlx"
     codec_encode_backend: str = "mlx"
     codec_decode_backend: str = "mlx"
@@ -177,6 +179,86 @@ def patch_latents_drop_tail(latents: mx.array, patch_size: int) -> mx.array:
     if usable <= 0:
         raise ValueError(f"Latent sequence too short for patch_size={patch_size}: seq_len={seq_len}")
     return latents[:, :usable].reshape(bsz, usable // int(patch_size), dim * int(patch_size))
+
+
+SPEAKER_EMBED_TENSOR_KEYS = (
+    "speaker_state",
+    "speaker_embedding",
+    "speaker_embed",
+    "embedding",
+    "speaker",
+)
+
+
+def _select_speaker_embedding_tensor(tensors: dict[str, object], path: Path) -> tuple[str, object]:
+    for key in SPEAKER_EMBED_TENSOR_KEYS:
+        if key in tensors:
+            return key, tensors[key]
+    if len(tensors) == 1:
+        key = next(iter(tensors))
+        return key, tensors[key]
+    allowed = ", ".join(SPEAKER_EMBED_TENSOR_KEYS)
+    present = ", ".join(sorted(tensors)) or "<none>"
+    raise ValueError(
+        f"Speaker embedding {path} must contain one tensor or one of: {allowed}. "
+        f"Found: {present}"
+    )
+
+
+def load_speaker_embedding_safetensors(path: str | Path, *, speaker_dim: int) -> tuple[mx.array, mx.array, dict[str, object]]:
+    """Load an upstream Speaker Inversion embedding as a direct MLX speaker-state condition."""
+
+    embed_path = Path(path).expanduser()
+    try:
+        from safetensors.numpy import load_file as load_safetensors_numpy
+    except ImportError as exc:  # pragma: no cover - depends on optional runtime extra.
+        raise RuntimeError(
+            "safetensors is required for --ref-embed. Install the runtime extra with "
+            "python -m pip install -e .[runtime] or install safetensors."
+        ) from exc
+    try:
+        tensors = load_safetensors_numpy(str(embed_path))
+    except Exception as exc:
+        raise ValueError(f"Could not load speaker embedding safetensors file: {embed_path}: {exc}") from exc
+    if not tensors:
+        raise ValueError(f"Speaker embedding safetensors file has no tensors: {embed_path}")
+
+    tensor_key, value = _select_speaker_embedding_tensor(tensors, embed_path)
+    try:
+        import numpy as np
+    except ImportError as exc:  # pragma: no cover - numpy is a base dependency.
+        raise RuntimeError("numpy is required to load speaker embeddings.") from exc
+
+    arr = np.asarray(value, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr[None, None, :]
+    elif arr.ndim == 2:
+        arr = arr[None, :, :]
+    elif arr.ndim == 3:
+        if int(arr.shape[0]) != 1:
+            raise ValueError(
+                f"Speaker embedding batch dimension must be 1 for single-request generation, got shape={arr.shape}"
+            )
+    else:
+        raise ValueError(
+            f"Speaker embedding tensor must have shape (D), (S,D), or (1,S,D), got shape={arr.shape}"
+        )
+    if int(arr.shape[-1]) != int(speaker_dim):
+        raise ValueError(
+            f"Speaker embedding last dimension must match speaker_dim={speaker_dim}, got shape={arr.shape}"
+        )
+    if int(arr.shape[1]) <= 0:
+        raise ValueError(f"Speaker embedding sequence length must be positive, got shape={arr.shape}")
+
+    speaker_state = mx.array(arr, dtype=mx.float32)
+    speaker_mask = mx.ones((1, int(arr.shape[1])), dtype=mx.bool_)
+    mx.eval(speaker_state, speaker_mask)
+    metadata: dict[str, object] = {
+        "path": str(embed_path),
+        "tensor_key": tensor_key,
+        "shape": [int(dim) for dim in arr.shape],
+    }
+    return speaker_state, speaker_mask, metadata
 
 
 def load_mlx_model(config: ModelConfig, weights_path: str | Path) -> TextToLatentRFDiT:
@@ -884,8 +966,19 @@ class MLXDACVAERuntime:
                 "max_auto_estimate_seconds must be positive when provided, "
                 f"got {request.max_auto_estimate_seconds!r}"
             )
-        if request.reference_wav is None and not request.no_reference and self.config.model_config.use_speaker_condition:
-            raise ValueError("Specify reference_wav, or set no_reference=True for an unconditional speaker path.")
+        if request.ref_embed and (request.reference_wav is not None or request.no_reference):
+            raise ValueError("Specify only one of ref_embed, reference_wav, or no_reference.")
+        if request.ref_embed and not self.config.model_config.use_speaker_condition:
+            raise ValueError("ref_embed requires a speaker-conditioned checkpoint.")
+        if (
+            request.reference_wav is None
+            and request.ref_embed is None
+            and not request.no_reference
+            and self.config.model_config.use_speaker_condition
+        ):
+            raise ValueError(
+                "Specify reference_wav, ref_embed, or set no_reference=True for an unconditional speaker path."
+            )
 
         normalized_text = normalize_text(request.text).strip()
         if normalized_text == "":
@@ -908,6 +1001,9 @@ class MLXDACVAERuntime:
         timings_ms["prepare_text_condition"] = (time.perf_counter() - started) * 1000.0
 
         ref_latent = ref_mask = None
+        speaker_state = speaker_mask = None
+        speaker_embed_metadata: dict[str, object] | None = None
+        speaker_condition_source = "none"
         started = time.perf_counter()
         if self.config.model_config.use_speaker_condition:
             if request.no_reference:
@@ -918,6 +1014,25 @@ class MLXDACVAERuntime:
                 )
                 ref_mask = mx.zeros((1, ref_len), dtype=mx.bool_)
                 messages.append("speaker reference disabled; using unconditional speaker mask")
+                speaker_condition_source = "none"
+            elif request.ref_embed is not None:
+                embed_started = time.perf_counter()
+                speaker_state, speaker_mask, speaker_embed_metadata = load_speaker_embedding_safetensors(
+                    request.ref_embed,
+                    speaker_dim=int(self.config.model_config.speaker_dim),
+                )
+                timings_ms["load_speaker_embedding"] = (time.perf_counter() - embed_started) * 1000.0
+                ref_len = max(1, int(self.config.model_config.speaker_patch_size))
+                ref_latent = mx.zeros(
+                    (1, ref_len, int(self.config.model_config.patched_latent_dim)),
+                    dtype=mx.float32,
+                )
+                ref_mask = mx.zeros((1, ref_len), dtype=mx.bool_)
+                speaker_condition_source = "embedding"
+                messages.append(
+                    "speaker embedding loaded: "
+                    f"tensor={speaker_embed_metadata['tensor_key']} shape={speaker_embed_metadata['shape']}"
+                )
             else:
                 assert request.reference_wav is not None
                 encode_started = time.perf_counter()
@@ -930,6 +1045,7 @@ class MLXDACVAERuntime:
                 timings_ms["encode_dacvae"] = (time.perf_counter() - encode_started) * 1000.0
                 ref_latent = patch_latents_drop_tail(raw_ref, int(self.config.model_config.latent_patch_size))
                 ref_mask = mx.ones((1, ref_latent.shape[1]), dtype=mx.bool_)
+                speaker_condition_source = "reference_wav"
         timings_ms["prepare_reference_condition"] = (time.perf_counter() - started) * 1000.0
 
         duration_mode = "fallback"
@@ -944,7 +1060,9 @@ class MLXDACVAERuntime:
             duration_mode = "predicted"
             started = time.perf_counter()
             has_speaker = mx.zeros((1,), dtype=mx.bool_)
-            if ref_mask is not None:
+            if speaker_mask is not None:
+                has_speaker = speaker_mask.any(axis=1)
+            elif ref_mask is not None:
                 has_speaker = ref_mask.any(axis=1)
             duration_features = build_duration_features(
                 [normalized_text],
@@ -960,6 +1078,14 @@ class MLXDACVAERuntime:
                 caption_input_ids=caption_ids,
                 caption_mask=caption_mask,
             )
+            if speaker_state is not None and speaker_mask is not None:
+                from dataclasses import replace
+
+                encoded = replace(
+                    encoded,
+                    speaker_state=speaker_state,
+                    speaker_mask=speaker_mask,
+                )
             pred_log_frames = self.model.predict_duration_log_frames(
                 text_state=encoded.text_state,
                 text_mask=encoded.text_mask,
@@ -1042,6 +1168,8 @@ class MLXDACVAERuntime:
             sequence_length=patched_steps,
             caption_input_ids=caption_ids,
             caption_mask=caption_mask,
+            speaker_state=speaker_state,
+            speaker_mask=speaker_mask,
             num_steps=int(request.num_steps),
             cfg_scale_text=float(request.cfg_scale_text),
             cfg_scale_caption=float(request.cfg_scale_caption),
@@ -1069,7 +1197,7 @@ class MLXDACVAERuntime:
         codec_boundaries = self.describe_boundaries()["codec"]
         codec_encode_backend = (
             "not-required"
-            if request.no_reference or not self.config.model_config.use_speaker_condition
+            if request.no_reference or request.ref_embed is not None or not self.config.model_config.use_speaker_condition
             else str(codec_boundaries["encode_backend"])
         )
         return GenerationResult(
@@ -1082,6 +1210,7 @@ class MLXDACVAERuntime:
             duration_mode=duration_mode,
             checkpoint_family=self.config.model_config.checkpoint_family,
             checkpoint_capabilities=self.config.model_config.checkpoint_capabilities,
+            speaker_condition_source=speaker_condition_source,
             requested_seconds=manual_seconds,
             resolved_seconds=resolved_seconds,
             timings_ms=timings_ms,

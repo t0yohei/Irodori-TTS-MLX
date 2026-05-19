@@ -360,6 +360,50 @@ class SamplingTests(unittest.TestCase):
         self.assertTrue(np.isfinite(to_np(out)).all())
 
     @require_mlx
+    def test_speaker_state_override_replaces_encoded_reference_condition(self):
+        model = FakeSamplerModel(caption=False, speaker=True)
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.zeros((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[False]]),
+            sequence_length=1,
+            speaker_state=mx.ones((1, 2, 3), dtype=mx.float32),
+            speaker_mask=mx.array([[True, True]]),
+            num_steps=1,
+            cfg_scale_text=0.0,
+            cfg_scale_speaker=0.0,
+            seed=5,
+            use_context_kv_cache=False,
+        )
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(5))
+        expected = init + 11.0 * (0.0 - 0.999)
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_speaker_state_override_can_omit_reference_latents(self):
+        model = FakeSamplerModel(caption=False, speaker=True)
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=None,
+            ref_mask=None,
+            sequence_length=1,
+            speaker_state=mx.ones((1, 2, 3), dtype=mx.float32),
+            speaker_mask=mx.array([[True, True]]),
+            num_steps=1,
+            cfg_scale_text=0.0,
+            cfg_scale_speaker=0.0,
+            seed=5,
+            use_context_kv_cache=False,
+        )
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(5))
+        expected = init + 11.0 * (0.0 - 0.999)
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
     def test_invalid_guidance_mode_raises(self):
         with self.assertRaisesRegex(ValueError, "Unsupported cfg_guidance_mode"):
             sample_euler_rf_cfg(
