@@ -40,6 +40,7 @@ v3 uses the runtime semantics implemented under issue #52:
 - If `--seconds` is omitted and the loaded config enables `use_duration_predictor`, the runtime predicts duration from the current text/reference conditions.
 - `--duration-scale` only affects that predicted path.
 - Older checkpoint families without the duration predictor keep the historical fixed-duration fallback when `--seconds` is omitted.
+- `--ref-embed` can supply an upstream-trained Speaker Inversion speaker-state embedding directly; it bypasses reference-audio DACVAE encoding while still conditioning v3 duration prediction and RF sampling on that speaker state.
 
 This matters for validation because a v3 smoke run should usually **omit `--seconds`** if you want to prove that the predictor path still works.
 
@@ -68,6 +69,7 @@ For this validation path, leave out `--seconds` on purpose. The resulting JSON s
 
 - `result.duration_mode == "predicted"`
 - `request.seconds == null`
+- `result.speaker_condition_source == "none"` for this no-reference smoke, or `"embedding"` when validating a `--ref-embed` Speaker Inversion artifact
 
 If you want exact length control instead, add `--seconds N` and expect `duration_mode == "manual"`.
 

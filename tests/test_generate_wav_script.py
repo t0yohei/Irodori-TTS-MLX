@@ -30,7 +30,7 @@ class _FakeRuntime:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake wav")
         decode_backend = "mlx"
-        if request.no_reference or not self.config.model_config.use_speaker_condition:
+        if request.no_reference or request.ref_embed or not self.config.model_config.use_speaker_condition:
             encode_backend = "not-required"
         else:
             encode_backend = "mlx"
@@ -46,6 +46,7 @@ class _FakeRuntime:
                 "seed": request.seed,
                 "timings_ms": {"sample_rf": 12.5, "total_to_decode": 20.0},
                 "messages": ["ok"],
+                "speaker_condition_source": "embedding" if request.ref_embed else "none",
                 "codec_backend": decode_backend,
                 "codec_encode_backend": encode_backend,
                 "codec_decode_backend": decode_backend,
@@ -149,6 +150,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             text="hello",
             preset=None,
             reference_wav=None,
+            ref_embed=None,
             no_reference=False,
             caption="calm",
             model_config_json='{"use_caption_condition": true}',
@@ -599,6 +601,35 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(payload["result"]["codec_encode_backend"], "mlx")
         self.assertEqual(payload["result"]["codec_decode_backend"], "mlx")
+
+    def test_main_metadata_marks_ref_embed_as_not_required_encode(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "metadata.json"
+            args = self._args(str(Path(td) / "out.wav"))
+            args.ref_embed = str(Path(td) / "voice.speaker.safetensors")
+            args.caption = None
+            args.codec_runtime_mode = "mlx"
+            args.metadata_json = str(metadata_path)
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["request"]["ref_embed"], str(Path(td) / "voice.speaker.safetensors"))
+        self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
+        self.assertEqual(payload["result"]["speaker_condition_source"], "embedding")
+
     def test_main_rejects_layout_no_reference_when_manifest_requires_reference(self):
         with tempfile.TemporaryDirectory() as td:
             args = self._args(str(Path(td) / "out.wav"))
@@ -616,7 +647,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             )()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "resolve_weights_layout_source", return_value=resolved
-            ), self.assertRaisesRegex(SystemExit, "requires reference_wav"):
+            ), self.assertRaisesRegex(SystemExit, "requires reference_wav or ref_embed"):
                 generate_wav.main()
 
     def test_parse_args_applies_preset_num_steps(self):
@@ -929,6 +960,21 @@ class GenerateWavScriptTests(unittest.TestCase):
                     "--reference-wav",
                     "ref.wav",
                     "--no-reference",
+                ]
+            )
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--reference-wav",
+                    "ref.wav",
+                    "--ref-embed",
+                    "voice.speaker.safetensors",
                 ]
             )
 

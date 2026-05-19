@@ -25,6 +25,7 @@ try:
         PretrainedTextTokenizer,
         describe_codec_capabilities,
         inspect_mlx_codec_artifact,
+        load_speaker_embedding_safetensors,
         load_mlx_model,
         load_model_config_json,
     )
@@ -1000,6 +1001,86 @@ class RuntimeBridgeTests(unittest.TestCase):
             self.assertEqual(result.codec_encode_backend, "mlx")
             self.assertEqual(result.codec_decode_backend, "mlx")
             self.assertTrue(Path(result.output_wav).exists())
+
+    @require_mlx
+    def test_load_speaker_embedding_safetensors_accepts_single_tensor_sequence(self):
+        try:
+            from safetensors.numpy import save_file as save_safetensors_numpy
+        except ImportError as exc:
+            self.skipTest(f"safetensors is not installed: {exc}")
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "voice.speaker.safetensors"
+            save_safetensors_numpy({"speaker_state": np.ones((2, 8), dtype=np.float32)}, str(path))
+            speaker_state, speaker_mask, metadata = load_speaker_embedding_safetensors(path, speaker_dim=8)
+
+        self.assertEqual(tuple(speaker_state.shape), (1, 2, 8))
+        np.testing.assert_array_equal(np.array(speaker_mask), np.array([[True, True]]))
+        self.assertEqual(metadata["tensor_key"], "speaker_state")
+
+    @require_mlx
+    def test_runtime_uses_ref_embed_without_dacvae_encode(self):
+        cfg = tiny_config()
+        bridge = FakeBridge()
+        captured = {}
+
+        def fake_sample(_model, **kwargs):
+            captured.update(kwargs)
+            return mx.zeros((1, int(kwargs["sequence_length"]), cfg.patched_latent_dim), dtype=mx.float32)
+
+        with tempfile.TemporaryDirectory() as td, patch(
+            "irodori_mlx.runtime.load_speaker_embedding_safetensors",
+            return_value=(
+                mx.ones((1, 2, cfg.speaker_dim), dtype=mx.float32),
+                mx.array([[True, True]], dtype=mx.bool_),
+                {"tensor_key": "speaker_state", "shape": [1, 2, cfg.speaker_dim]},
+            ),
+        ), patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
+            runtime = MLXDACVAERuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+                model=FakeModel(cfg),
+                bridge=bridge,
+                tokenizer=FakeTokenizer(),
+            )
+            result = runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    ref_embed=str(Path(td) / "voice.speaker.safetensors"),
+                    seconds=0.02,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(bridge.encoded, [])
+        self.assertEqual(tuple(captured["speaker_state"].shape), (1, 2, cfg.speaker_dim))
+        np.testing.assert_array_equal(np.array(captured["speaker_mask"]), np.array([[True, True]]))
+        self.assertEqual(result.speaker_condition_source, "embedding")
+        self.assertEqual(result.codec_encode_backend, "not-required")
+
+    @require_mlx
+    def test_runtime_rejects_ref_embed_for_caption_checkpoint(self):
+        cfg = replace(tiny_config(), use_caption_condition=True)
+        runtime = MLXDACVAERuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            model=FakeModel(cfg),
+            bridge=FakeBridge(),
+            tokenizer=FakeTokenizer(),
+            caption_tokenizer=FakeTokenizer(),
+        )
+        with tempfile.TemporaryDirectory() as td, self.assertRaisesRegex(ValueError, "ref_embed requires"):
+            runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    ref_embed=str(Path(td) / "voice.speaker.safetensors"),
+                    caption="calm",
+                    seconds=0.02,
+                    num_steps=1,
+                )
+            )
 
     @require_mlx
     def test_runtime_can_select_mlx_codec_bridge_for_no_reference_decode_path(self):

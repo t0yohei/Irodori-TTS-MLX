@@ -87,6 +87,18 @@ For local or staged codec artifacts, use `--codec-artifact-dir` or `--codec-path
 
 For v3, omit `--seconds` to use predicted duration. If a very short prompt repeats, try a manual duration such as `--seconds 2.5` or keep prediction and start with `--duration-scale 0.75`.
 
+Speaker Inversion embeddings trained and validated with upstream Irodori-TTS can be reused for MLX inference with `--ref-embed`. The embedding must be a `.speaker.safetensors` file containing one speaker-state tensor with shape `(speaker_dim)`, `(sequence, speaker_dim)`, or `(1, sequence, speaker_dim)`. `--ref-embed` is mutually exclusive with `--reference-wav` and `--no-reference`; it bypasses DACVAE reference encoding and records `speaker_condition_source: "embedding"` in JSON metadata.
+
+~~~bash
+irodori-tts-generate \
+  --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
+  --text "こんにちは。今日は良い天気です。" \
+  --ref-embed /path/to/voice.speaker.safetensors \
+  --output /tmp/irodori-v3-speaker.wav \
+  --preset balanced \
+  --json
+~~~
+
 ## If It Fails
 
 Run preflight first:
@@ -114,7 +126,7 @@ Local Web UI:
 irodori-tts-web --host 127.0.0.1 --port 7860 --inbrowser
 ~~~
 
-Local conversion fallback:
+local conversion fallback:
 
 ~~~bash
 CHECKPOINT=/path/to/model.safetensors

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import mlx.core as mx
@@ -124,6 +124,8 @@ def sample_euler_rf_cfg(
     ref_latent: mx.array | None,
     ref_mask: mx.array | None,
     sequence_length: int,
+    speaker_state: mx.array | None = None,
+    speaker_mask: mx.array | None = None,
     caption_input_ids: mx.array | None = None,
     caption_mask: mx.array | None = None,
     num_steps: int = 40,
@@ -159,6 +161,27 @@ def sample_euler_rf_cfg(
     if truncation_factor is not None:
         x_t = x_t * float(truncation_factor)
 
+    speaker_override = speaker_state is not None or speaker_mask is not None
+    if speaker_override:
+        if not model.cfg.use_speaker_condition:
+            raise ValueError("speaker_state override requires a speaker-conditioned checkpoint.")
+        if speaker_state is None or speaker_mask is None:
+            raise ValueError("speaker_state and speaker_mask overrides must be provided together.")
+        if tuple(speaker_state.shape[:2]) != tuple(speaker_mask.shape):
+            raise ValueError(
+                "speaker_state/speaker_mask override shape mismatch: "
+                f"state={speaker_state.shape} mask={speaker_mask.shape}"
+            )
+        if int(speaker_state.shape[0]) != batch_size:
+            raise ValueError(
+                "speaker_state override batch mismatch: "
+                f"speaker_state={speaker_state.shape} text_batch={batch_size}"
+            )
+        if ref_latent is None or ref_mask is None:
+            ref_len = max(1, int(getattr(model.cfg, "speaker_patch_size", 1)))
+            ref_latent = mx.zeros((batch_size, ref_len, latent_dim), dtype=mx.float32)
+            ref_mask = mx.zeros((batch_size, ref_len), dtype=mx.bool_)
+
     encoded = model.encode_conditions(
         text_input_ids=text_input_ids,
         text_mask=text_mask,
@@ -167,6 +190,12 @@ def sample_euler_rf_cfg(
         caption_input_ids=caption_input_ids,
         caption_mask=caption_mask,
     )
+    if speaker_override:
+        encoded = replace(
+            encoded,
+            speaker_state=speaker_state,
+            speaker_mask=speaker_mask.astype(mx.bool_),
+        )
     cond = _bundle(encoded)
 
     has_text_cfg = float(cfg_scale_text) > 0.0
