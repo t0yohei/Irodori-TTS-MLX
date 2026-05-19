@@ -1118,6 +1118,42 @@ class RuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(result.codec_encode_backend, "not-required")
 
     @require_mlx
+    def test_runtime_treats_empty_ref_latent_as_absent(self):
+        cfg = tiny_config()
+        bridge = FakeBridge()
+        captured = {}
+
+        def fake_sample(_model, **kwargs):
+            captured.update(kwargs)
+            return mx.zeros((1, int(kwargs["sequence_length"]), cfg.patched_latent_dim), dtype=mx.float32)
+
+        with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
+            ref_path = Path(td) / "ref.wav"
+            runtime = MLXDACVAERuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+                model=FakeModel(cfg),
+                bridge=bridge,
+                tokenizer=FakeTokenizer(),
+            )
+            result = runtime.generate(
+                GenerationRequest(
+                    text="hello",
+                    output_wav=str(Path(td) / "out.wav"),
+                    reference_wav=str(ref_path),
+                    ref_latent="",
+                    seconds=0.02,
+                    num_steps=1,
+                    cfg_scale_text=0.0,
+                    cfg_scale_speaker=0.0,
+                )
+            )
+
+        self.assertEqual(bridge.encoded, [(str(ref_path), 30.0, -16.0, True)])
+        self.assertEqual(tuple(captured["ref_latent"].shape), (1, 3, cfg.patched_latent_dim))
+        self.assertEqual(result.speaker_condition_source, "reference_wav")
+        self.assertEqual(result.codec_encode_backend, "mlx")
+
+    @require_mlx
     def test_runtime_rejects_ref_embed_for_caption_checkpoint(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
         runtime = MLXDACVAERuntime(

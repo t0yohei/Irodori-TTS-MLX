@@ -1033,17 +1033,18 @@ class MLXDACVAERuntime:
                 "max_auto_estimate_seconds must be positive when provided, "
                 f"got {request.max_auto_estimate_seconds!r}"
             )
-        if request.ref_embed and (request.reference_wav is not None or request.ref_latent is not None or request.no_reference):
+        ref_latent_path = request.ref_latent or None
+        if request.ref_embed and (request.reference_wav is not None or ref_latent_path is not None or request.no_reference):
             raise ValueError("Specify only one of ref_embed, ref_latent, reference_wav, or no_reference.")
         if request.ref_embed and not self.config.model_config.use_speaker_condition:
             raise ValueError("ref_embed requires a speaker-conditioned checkpoint.")
-        if request.ref_latent and not self.config.model_config.use_speaker_condition:
+        if ref_latent_path and not self.config.model_config.use_speaker_condition:
             raise ValueError("ref_latent requires a speaker-conditioned checkpoint.")
-        if request.ref_latent and (request.reference_wav is not None or request.no_reference):
+        if ref_latent_path and (request.reference_wav is not None or request.no_reference):
             raise ValueError("Specify only one of ref_latent, reference_wav, or no_reference.")
         if (
             request.reference_wav is None
-            and request.ref_latent is None
+            and ref_latent_path is None
             and request.ref_embed is None
             and not request.no_reference
             and self.config.model_config.use_speaker_condition
@@ -1106,10 +1107,10 @@ class MLXDACVAERuntime:
                     "speaker embedding loaded: "
                     f"tensor={speaker_embed_metadata['tensor_key']} shape={speaker_embed_metadata['shape']}"
                 )
-            elif request.ref_latent is not None:
+            elif ref_latent_path is not None:
                 latent_started = time.perf_counter()
                 raw_ref, ref_mask, reference_latent_metadata = load_reference_latent_npz(
-                    request.ref_latent,
+                    ref_latent_path,
                     latent_dim=int(self.config.model_config.latent_dim),
                 )
                 timings_ms["load_reference_latent"] = (time.perf_counter() - latent_started) * 1000.0
@@ -1286,7 +1287,7 @@ class MLXDACVAERuntime:
             "not-required"
             if request.no_reference
             or request.ref_embed is not None
-            or request.ref_latent is not None
+            or ref_latent_path is not None
             or not self.config.model_config.use_speaker_condition
             else str(codec_boundaries["encode_backend"])
         )
