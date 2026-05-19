@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import math
 from typing import Literal
 
 import mlx.core as mx
@@ -9,6 +10,7 @@ from .encoders import EncodedConditions
 from .model import TextToLatentRFDiT
 
 CFGGUIDANCE_MODE = Literal["independent", "joint", "reduced"]
+TIMESTEP_SCHEDULE_MODE = Literal["linear", "sway"]
 
 
 @dataclass(frozen=True)
@@ -21,11 +23,34 @@ class _ConditionBundle:
     caption_mask: mx.array | None
 
 
-def euler_timestep_schedule(num_steps: int, *, init_scale: float = 0.999, dtype: mx.Dtype = mx.float32) -> mx.array:
+def euler_timestep_schedule(
+    num_steps: int,
+    *,
+    init_scale: float = 0.999,
+    mode: str = "linear",
+    sway_coeff: float = -1.0,
+    dtype: mx.Dtype = mx.float32,
+) -> mx.array:
     """Return the upstream RF Euler schedule from near-one to zero."""
     if int(num_steps) <= 0:
         raise ValueError(f"num_steps must be positive, got {num_steps!r}")
-    return mx.linspace(1.0, 0.0, int(num_steps) + 1, dtype=dtype) * float(init_scale)
+    mode_norm = str(mode).strip().lower()
+    sway_coeff_value = float(sway_coeff)
+    if not math.isfinite(sway_coeff_value):
+        raise ValueError(f"sway_coeff must be finite, got {sway_coeff!r}.")
+    if mode_norm == "linear":
+        u = mx.linspace(0.0, 1.0, int(num_steps) + 1, dtype=dtype)
+    elif mode_norm == "sway":
+        # F5-TTS-style Sway Sampling, matching upstream Irodori-TTS.
+        u = mx.linspace(0.0, 1.0, int(num_steps) + 1, dtype=dtype)
+        u = u + sway_coeff_value * (mx.cos(0.5 * math.pi * u) + u - 1.0)
+        u = mx.clip(u, 0.0, 1.0)
+    else:
+        raise ValueError(f"Unsupported t_schedule_mode={mode!r}. Expected 'linear' or 'sway'.")
+    schedule = (1.0 - u) * float(init_scale)
+    if not bool(mx.array(mx.all(schedule[:-1] > schedule[1:])).item()):
+        raise ValueError("t_schedule must be strictly decreasing; adjust num_steps or sway_coeff.")
+    return schedule
 
 
 def _as_mode(cfg_guidance_mode: str) -> str:
@@ -138,6 +163,8 @@ def sample_euler_rf_cfg(
     seed: int = 0,
     truncation_factor: float | None = None,
     use_context_kv_cache: bool = True,
+    t_schedule_mode: str = "linear",
+    sway_coeff: float = -1.0,
 ) -> mx.array:
     """Sample patched RF latents with Euler steps and classifier-free guidance.
 
@@ -246,7 +273,12 @@ def sample_euler_rf_cfg(
         joint_uncond = _uncond_bundle(cond, text=has_text_cfg, speaker=has_speaker_cfg, caption=has_caption_cfg)
         joint_cache = _build_cache(model, joint_uncond, use_context_kv_cache=use_context_kv_cache)
 
-    schedule = euler_timestep_schedule(int(num_steps), dtype=x_t.dtype)
+    schedule = euler_timestep_schedule(
+        int(num_steps),
+        mode=t_schedule_mode,
+        sway_coeff=float(sway_coeff),
+        dtype=x_t.dtype,
+    )
     for i in range(int(num_steps)):
         t = schedule[i]
         t_next = schedule[i + 1]

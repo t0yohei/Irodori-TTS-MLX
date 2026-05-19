@@ -87,6 +87,8 @@ For local or staged codec artifacts, use `--codec-artifact-dir` or `--codec-path
 
 For v3, omit `--seconds` to use predicted duration. If a very short prompt repeats, try a manual duration such as `--seconds 2.5` or keep prediction and start with `--duration-scale 0.75`.
 
+Upstream-validated low-step recipes that use Sway Sampling can be carried into the MLX runtime with `--t-schedule-mode sway --sway-coeff -1.0`. The default remains `--t-schedule-mode linear`; matching upstream's timestep schedule is useful for recipe parity, but exact audio parity can still differ because the MLX runtime uses separate codec artifacts and execution details.
+
 Speaker Inversion embeddings trained and validated with upstream Irodori-TTS can be reused for MLX inference with `--ref-embed`. The embedding must be a `.speaker.safetensors` file containing one speaker-state tensor with shape `(speaker_dim)`, `(sequence, speaker_dim)`, or `(1, sequence, speaker_dim)`. `--ref-embed` is mutually exclusive with `--reference-wav` and `--no-reference`; it bypasses DACVAE reference encoding and records `speaker_condition_source: "embedding"` in JSON metadata.
 
 ~~~bash
@@ -152,6 +154,17 @@ irodori-tts-generate \
   --output "$WORK/irodori-local.wav"
 ~~~
 
+Direct local v3 hosted-layout smoke path:
+
+~~~bash
+irodori-tts-generate \
+  --weights /path/to/converted-v3/weights.npz \
+  --model-config-json /path/to/converted-v3/model_config.json \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output /tmp/irodori-v3-local.wav
+~~~
+
 `mlx-audio` adaptation:
 
 ~~~bash
@@ -179,6 +192,8 @@ Not stable yet:
 ## Documentation
 
 - Usage details and artifact layout: [docs/hosted_weights_usage.md](docs/hosted_weights_usage.md)
+- Hosted/pre-converted MLX weights layout contract: [docs/hosted_weights_layout.md](docs/hosted_weights_layout.md)
+- DACVAE codec artifact layout contract: [docs/codec_artifact_layout.md](docs/codec_artifact_layout.md)
 - RF-DiT hosted artifact status: [docs/hosted_rf_dit_artifacts.md](docs/hosted_rf_dit_artifacts.md)
 - DACVAE codec artifact status: [docs/hosted_dacvae_codec_artifacts.md](docs/hosted_dacvae_codec_artifacts.md)
 - Checkpoint support: [docs/checkpoint_support.md](docs/checkpoint_support.md)

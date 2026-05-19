@@ -165,6 +165,31 @@ class SamplingTests(unittest.TestCase):
         np.testing.assert_allclose(to_np(schedule), np.array([0.999, 0.74925, 0.4995, 0.24975, 0.0], np.float32))
 
     @require_mlx
+    def test_sway_schedule_matches_upstream_formula(self):
+        schedule = euler_timestep_schedule(4, mode="sway", sway_coeff=-1.0)
+        u = np.linspace(0.0, 1.0, 5, dtype=np.float32)
+        u = u + -1.0 * (np.cos(0.5 * np.pi * u) + u - 1.0)
+        u = np.clip(u, 0.0, 1.0)
+        expected = (1.0 - u) * 0.999
+
+        np.testing.assert_allclose(to_np(schedule), expected.astype(np.float32), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_invalid_schedule_mode_raises(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported t_schedule_mode"):
+            euler_timestep_schedule(4, mode="zigzag")
+
+    @require_mlx
+    def test_non_finite_sway_coeff_raises(self):
+        with self.assertRaisesRegex(ValueError, "sway_coeff must be finite"):
+            euler_timestep_schedule(4, mode="sway", sway_coeff=float("inf"))
+
+    @require_mlx
+    def test_non_decreasing_sway_schedule_raises(self):
+        with self.assertRaisesRegex(ValueError, "strictly decreasing"):
+            euler_timestep_schedule(4, mode="sway", sway_coeff=10.0)
+
+    @require_mlx
     def test_fixed_seed_noise_is_deterministic_without_cfg(self):
         model = FakeSamplerModel(caption=False)
         kwargs = dict(
@@ -415,6 +440,29 @@ class SamplingTests(unittest.TestCase):
                 sequence_length=1,
                 cfg_guidance_mode="alternating",
             )
+
+    @require_mlx
+    def test_sampler_accepts_sway_schedule(self):
+        model = FakeSamplerModel(caption=False)
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=2,
+            cfg_scale_text=0.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
+            seed=3,
+            t_schedule_mode="sway",
+            sway_coeff=-1.0,
+            use_context_kv_cache=False,
+        )
+
+        self.assertEqual(out.shape, (1, 1, 2))
+        self.assertEqual([call["batch"] for call in model.calls], [1, 1])
 
 
 if __name__ == "__main__":

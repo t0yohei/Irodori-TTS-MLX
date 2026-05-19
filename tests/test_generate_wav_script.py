@@ -50,6 +50,8 @@ class _FakeRuntime:
                 "codec_backend": decode_backend,
                 "codec_encode_backend": encode_backend,
                 "codec_decode_backend": decode_backend,
+                "t_schedule_mode": request.t_schedule_mode,
+                "sway_coeff": request.sway_coeff,
             },
         )()
 
@@ -177,6 +179,8 @@ class GenerateWavScriptTests(unittest.TestCase):
             cfg_guidance_mode="independent",
             cfg_min_t=0.5,
             cfg_max_t=1.0,
+            t_schedule_mode="linear",
+            sway_coeff=-1.0,
             seed=0,
             max_reference_seconds=30.0,
             no_context_kv_cache=False,
@@ -242,6 +246,62 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         self.assertEqual(args.codec_runtime_mode, "mlx")
         self.assertEqual(args.codec_path, "codec.npz")
+
+    def test_parse_args_accepts_sway_schedule_controls(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--t-schedule-mode",
+                "sway",
+                "--sway-coeff",
+                "-1.0",
+            ]
+        )
+
+        self.assertEqual(args.t_schedule_mode, "sway")
+        self.assertEqual(args.sway_coeff, -1.0)
+
+    def test_config_json_accepts_sway_schedule_controls(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                json.dumps(
+                    {
+                        "weights": "weights.npz",
+                        "output": "out.wav",
+                        "text": "hello",
+                        "t_schedule_mode": "sway",
+                        "sway_coeff": -1.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+        self.assertEqual(args.t_schedule_mode, "sway")
+        self.assertEqual(args.sway_coeff, -1.0)
+
+    def test_requests_json_accepts_sway_schedule_controls(self):
+        requests = generate_wav.load_generation_requests_json(
+            json.dumps(
+                [
+                    {
+                        "output": "out.wav",
+                        "text": "hello",
+                        "t_schedule_mode": "sway",
+                        "sway_coeff": -1.0,
+                    }
+                ]
+            )
+        )
+
+        self.assertEqual(requests[0]["t_schedule_mode"], "sway")
+        self.assertEqual(requests[0]["sway_coeff"], -1.0)
 
     def test_parse_args_defaults_to_full_mlx_hosted_codec_artifact(self):
         args = generate_wav.parse_args(

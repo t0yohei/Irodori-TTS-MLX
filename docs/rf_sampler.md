@@ -8,6 +8,8 @@ The public arguments intentionally follow upstream Irodori-TTS names where pract
 
 - `sequence_length`: number of patched latent steps to generate.
 - `num_steps`: Euler solver steps. The schedule uses `num_steps + 1` values from `0.999` to `0.0`, matching upstream's `init_scale = 0.999` behavior.
+- `t_schedule_mode`: timestep schedule, either `linear` or `sway`. `linear` is the default and preserves the previous behavior.
+- `sway_coeff`: Sway Sampling coefficient used when `t_schedule_mode="sway"`. The default `-1.0` matches upstream's low-step recipe knob.
 - `seed`: fixed MLX RNG key for deterministic noise initialization.
 - `cfg_scale_text`, `cfg_scale_speaker`, `cfg_scale_caption`: per-condition CFG scales.
 - `cfg_min_t`, `cfg_max_t`: CFG active window.
@@ -49,16 +51,30 @@ A v0 lightweight mode for MLX runtime bring-up. It also uses the two-forward con
 Implemented now:
 
 - fixed-seed noise initialization
-- upstream-style Euler timestep schedule
+- upstream-style Euler timestep schedules: default `linear` and optional F5-TTS-style `sway`
 - text / speaker / caption CFG paths
 - optional context K/V cache
 - `independent`, `joint`, and MLX-specific `reduced` CFG modes
+
+The `sway` schedule mirrors upstream Irodori-TTS schedule construction:
+
+```text
+u = linspace(0, 1, num_steps + 1)
+u = clamp(u + sway_coeff * (cos(pi / 2 * u) + u - 1), 0, 1)
+t = (1 - u) * 0.999
+```
+
+Negative `sway_coeff` values allocate more schedule resolution to the noise side
+of the trajectory. This control exists so MLX can carry upstream-validated
+low-step recipes, such as `--t-schedule-mode sway --sway-coeff -1.0`, without
+changing the default linear behavior. Matching the schedule does not imply exact
+audio parity by itself because MLX and upstream still differ in runtime details
+such as codec artifacts, execution dtype, and unsupported sampler options.
 
 Not implemented in this v0:
 
 - upstream `alternating` CFG mode
 - temporal score rescale (`rescale_k`, `rescale_sigma`)
 - speaker K/V force scaling (`speaker_kv_scale`, `speaker_kv_max_layers`, `speaker_kv_min_t`)
-- integration with tokenizer / codec runtime wrappers
 
 These are intentionally left for follow-up runtime parity work so this PR stays focused on the sampler loop and CFG mechanics.
