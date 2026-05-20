@@ -111,6 +111,8 @@ PY
 
 python scripts/convert_weights.py "$MERGED" "$WORK/weights.npz" --dry-run --json
 python scripts/convert_weights.py "$MERGED" "$WORK/weights.npz"
+
+# Base v2 or v3 merged exports:
 python scripts/generate_wav.py \
   --weights "$WORK/weights.npz" \
   --model-config-json "$WORK/model_config.json" \
@@ -118,6 +120,16 @@ python scripts/generate_wav.py \
   --no-reference \
   --output "$WORK/irodori-merged-lora.wav" \
   --metadata-json "$WORK/irodori-merged-lora-metadata.json"
+
+# VoiceDesign v2 merged exports:
+python scripts/generate_wav.py \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
+  --text "こんにちは。今日は良い天気です。" \
+  --caption "落ち着いた女性の声" \
+  --no-reference \
+  --output "$WORK/irodori-merged-lora-voicedesign.wav" \
+  --metadata-json "$WORK/irodori-merged-lora-voicedesign-metadata.json"
 ```
 
 If `convert_weights.py --dry-run` reports missing keys, unexpected keys, shape mismatches, dtype mismatches, or config errors, the merged export is outside this path. Record the concrete converter error and open follow-up scope for either a new checkpoint-family contract or dynamic LoRA adapter inference. Do not describe that checkpoint as supported until the converter/runtime contract is extended and tested.

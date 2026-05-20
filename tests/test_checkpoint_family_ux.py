@@ -99,6 +99,8 @@ class CheckpointFamilyUXTests(unittest.TestCase):
             "scripts/inspect_checkpoint.py \"$MERGED\" --json",
             "scripts/convert_weights.py \"$MERGED\" \"$WORK/weights.npz\" --dry-run --json",
             "scripts/generate_wav.py",
+            "# VoiceDesign v2 merged exports:",
+            "--caption \"落ち着いた女性の声\"",
             "missing keys, unexpected keys, shape mismatches, dtype mismatches, or config errors",
             "dynamic LoRA adapter inference",
         ):
