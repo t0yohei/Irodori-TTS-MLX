@@ -99,6 +99,28 @@ def scale_speaker_kv_cache(
     return scaled
 
 
+def _scale_speaker_kv_cache_in_place(
+    context_kv_cache: list[tuple[mx.array, ...]] | None,
+    *,
+    scale: float,
+    max_layers: int | None = None,
+) -> None:
+    """Scale speaker K/V entries on the existing cache list to avoid a duplicate cache."""
+    if context_kv_cache is None:
+        raise ValueError("speaker_kv_scale requires context K/V caches.")
+    if max_layers is None:
+        n_layers = len(context_kv_cache)
+    else:
+        n_layers = max(0, min(int(max_layers), len(context_kv_cache)))
+    for i, layer_kv in enumerate(context_kv_cache[:n_layers]):
+        if len(layer_kv) < 4:
+            raise ValueError(f"Expected at least 4 tensors in context KV cache entry, got {len(layer_kv)}")
+        values = list(layer_kv)
+        values[2] = values[2] * float(scale)
+        values[3] = values[3] * float(scale)
+        context_kv_cache[i] = tuple(values)
+
+
 def _as_mode(cfg_guidance_mode: str) -> str:
     mode = str(cfg_guidance_mode).strip().lower()
     if mode not in {"independent", "joint", "alternating", "reduced"}:
@@ -311,9 +333,11 @@ def sample_euler_rf_cfg(
         enabled.append(("caption", float(cfg_scale_caption)))
 
     cond_cache = _build_cache(model, cond, use_context_kv_cache=use_context_kv_cache)
+    cond_cache_is_scaled = False
     independent_names = ["cond"]
     independent_bundle = cond
     independent_cache = None
+    independent_cache_is_scaled = False
     joint_uncond = None
     joint_cache = None
     alternating_bundles: dict[str, _ConditionBundle] = {}
@@ -354,21 +378,24 @@ def sample_euler_rf_cfg(
             alternating_bundles[name] = bundle
             alternating_caches[name] = _build_cache(model, bundle, use_context_kv_cache=use_context_kv_cache)
 
-    def _cache_for_t(
-        base: list[tuple[mx.array, ...]] | None,
+    def _set_cache_scale_for_t(
+        cache: list[tuple[mx.array, ...]] | None,
+        *,
+        is_scaled: bool,
         t_value: float,
-    ) -> list[tuple[mx.array, ...]] | None:
-        if base is None:
-            return None
-        if speaker_kv_scale is None:
-            return base
-        if speaker_kv_min_t is None or t_value >= float(speaker_kv_min_t):
-            return scale_speaker_kv_cache(
-                base,
-                scale=float(speaker_kv_scale),
-                max_layers=speaker_kv_max_layers,
-            )
-        return base
+    ) -> bool:
+        if speaker_kv_scale is None or cache is None:
+            return is_scaled
+        should_scale = speaker_kv_min_t is None or t_value >= float(speaker_kv_min_t)
+        if should_scale == is_scaled:
+            return is_scaled
+        scale = float(speaker_kv_scale) if should_scale else 1.0 / float(speaker_kv_scale)
+        _scale_speaker_kv_cache_in_place(
+            cache,
+            scale=scale,
+            max_layers=speaker_kv_max_layers,
+        )
+        return should_scale
 
     schedule = euler_timestep_schedule(
         int(num_steps),
@@ -382,8 +409,12 @@ def sample_euler_rf_cfg(
         tt = mx.full((batch_size,), t, dtype=x_t.dtype)
         t_value = float(t.item())
         use_cfg = bool(enabled) and (float(cfg_min_t) <= t_value <= float(cfg_max_t))
-        cond_cache_step = _cache_for_t(cond_cache, t_value)
-        independent_cache_step = _cache_for_t(independent_cache, t_value)
+        cond_cache_is_scaled = _set_cache_scale_for_t(cond_cache, is_scaled=cond_cache_is_scaled, t_value=t_value)
+        independent_cache_is_scaled = _set_cache_scale_for_t(
+            independent_cache,
+            is_scaled=independent_cache_is_scaled,
+            t_value=t_value,
+        )
 
         if use_cfg and mode == "independent":
             cfg_mult = len(independent_names)
@@ -394,7 +425,7 @@ def sample_euler_rf_cfg(
                 x_t=x_t_cfg,
                 t=tt_cfg,
                 bundle=independent_bundle,
-                context_kv_cache=independent_cache_step,
+                context_kv_cache=independent_cache,
             )
             chunks = mx.split(v_out, cfg_mult, axis=0)
             v = chunks[0]
@@ -404,7 +435,7 @@ def sample_euler_rf_cfg(
             for name, chunk in zip(independent_names[1:], chunks[1:]):
                 v = v + scales[name] * (chunks[0] - chunk)
         elif use_cfg and mode in {"joint", "reduced"}:
-            v_cond = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache_step)
+            v_cond = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache)
             if joint_uncond is None:
                 v = v_cond
             else:
@@ -424,7 +455,7 @@ def sample_euler_rf_cfg(
             )
             v = v_cond + alt_scale * (v_cond - v_uncond)
         else:
-            v = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache_step)
+            v = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache)
 
         if rescale_k is not None and rescale_sigma is not None:
             v = temporal_score_rescale(

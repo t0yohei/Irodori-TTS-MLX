@@ -738,6 +738,31 @@ class SamplingTests(unittest.TestCase):
         np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
 
     @require_mlx
+    def test_sampler_unscales_speaker_cache_after_min_t(self):
+        model = CacheSpeakerScaleSamplerModel()
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=2,
+            cfg_scale_text=0.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
+            seed=7,
+            use_context_kv_cache=False,
+            speaker_kv_scale=3.0,
+            speaker_kv_min_t=0.5,
+        )
+
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(7))
+        schedule = euler_timestep_schedule(2)
+        expected = init + 31.0 * (schedule[1] - schedule[0]) + 11.0 * (schedule[2] - schedule[1])
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
     def test_sampler_rejects_invalid_quality_knobs(self):
         common = dict(
             model=FakeSamplerModel(caption=False, speaker=False),
