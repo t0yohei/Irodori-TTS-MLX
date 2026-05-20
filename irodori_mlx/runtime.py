@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import json
+import math
 import time
 import wave
 from dataclasses import asdict, dataclass
@@ -86,6 +87,11 @@ class GenerationRequest:
     cfg_max_t: float = 1.0
     t_schedule_mode: str = "linear"
     sway_coeff: float = -1.0
+    rescale_k: float | None = None
+    rescale_sigma: float | None = None
+    speaker_kv_scale: float | None = None
+    speaker_kv_min_t: float | None = None
+    speaker_kv_max_layers: int | None = None
     seed: int = 0
     max_reference_seconds: float | None = 30.0
     use_context_kv_cache: bool = True
@@ -109,6 +115,11 @@ class GenerationResult:
     codec_decode_backend: str = "mlx"
     t_schedule_mode: str = "linear"
     sway_coeff: float = -1.0
+    rescale_k: float | None = None
+    rescale_sigma: float | None = None
+    speaker_kv_scale: float | None = None
+    speaker_kv_min_t: float | None = None
+    speaker_kv_max_layers: int | None = None
     requested_seconds: float | None = None
     resolved_seconds: float | None = None
     timings_ms: dict[str, float] | None = None
@@ -1037,6 +1048,29 @@ class MLXDACVAERuntime:
                 "max_auto_estimate_seconds must be positive when provided, "
                 f"got {request.max_auto_estimate_seconds!r}"
             )
+        rescale_k = None if request.rescale_k is None else float(request.rescale_k)
+        rescale_sigma = None if request.rescale_sigma is None else float(request.rescale_sigma)
+        if (rescale_k is None) != (rescale_sigma is None):
+            raise ValueError("rescale_k and rescale_sigma must be set together.")
+        if rescale_k is not None and (not math.isfinite(rescale_k) or rescale_k <= 0):
+            raise ValueError(f"rescale_k must be > 0, got {rescale_k}")
+        if rescale_sigma is not None and (not math.isfinite(rescale_sigma) or rescale_sigma <= 0):
+            raise ValueError(f"rescale_sigma must be > 0, got {rescale_sigma}")
+        speaker_kv_scale = None if request.speaker_kv_scale is None else float(request.speaker_kv_scale)
+        speaker_kv_min_t = None
+        speaker_kv_max_layers = None if request.speaker_kv_max_layers is None else int(request.speaker_kv_max_layers)
+        if speaker_kv_scale is not None:
+            if not self.config.model_config.use_speaker_condition:
+                raise ValueError("speaker_kv_scale requires a speaker-conditioned checkpoint.")
+            if not math.isfinite(speaker_kv_scale) or speaker_kv_scale <= 0:
+                raise ValueError(f"speaker_kv_scale must be > 0, got {speaker_kv_scale}")
+            speaker_kv_min_t = 0.9 if request.speaker_kv_min_t is None else float(request.speaker_kv_min_t)
+            if not math.isfinite(speaker_kv_min_t) or not (0.0 <= speaker_kv_min_t <= 1.0):
+                raise ValueError(f"speaker_kv_min_t must be in [0, 1], got {speaker_kv_min_t}")
+            if speaker_kv_max_layers is not None and speaker_kv_max_layers < 0:
+                raise ValueError(
+                    f"speaker_kv_max_layers must be >= 0 when specified, got {speaker_kv_max_layers}"
+                )
         ref_latent_path = request.ref_latent or None
         if request.ref_embed and (request.reference_wav is not None or ref_latent_path is not None or request.no_reference):
             raise ValueError("Specify only one of ref_embed, ref_latent, reference_wav, or no_reference.")
@@ -1271,6 +1305,11 @@ class MLXDACVAERuntime:
             cfg_max_t=float(request.cfg_max_t),
             t_schedule_mode=request.t_schedule_mode,
             sway_coeff=float(request.sway_coeff),
+            rescale_k=rescale_k,
+            rescale_sigma=rescale_sigma,
+            speaker_kv_scale=speaker_kv_scale,
+            speaker_kv_min_t=speaker_kv_min_t,
+            speaker_kv_max_layers=speaker_kv_max_layers,
             seed=int(request.seed),
             use_context_kv_cache=bool(request.use_context_kv_cache),
         )
@@ -1317,6 +1356,11 @@ class MLXDACVAERuntime:
             codec_decode_backend=str(codec_boundaries["decode_backend"]),
             t_schedule_mode=request.t_schedule_mode,
             sway_coeff=float(request.sway_coeff),
+            rescale_k=rescale_k,
+            rescale_sigma=rescale_sigma,
+            speaker_kv_scale=speaker_kv_scale,
+            speaker_kv_min_t=speaker_kv_min_t,
+            speaker_kv_max_layers=speaker_kv_max_layers,
         )
 
     def describe_boundaries(self) -> dict[str, object]:
@@ -1365,6 +1409,13 @@ def iter_messages(result: GenerationResult) -> Iterable[str]:
     yield f"duration_mode: {result.duration_mode}"
     yield f"t_schedule_mode: {result.t_schedule_mode}"
     yield f"sway_coeff: {result.sway_coeff}"
+    if result.rescale_k is not None or result.rescale_sigma is not None:
+        yield f"rescale_k: {result.rescale_k}"
+        yield f"rescale_sigma: {result.rescale_sigma}"
+    if result.speaker_kv_scale is not None:
+        yield f"speaker_kv_scale: {result.speaker_kv_scale}"
+        yield f"speaker_kv_min_t: {result.speaker_kv_min_t}"
+        yield f"speaker_kv_max_layers: {result.speaker_kv_max_layers}"
     if getattr(result, "codec_backend", None):
         yield f"codec_backend: {result.codec_backend}"
     if getattr(result, "codec_encode_backend", None):

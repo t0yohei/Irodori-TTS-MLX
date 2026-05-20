@@ -58,6 +58,11 @@ class _FakeRuntime:
                 "codec_decode_backend": decode_backend,
                 "t_schedule_mode": request.t_schedule_mode,
                 "sway_coeff": request.sway_coeff,
+                "rescale_k": request.rescale_k,
+                "rescale_sigma": request.rescale_sigma,
+                "speaker_kv_scale": request.speaker_kv_scale,
+                "speaker_kv_min_t": request.speaker_kv_min_t,
+                "speaker_kv_max_layers": request.speaker_kv_max_layers,
             },
         )()
 
@@ -188,6 +193,11 @@ class GenerateWavScriptTests(unittest.TestCase):
             cfg_max_t=1.0,
             t_schedule_mode="linear",
             sway_coeff=-1.0,
+            rescale_k=None,
+            rescale_sigma=None,
+            speaker_kv_scale=None,
+            speaker_kv_min_t=None,
+            speaker_kv_max_layers=None,
             seed=0,
             max_reference_seconds=30.0,
             no_context_kv_cache=False,
@@ -309,6 +319,169 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         self.assertEqual(requests[0]["t_schedule_mode"], "sway")
         self.assertEqual(requests[0]["sway_coeff"], -1.0)
+
+    def test_parse_args_accepts_quality_knob_controls(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--rescale-k",
+                "2.0",
+                "--rescale-sigma",
+                "0.5",
+                "--speaker-kv-scale",
+                "1.25",
+                "--speaker-kv-min-t",
+                "0.8",
+                "--speaker-kv-max-layers",
+                "6",
+            ]
+        )
+
+        self.assertEqual(args.rescale_k, 2.0)
+        self.assertEqual(args.rescale_sigma, 0.5)
+        self.assertEqual(args.speaker_kv_scale, 1.25)
+        self.assertEqual(args.speaker_kv_min_t, 0.8)
+        self.assertEqual(args.speaker_kv_max_layers, 6)
+
+    def test_config_json_accepts_quality_knob_controls(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                json.dumps(
+                    {
+                        "weights": "weights.npz",
+                        "output": "out.wav",
+                        "text": "hello",
+                        "rescale_k": 2.0,
+                        "rescale_sigma": 0.5,
+                        "speaker_kv_scale": 1.25,
+                        "speaker_kv_min_t": 0.8,
+                        "speaker_kv_max_layers": 6,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+        self.assertEqual(args.rescale_k, 2.0)
+        self.assertEqual(args.rescale_sigma, 0.5)
+        self.assertEqual(args.speaker_kv_scale, 1.25)
+        self.assertEqual(args.speaker_kv_min_t, 0.8)
+        self.assertEqual(args.speaker_kv_max_layers, 6)
+
+    def test_config_json_accepts_null_quality_knob_controls(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                json.dumps(
+                    {
+                        "weights": "weights.npz",
+                        "output": "out.wav",
+                        "text": "hello",
+                        "rescale_k": None,
+                        "rescale_sigma": None,
+                        "speaker_kv_scale": None,
+                        "speaker_kv_min_t": None,
+                        "speaker_kv_max_layers": None,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+        self.assertIsNone(args.rescale_k)
+        self.assertIsNone(args.rescale_sigma)
+        self.assertIsNone(args.speaker_kv_scale)
+        self.assertIsNone(args.speaker_kv_min_t)
+        self.assertIsNone(args.speaker_kv_max_layers)
+
+    def test_config_json_rejects_invalid_quality_knob_types(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "generate.json"
+            cfg_path.write_text(
+                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "rescale_k": "2.0", "rescale_sigma": 0.5}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit):
+                generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+            cfg_path.write_text(
+                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "speaker_kv_max_layers": 1.5}',
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit):
+                generate_wav.parse_args(["--config-json", str(cfg_path)])
+
+    def test_parse_args_rejects_invalid_quality_knob_controls(self):
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--rescale-k",
+                    "2.0",
+                ]
+            )
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--speaker-kv-min-t",
+                    "1.5",
+                ]
+            )
+        with self.assertRaises(SystemExit):
+            generate_wav.parse_args(
+                [
+                    "--weights",
+                    "weights.npz",
+                    "--output",
+                    "out.wav",
+                    "--text",
+                    "hello",
+                    "--rescale-k",
+                    "nan",
+                    "--rescale-sigma",
+                    "0.5",
+                ]
+            )
+
+    def test_requests_json_accepts_quality_knob_controls(self):
+        requests = generate_wav.load_generation_requests_json(
+            json.dumps(
+                [
+                    {
+                        "output": "out.wav",
+                        "text": "hello",
+                        "rescale_k": 2.0,
+                        "rescale_sigma": 0.5,
+                        "speaker_kv_scale": 1.25,
+                        "speaker_kv_min_t": 0.8,
+                        "speaker_kv_max_layers": 6,
+                    }
+                ]
+            )
+        )
+
+        self.assertEqual(requests[0]["rescale_k"], 2.0)
+        self.assertEqual(requests[0]["rescale_sigma"], 0.5)
+        self.assertEqual(requests[0]["speaker_kv_scale"], 1.25)
+        self.assertEqual(requests[0]["speaker_kv_min_t"], 0.8)
+        self.assertEqual(requests[0]["speaker_kv_max_layers"], 6)
 
     def test_parse_args_defaults_to_full_mlx_hosted_codec_artifact(self):
         args = generate_wav.parse_args(
@@ -725,6 +898,44 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(payload["result"]["codec_encode_backend"], "not-required")
         self.assertEqual(payload["result"]["speaker_condition_source"], "reference_latent")
 
+    def test_main_metadata_records_quality_knob_controls(self):
+        runtime_holder = {}
+
+        def fake_runtime_factory(*, config):
+            runtime_holder["runtime"] = _FakeRuntime(config)
+            return runtime_holder["runtime"]
+
+        with tempfile.TemporaryDirectory() as td:
+            metadata_path = Path(td) / "metadata.json"
+            args = self._args(str(Path(td) / "out.wav"))
+            args.no_reference = True
+            args.caption = None
+            args.codec_runtime_mode = "mlx"
+            args.codec_path = "codec.npz"
+            args.metadata_json = str(metadata_path)
+            args.rescale_k = 2.0
+            args.rescale_sigma = 0.5
+            args.speaker_kv_scale = 1.25
+            args.speaker_kv_min_t = 0.8
+            args.speaker_kv_max_layers = 6
+            with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
+                generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
+            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+                generate_wav, "iter_messages", return_value=iter([])
+            ):
+                rc = generate_wav.main()
+
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["request"]["rescale_k"], 2.0)
+        self.assertEqual(payload["request"]["rescale_sigma"], 0.5)
+        self.assertEqual(payload["request"]["speaker_kv_scale"], 1.25)
+        self.assertEqual(payload["request"]["speaker_kv_min_t"], 0.8)
+        self.assertEqual(payload["request"]["speaker_kv_max_layers"], 6)
+        self.assertEqual(payload["result"]["rescale_k"], 2.0)
+        self.assertEqual(payload["result"]["speaker_kv_scale"], 1.25)
+
     def test_main_rejects_layout_no_reference_when_manifest_requires_reference(self):
         with tempfile.TemporaryDirectory() as td:
             args = self._args(str(Path(td) / "out.wav"))
@@ -919,6 +1130,27 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(request.num_steps, 12)
         self.assertEqual(request.seed, 123)
         self.assertFalse(request.use_context_kv_cache)
+
+    def test_build_generation_request_applies_quality_knob_overrides(self):
+        args = self._args("default.wav")
+        request = generate_wav.build_generation_request(
+            args,
+            {
+                "text": "override",
+                "output": "override.wav",
+                "rescale_k": 2.0,
+                "rescale_sigma": 0.5,
+                "speaker_kv_scale": 1.25,
+                "speaker_kv_min_t": 0.8,
+                "speaker_kv_max_layers": 6,
+            },
+        )
+
+        self.assertEqual(request.rescale_k, 2.0)
+        self.assertEqual(request.rescale_sigma, 0.5)
+        self.assertEqual(request.speaker_kv_scale, 1.25)
+        self.assertEqual(request.speaker_kv_min_t, 0.8)
+        self.assertEqual(request.speaker_kv_max_layers, 6)
 
     def test_build_generation_request_applies_ultra_fast_request_preset_defaults(self):
         args = self._args("default.wav")

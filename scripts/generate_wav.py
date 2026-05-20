@@ -92,6 +92,11 @@ CONFIG_KEYS = {
     "cfg_max_t",
     "t_schedule_mode",
     "sway_coeff",
+    "rescale_k",
+    "rescale_sigma",
+    "speaker_kv_scale",
+    "speaker_kv_min_t",
+    "speaker_kv_max_layers",
     "seed",
     "max_reference_seconds",
     "no_context_kv_cache",
@@ -123,6 +128,11 @@ REQUEST_KEYS = {
     "cfg_max_t",
     "t_schedule_mode",
     "sway_coeff",
+    "rescale_k",
+    "rescale_sigma",
+    "speaker_kv_scale",
+    "speaker_kv_min_t",
+    "speaker_kv_max_layers",
     "seed",
     "max_reference_seconds",
     "no_context_kv_cache",
@@ -170,7 +180,14 @@ FLOAT_KEYS = {
     "sway_coeff",
     "max_reference_seconds",
 }
-NULLABLE_FLOAT_KEYS = {"seconds"}
+NULLABLE_FLOAT_KEYS = {
+    "seconds",
+    "rescale_k",
+    "rescale_sigma",
+    "speaker_kv_scale",
+    "speaker_kv_min_t",
+}
+NULLABLE_INT_KEYS = {"speaker_kv_max_layers"}
 CHOICE_KEYS = {
     "preset": {"ultra-fast", "fast", "balanced", "quality"},
     "codec_runtime_mode": {"mlx"},
@@ -247,6 +264,12 @@ def _validate_generation_config(payload: dict[str, Any]) -> dict[str, Any]:
             value = payload[key]
             if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
                 raise ValueError(f"generation config field '{key}' must be a number or null")
+
+    for key in NULLABLE_INT_KEYS:
+        if key in payload:
+            value = payload[key]
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+                raise ValueError(f"generation config field '{key}' must be an integer or null")
 
     for key, choices in CHOICE_KEYS.items():
         if key in payload and payload[key] not in choices:
@@ -534,6 +557,11 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument("--cfg-max-t", type=float, default=float(_default(config, "cfg_max_t", 1.0)), help="Upper timestep bound for CFG application.")
     parser.add_argument("--t-schedule-mode", default=_default(config, "t_schedule_mode", "linear"), choices=("linear", "sway"), help="RF timestep schedule. Use sway for upstream-validated low-step recipes.")
     parser.add_argument("--sway-coeff", type=float, default=float(_default(config, "sway_coeff", -1.0)), help="Sway Sampling coefficient used when --t-schedule-mode=sway.")
+    parser.add_argument("--rescale-k", type=float, default=config.get("rescale_k"), help="Temporal score rescaling k. Set together with --rescale-sigma.")
+    parser.add_argument("--rescale-sigma", type=float, default=config.get("rescale_sigma"), help="Temporal score rescaling sigma. Set together with --rescale-k.")
+    parser.add_argument("--speaker-kv-scale", type=float, default=config.get("speaker_kv_scale"), help="Scale speaker context K/V projections by this factor for upstream-validated recipes.")
+    parser.add_argument("--speaker-kv-min-t", type=float, default=config.get("speaker_kv_min_t"), help="Apply speaker K/V scaling while t is at or above this threshold. Defaults to 0.9 when --speaker-kv-scale is set.")
+    parser.add_argument("--speaker-kv-max-layers", type=int, default=config.get("speaker_kv_max_layers"), help="Apply speaker K/V scaling only to the first N diffusion layers.")
     parser.add_argument("--seed", type=int, default=int(_default(config, "seed", 0)), help="Random seed for latent sampling.")
     parser.add_argument("--max-reference-seconds", type=float, default=float(_default(config, "max_reference_seconds", 30.0)), help="Trim reference audio to this many seconds before DACVAE encode.")
     _add_configurable_bool(
@@ -676,6 +704,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--num-steps must be > 0")
     if not math.isfinite(float(args.sway_coeff)):
         parser.error("--sway-coeff must be finite")
+    if (args.rescale_k is None) != (args.rescale_sigma is None):
+        parser.error("--rescale-k and --rescale-sigma must be set together")
+    if args.rescale_k is not None and (not math.isfinite(float(args.rescale_k)) or args.rescale_k <= 0):
+        parser.error("--rescale-k must be > 0")
+    if args.rescale_sigma is not None and (not math.isfinite(float(args.rescale_sigma)) or args.rescale_sigma <= 0):
+        parser.error("--rescale-sigma must be > 0")
+    if args.speaker_kv_scale is not None and (not math.isfinite(float(args.speaker_kv_scale)) or args.speaker_kv_scale <= 0):
+        parser.error("--speaker-kv-scale must be > 0")
+    if args.speaker_kv_min_t is not None and (
+        not math.isfinite(float(args.speaker_kv_min_t)) or not (0.0 <= float(args.speaker_kv_min_t) <= 1.0)
+    ):
+        parser.error("--speaker-kv-min-t must be in [0, 1]")
+    if args.speaker_kv_max_layers is not None and int(args.speaker_kv_max_layers) < 0:
+        parser.error("--speaker-kv-max-layers must be >= 0")
     if args.text_max_length <= 0:
         parser.error("--text-max-length must be > 0")
     if args.caption_max_length is not None and int(args.caption_max_length) <= 0:
@@ -933,6 +975,11 @@ def _result_to_dict(result: Any) -> dict[str, Any]:
         "codec_decode_backend": getattr(result, "codec_decode_backend", None),
         "t_schedule_mode": getattr(result, "t_schedule_mode", None),
         "sway_coeff": getattr(result, "sway_coeff", None),
+        "rescale_k": getattr(result, "rescale_k", None),
+        "rescale_sigma": getattr(result, "rescale_sigma", None),
+        "speaker_kv_scale": getattr(result, "speaker_kv_scale", None),
+        "speaker_kv_min_t": getattr(result, "speaker_kv_min_t", None),
+        "speaker_kv_max_layers": getattr(result, "speaker_kv_max_layers", None),
         "requested_seconds": getattr(result, "requested_seconds", None),
         "resolved_seconds": getattr(result, "resolved_seconds", None),
         "timings_ms": result.timings_ms,
@@ -1030,6 +1077,11 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
     cfg_scale_speaker = _merged_request_preset_value(args, overrides, preset_defaults, preset, "cfg_scale_speaker")
     t_schedule_mode = _merged_request_value(args, overrides, "t_schedule_mode")
     sway_coeff = float(_merged_request_value(args, overrides, "sway_coeff"))
+    rescale_k = _merged_request_value(args, overrides, "rescale_k")
+    rescale_sigma = _merged_request_value(args, overrides, "rescale_sigma")
+    speaker_kv_scale = _merged_request_value(args, overrides, "speaker_kv_scale")
+    speaker_kv_min_t = _merged_request_value(args, overrides, "speaker_kv_min_t")
+    speaker_kv_max_layers = _merged_request_value(args, overrides, "speaker_kv_max_layers")
     seconds = _merged_request_value(args, overrides, "seconds")
     duration_scale = float(_merged_request_value(args, overrides, "duration_scale"))
     duration_scale_explicit = bool(getattr(args, "duration_scale_explicit", False)) or "duration_scale" in overrides
@@ -1050,6 +1102,20 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         raise ValueError(f"t_schedule_mode must be one of: {allowed}")
     if not math.isfinite(sway_coeff):
         raise ValueError("sway_coeff must be finite")
+    if (rescale_k is None) != (rescale_sigma is None):
+        raise ValueError("rescale_k and rescale_sigma must be set together")
+    if rescale_k is not None and (not math.isfinite(float(rescale_k)) or float(rescale_k) <= 0):
+        raise ValueError("rescale_k must be > 0")
+    if rescale_sigma is not None and (not math.isfinite(float(rescale_sigma)) or float(rescale_sigma) <= 0):
+        raise ValueError("rescale_sigma must be > 0")
+    if speaker_kv_scale is not None and (not math.isfinite(float(speaker_kv_scale)) or float(speaker_kv_scale) <= 0):
+        raise ValueError("speaker_kv_scale must be > 0")
+    if speaker_kv_min_t is not None and (
+        not math.isfinite(float(speaker_kv_min_t)) or not (0.0 <= float(speaker_kv_min_t) <= 1.0)
+    ):
+        raise ValueError("speaker_kv_min_t must be in [0, 1]")
+    if speaker_kv_max_layers is not None and int(speaker_kv_max_layers) < 0:
+        raise ValueError("speaker_kv_max_layers must be >= 0")
     if max_reference_seconds is not None and float(max_reference_seconds) <= 0:
         raise ValueError("max_reference_seconds must be > 0 when provided")
     return GenerationRequest(
@@ -1073,6 +1139,11 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         cfg_max_t=float(_merged_request_value(args, overrides, "cfg_max_t")),
         t_schedule_mode=t_schedule_mode,
         sway_coeff=sway_coeff,
+        rescale_k=None if rescale_k is None else float(rescale_k),
+        rescale_sigma=None if rescale_sigma is None else float(rescale_sigma),
+        speaker_kv_scale=None if speaker_kv_scale is None else float(speaker_kv_scale),
+        speaker_kv_min_t=None if speaker_kv_min_t is None else float(speaker_kv_min_t),
+        speaker_kv_max_layers=None if speaker_kv_max_layers is None else int(speaker_kv_max_layers),
         seed=int(_merged_request_value(args, overrides, "seed")),
         max_reference_seconds=max_reference_seconds,
         use_context_kv_cache=not bool(_merged_request_value(args, overrides, "no_context_kv_cache")),

@@ -10,6 +10,10 @@ The public arguments intentionally follow upstream Irodori-TTS names where pract
 - `num_steps`: Euler solver steps. The schedule uses `num_steps + 1` values from `0.999` to `0.0`, matching upstream's `init_scale = 0.999` behavior.
 - `t_schedule_mode`: timestep schedule, either `linear` or `sway`. `linear` is the default and preserves the previous behavior.
 - `sway_coeff`: Sway Sampling coefficient used when `t_schedule_mode="sway"`. The default `-1.0` matches upstream's low-step recipe knob.
+- `rescale_k`, `rescale_sigma`: optional temporal score rescaling parameters. Set both together or leave both unset.
+- `speaker_kv_scale`: optional multiplier for speaker context K/V projections. Requires a speaker-conditioned checkpoint.
+- `speaker_kv_min_t`: timestep threshold for speaker K/V scaling. When `speaker_kv_scale` is set and this is omitted, the runtime uses the upstream default `0.9`.
+- `speaker_kv_max_layers`: optional limit for applying speaker K/V scaling only to the first N diffusion layers.
 - `seed`: fixed MLX RNG key for deterministic noise initialization.
 - `cfg_scale_text`, `cfg_scale_speaker`, `cfg_scale_caption`: per-condition CFG scales.
 - `cfg_min_t`, `cfg_max_t`: CFG active window.
@@ -63,6 +67,8 @@ Implemented now:
 
 - fixed-seed noise initialization
 - upstream-style Euler timestep schedules: default `linear` and optional F5-TTS-style `sway`
+- temporal score rescaling with `rescale_k` and `rescale_sigma`
+- speaker K/V scaling with `speaker_kv_scale`, `speaker_kv_min_t`, and `speaker_kv_max_layers`
 - text / speaker / caption CFG paths
 - optional context K/V cache
 - `independent`, upstream-compatible `joint` / `alternating`, and MLX-specific `reduced` CFG modes
@@ -82,9 +88,17 @@ changing the default linear behavior. Matching the schedule does not imply exact
 audio parity by itself because MLX and upstream still differ in runtime details
 such as codec artifacts, execution dtype, and unsupported sampler options.
 
-Not implemented in this v0:
+Temporal score rescaling follows the upstream formula after CFG velocity
+calculation and before the Euler update. `rescale_k` and `rescale_sigma` must
+both be positive and must be set together.
 
-- temporal score rescale (`rescale_k`, `rescale_sigma`)
-- speaker K/V force scaling (`speaker_kv_scale`, `speaker_kv_max_layers`, `speaker_kv_min_t`)
+Speaker K/V scaling operates on projected context K/V caches, so enabling
+`speaker_kv_scale` forces context cache use even when `use_context_kv_cache` is
+otherwise disabled. The control is accepted only for speaker-conditioned
+checkpoints. It applies while `t >= speaker_kv_min_t`; `speaker_kv_max_layers`
+limits scaling to the first N RF-DiT blocks.
 
-These are intentionally left for follow-up runtime parity work so this PR stays focused on the sampler loop and CFG mechanics.
+No known upstream sampler parity knobs covered by this document remain
+intentionally unsupported in this v0.
+
+`reduced` mode remains MLX-specific and is not an upstream parity mode.

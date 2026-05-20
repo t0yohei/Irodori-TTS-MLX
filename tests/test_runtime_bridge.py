@@ -1071,14 +1071,26 @@ class RuntimeBridgeTests(unittest.TestCase):
                     num_steps=1,
                     cfg_scale_text=0.0,
                     cfg_scale_speaker=0.0,
+                    rescale_k=2.0,
+                    rescale_sigma=0.5,
+                    speaker_kv_scale=1.25,
+                    speaker_kv_min_t=0.8,
+                    speaker_kv_max_layers=1,
                 )
             )
 
         self.assertEqual(bridge.encoded, [])
         self.assertEqual(tuple(captured["speaker_state"].shape), (1, 2, cfg.speaker_dim))
         np.testing.assert_array_equal(np.array(captured["speaker_mask"]), np.array([[True, True]]))
+        self.assertEqual(captured["rescale_k"], 2.0)
+        self.assertEqual(captured["rescale_sigma"], 0.5)
+        self.assertEqual(captured["speaker_kv_scale"], 1.25)
+        self.assertEqual(captured["speaker_kv_min_t"], 0.8)
+        self.assertEqual(captured["speaker_kv_max_layers"], 1)
         self.assertEqual(result.speaker_condition_source, "embedding")
         self.assertEqual(result.codec_encode_backend, "not-required")
+        self.assertEqual(result.rescale_k, 2.0)
+        self.assertEqual(result.speaker_kv_scale, 1.25)
 
     @require_mlx
     def test_runtime_uses_ref_latent_without_dacvae_encode(self):
