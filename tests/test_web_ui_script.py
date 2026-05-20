@@ -111,6 +111,15 @@ class WebUiScriptTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--cfg-scale-speaker") + 1], "0.0")
         self.assertEqual(argv[argv.index("--cfg-guidance-mode") + 1], "joint")
 
+    def test_alternating_cfg_guidance_mode_is_forwarded(self):
+        argv = web_ui.build_generate_argv(
+            web_ui.WebGenerationConfig(cfg_guidance_mode="alternating"),
+            output_wav="/tmp/out.wav",
+            metadata_json="/tmp/meta.json",
+        )
+
+        self.assertEqual(argv[argv.index("--cfg-guidance-mode") + 1], "alternating")
+
     def test_run_generation_uses_subprocess_and_reads_metadata(self):
         old_argv = list(sys.argv)
 

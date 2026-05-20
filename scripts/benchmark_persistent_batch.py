@@ -83,7 +83,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seconds", type=float, default=5.0)
     parser.add_argument("--omit-seconds", action="store_true")
     parser.add_argument("--num-steps", type=int, default=24)
-    parser.add_argument("--cfg-guidance-mode", choices=("independent", "joint", "reduced"), default="independent")
+    parser.add_argument("--cfg-guidance-mode", choices=("independent", "joint", "alternating", "reduced"), default="independent")
     parser.add_argument("--cfg-scale-text", type=float, default=3.0)
     parser.add_argument("--cfg-scale-caption", type=float)
     parser.add_argument("--cfg-scale-speaker", type=float)

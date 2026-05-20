@@ -827,7 +827,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cfg-scale-text", type=float, default=3.0)
     parser.add_argument("--cfg-scale-caption", type=float, default=3.0)
     parser.add_argument("--cfg-scale-speaker", type=float, default=5.0)
-    parser.add_argument("--cfg-guidance-mode", choices=("independent", "joint", "reduced"), default="independent")
+    parser.add_argument("--cfg-guidance-mode", choices=("independent", "joint", "alternating", "reduced"), default="independent")
     parser.add_argument("--cfg-min-t", type=float, default=0.5)
     parser.add_argument("--cfg-max-t", type=float, default=1.0)
     parser.add_argument("--json", action="store_true", dest="json_output")

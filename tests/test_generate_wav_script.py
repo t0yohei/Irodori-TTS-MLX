@@ -832,6 +832,22 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(args.cfg_scale_caption, 3.0)
         self.assertEqual(args.cfg_scale_speaker, 4.0)
 
+    def test_parse_args_accepts_alternating_cfg_guidance_mode(self):
+        args = generate_wav.parse_args(
+            [
+                "--weights",
+                "weights.npz",
+                "--output",
+                "out.wav",
+                "--text",
+                "hello",
+                "--cfg-guidance-mode",
+                "alternating",
+            ]
+        )
+
+        self.assertEqual(args.cfg_guidance_mode, "alternating")
+
     def test_parse_args_config_preset_supplies_default_num_steps(self):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"

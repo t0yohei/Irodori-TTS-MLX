@@ -135,7 +135,7 @@ For caption quality checks, use short, concrete style instructions rather than g
 - `明るく元気な声で、少し速めにはっきり話してください。`
 - `低めの声で、ニュース読みのように落ち着いて読み上げてください。`
 
-Start with `--cfg-scale-caption 3.0` and `--cfg-guidance-mode independent`. Increase caption scale gradually only when the style is too weak; very high caption guidance can trade naturalness for stronger style steering. Use `--cfg-guidance-mode joint` only when all enabled scales are equal, or pass `--cfg-scale` to set text, caption, and speaker scales together. `--no-context-kv-cache` is useful as a debugging parity switch; it should not change deterministic caption conditioning for the same seed and inputs.
+Start with `--cfg-scale-caption 3.0` and `--cfg-guidance-mode independent`. Increase caption scale gradually only when the style is too weak; very high caption guidance can trade naturalness for stronger style steering. Use `--cfg-guidance-mode joint` only when all enabled scales are equal, or pass `--cfg-scale` to set text, caption, and speaker scales together. Use `--cfg-guidance-mode alternating` when you want the upstream 2x-NFE mode that rotates through enabled condition unconds by diffusion step. `--no-context-kv-cache` is useful as a debugging parity switch; it should not change deterministic caption conditioning for the same seed and inputs.
 
 When `--seconds` is omitted, VoiceDesign v2 uses a conservative heuristic duration estimate and reports `duration_mode: "estimated"` in metadata/messages. The estimate is based primarily on spoken `--text`; `--caption` only nudges the estimate for style hints such as slower/calm or faster/energetic delivery. Pass `--seconds` for an exact duration, or `--duration-scale` to keep the estimate while shortening or lengthening it.
 
@@ -143,7 +143,7 @@ Known limitations:
 
 - The checked-in parity fixtures validate intermediate conditioning behavior, not bitwise final waveform parity.
 - MLX and upstream PyTorch can use different RNG streams and backend kernels, so real-checkpoint audio comparisons should focus on caption sensitivity, sane quality, duration, and absence of regressions rather than exact waveform equality.
-- The MLX sampler intentionally supports `independent`, `joint`, and `reduced`; upstream also has `alternating`, which is not part of the current MLX contract.
+- The MLX sampler intentionally supports upstream-compatible `independent`, `joint`, and `alternating`; `reduced` remains MLX-specific and uses the maximum enabled scale over a joint unconditional branch.
 
 For automated regression coverage, the repository now includes two workflows:
 

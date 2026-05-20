@@ -309,6 +309,106 @@ class SamplingTests(unittest.TestCase):
         np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
 
     @require_mlx
+    def test_alternating_cfg_rotates_enabled_condition_unconds(self):
+        model = FakeSamplerModel(caption=True, speaker=True)
+        seed = 13
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            caption_input_ids=mx.array([[2]], dtype=mx.int32),
+            caption_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=3,
+            cfg_scale_text=2.0,
+            cfg_scale_speaker=3.0,
+            cfg_scale_caption=4.0,
+            cfg_guidance_mode="alternating",
+            cfg_min_t=0.0,
+            seed=seed,
+            use_context_kv_cache=True,
+        )
+
+        self.assertEqual([call["batch"] for call in model.calls], [1, 1, 1, 1, 1, 1])
+        self.assertTrue(all(call["cached"] for call in model.calls))
+        self.assertEqual(model.cache_builds, 4)
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(seed))
+        schedule = euler_timestep_schedule(3)
+        velocities = [
+            111 + 2 * (111 - 110),
+            111 + 3 * (111 - 101),
+            111 + 4 * (111 - 11),
+        ]
+        expected = init
+        for i, velocity in enumerate(velocities):
+            expected = expected + velocity * (schedule[i + 1] - schedule[i])
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_alternating_cfg_skips_disabled_conditions(self):
+        model = FakeSamplerModel(caption=True, speaker=True)
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            caption_input_ids=mx.array([[2]], dtype=mx.int32),
+            caption_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=2,
+            cfg_scale_text=0.0,
+            cfg_scale_speaker=3.0,
+            cfg_scale_caption=4.0,
+            cfg_guidance_mode="alternating",
+            cfg_min_t=0.0,
+            seed=19,
+            use_context_kv_cache=False,
+        )
+
+        self.assertEqual([call["batch"] for call in model.calls], [1, 1, 1, 1])
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(19))
+        schedule = euler_timestep_schedule(2)
+        expected = init
+        for i, velocity in enumerate([111 + 3 * (111 - 101), 111 + 4 * (111 - 11)]):
+            expected = expected + velocity * (schedule[i + 1] - schedule[i])
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_alternating_cfg_rotates_by_absolute_diffusion_step(self):
+        model = FakeSamplerModel(caption=True, speaker=True)
+        seed = 29
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            caption_input_ids=mx.array([[2]], dtype=mx.int32),
+            caption_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=3,
+            cfg_scale_text=2.0,
+            cfg_scale_speaker=3.0,
+            cfg_scale_caption=4.0,
+            cfg_guidance_mode="alternating",
+            cfg_min_t=0.0,
+            cfg_max_t=0.7,
+            seed=seed,
+            use_context_kv_cache=False,
+        )
+
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(seed))
+        schedule = euler_timestep_schedule(3)
+        velocities = [111, 111 + 3 * (111 - 101), 111 + 4 * (111 - 11)]
+        expected = init
+        for i, velocity in enumerate(velocities):
+            expected = expected + velocity * (schedule[i + 1] - schedule[i])
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
     def test_fixed_seed_caption_content_changes_mlx_sample(self):
         common = dict(
             text_input_ids=mx.array([[1, 2]], dtype=mx.int32),
@@ -438,7 +538,7 @@ class SamplingTests(unittest.TestCase):
                 ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
                 ref_mask=mx.array([[True]]),
                 sequence_length=1,
-                cfg_guidance_mode="alternating",
+                cfg_guidance_mode="unsupported",
             )
 
     @require_mlx

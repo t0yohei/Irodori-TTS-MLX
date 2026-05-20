@@ -9,7 +9,7 @@ import mlx.core as mx
 from .encoders import EncodedConditions
 from .model import TextToLatentRFDiT
 
-CFGGUIDANCE_MODE = Literal["independent", "joint", "reduced"]
+CFGGUIDANCE_MODE = Literal["independent", "joint", "alternating", "reduced"]
 TIMESTEP_SCHEDULE_MODE = Literal["linear", "sway"]
 
 
@@ -55,10 +55,10 @@ def euler_timestep_schedule(
 
 def _as_mode(cfg_guidance_mode: str) -> str:
     mode = str(cfg_guidance_mode).strip().lower()
-    if mode not in {"independent", "joint", "reduced"}:
+    if mode not in {"independent", "joint", "alternating", "reduced"}:
         raise ValueError(
             f"Unsupported cfg_guidance_mode={cfg_guidance_mode!r}. "
-            "Expected one of: independent, joint, reduced."
+            "Expected one of: independent, joint, alternating, reduced."
         )
     return mode
 
@@ -247,6 +247,8 @@ def sample_euler_rf_cfg(
     independent_cache = None
     joint_uncond = None
     joint_cache = None
+    alternating_bundles: dict[str, _ConditionBundle] = {}
+    alternating_caches: dict[str, list[tuple[mx.array, ...]] | None] = {}
 
     if mode == "independent" and enabled:
         bundles = [cond]
@@ -272,6 +274,16 @@ def sample_euler_rf_cfg(
                 )
         joint_uncond = _uncond_bundle(cond, text=has_text_cfg, speaker=has_speaker_cfg, caption=has_caption_cfg)
         joint_cache = _build_cache(model, joint_uncond, use_context_kv_cache=use_context_kv_cache)
+    elif mode == "alternating" and enabled:
+        for name, _scale in enabled:
+            bundle = _uncond_bundle(
+                cond,
+                text=name == "text",
+                speaker=name == "speaker",
+                caption=name == "caption",
+            )
+            alternating_bundles[name] = bundle
+            alternating_caches[name] = _build_cache(model, bundle, use_context_kv_cache=use_context_kv_cache)
 
     schedule = euler_timestep_schedule(
         int(num_steps),
@@ -311,6 +323,18 @@ def sample_euler_rf_cfg(
                 joint_scale = enabled[0][1] if mode == "joint" else max(scale for _name, scale in enabled)
                 v_uncond = _forward(model, x_t=x_t, t=tt, bundle=joint_uncond, context_kv_cache=joint_cache)
                 v = v_cond + joint_scale * (v_cond - v_uncond)
+        elif use_cfg and mode == "alternating":
+            v_cond = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache)
+            alt_name, alt_scale = enabled[i % len(enabled)]
+            alt_bundle = alternating_bundles[alt_name]
+            v_uncond = _forward(
+                model,
+                x_t=x_t,
+                t=tt,
+                bundle=alt_bundle,
+                context_kv_cache=alternating_caches.get(alt_name),
+            )
+            v = v_cond + alt_scale * (v_cond - v_uncond)
         else:
             v = _forward(model, x_t=x_t, t=tt, bundle=cond, context_kv_cache=cond_cache)
 

@@ -174,7 +174,7 @@ NULLABLE_FLOAT_KEYS = {"seconds"}
 CHOICE_KEYS = {
     "preset": {"ultra-fast", "fast", "balanced", "quality"},
     "codec_runtime_mode": {"mlx"},
-    "cfg_guidance_mode": {"independent", "joint", "reduced"},
+    "cfg_guidance_mode": {"independent", "joint", "alternating", "reduced"},
     "t_schedule_mode": {"linear", "sway"},
 }
 
@@ -529,7 +529,7 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument("--cfg-scale-text", type=float, default=float(_default(config, "cfg_scale_text", 3.0)), help="Classifier-free guidance scale for text conditioning.")
     parser.add_argument("--cfg-scale-caption", type=float, default=float(_default(config, "cfg_scale_caption", 3.0)), help="Classifier-free guidance scale for caption conditioning.")
     parser.add_argument("--cfg-scale-speaker", type=float, default=float(_default(config, "cfg_scale_speaker", 5.0)), help="Classifier-free guidance scale for speaker/reference conditioning.")
-    parser.add_argument("--cfg-guidance-mode", default=_default(config, "cfg_guidance_mode", "independent"), choices=("independent", "joint", "reduced"), help="Guidance mixing strategy.")
+    parser.add_argument("--cfg-guidance-mode", default=_default(config, "cfg_guidance_mode", "independent"), choices=("independent", "joint", "alternating", "reduced"), help="Guidance mixing strategy.")
     parser.add_argument("--cfg-min-t", type=float, default=float(_default(config, "cfg_min_t", 0.5)), help="Lower timestep bound for CFG application.")
     parser.add_argument("--cfg-max-t", type=float, default=float(_default(config, "cfg_max_t", 1.0)), help="Upper timestep bound for CFG application.")
     parser.add_argument("--t-schedule-mode", default=_default(config, "t_schedule_mode", "linear"), choices=("linear", "sway"), help="RF timestep schedule. Use sway for upstream-validated low-step recipes.")

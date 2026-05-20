@@ -13,7 +13,7 @@ The public arguments intentionally follow upstream Irodori-TTS names where pract
 - `seed`: fixed MLX RNG key for deterministic noise initialization.
 - `cfg_scale_text`, `cfg_scale_speaker`, `cfg_scale_caption`: per-condition CFG scales.
 - `cfg_min_t`, `cfg_max_t`: CFG active window.
-- `cfg_guidance_mode`: `independent`, `joint`, or `reduced`.
+- `cfg_guidance_mode`: `independent`, `joint`, `alternating`, or `reduced`.
 - `truncation_factor`: optional multiplier applied to the initial noise.
 - `use_context_kv_cache`: pre-project condition K/V tensors once per condition bundle.
 
@@ -42,6 +42,17 @@ v += cfg_scale_caption * (v_cond - v_caption_uncond)
 
 Runs `v_cond` and a fully unconditioned path. Enabled guidance scales must be equal, matching upstream's joint-mode guard.
 
+### `alternating`
+
+Runs `v_cond` and one single-condition unconditioned path on CFG-active steps. It cycles by absolute diffusion step through enabled CFG conditions in upstream order: text, speaker, caption. Disabled conditions are skipped, and each selected condition uses its own scale:
+
+```text
+diffusion step 0: v = v_cond + cfg_scale_text    * (v_cond - v_text_uncond)
+diffusion step 1: v = v_cond + cfg_scale_speaker * (v_cond - v_speaker_uncond)
+diffusion step 2: v = v_cond + cfg_scale_caption * (v_cond - v_caption_uncond)
+diffusion step 3: repeat from the first enabled condition
+```
+
 ### `reduced`
 
 A v0 lightweight mode for MLX runtime bring-up. It also uses the two-forward conditional/full-unconditional path, but permits different per-condition scales and uses the maximum enabled scale as the joint scale. This avoids the larger independent CFG batch while still exposing a guided path.
@@ -54,7 +65,7 @@ Implemented now:
 - upstream-style Euler timestep schedules: default `linear` and optional F5-TTS-style `sway`
 - text / speaker / caption CFG paths
 - optional context K/V cache
-- `independent`, `joint`, and MLX-specific `reduced` CFG modes
+- `independent`, upstream-compatible `joint` / `alternating`, and MLX-specific `reduced` CFG modes
 
 The `sway` schedule mirrors upstream Irodori-TTS schedule construction:
 
@@ -73,7 +84,6 @@ such as codec artifacts, execution dtype, and unsupported sampler options.
 
 Not implemented in this v0:
 
-- upstream `alternating` CFG mode
 - temporal score rescale (`rescale_k`, `rescale_sigma`)
 - speaker K/V force scaling (`speaker_kv_scale`, `speaker_kv_max_layers`, `speaker_kv_min_t`)
 
