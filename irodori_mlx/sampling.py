@@ -311,19 +311,9 @@ def sample_euler_rf_cfg(
         enabled.append(("caption", float(cfg_scale_caption)))
 
     cond_cache = _build_cache(model, cond, use_context_kv_cache=use_context_kv_cache)
-    cond_cache_scaled = (
-        scale_speaker_kv_cache(
-            cond_cache,
-            scale=float(speaker_kv_scale),
-            max_layers=speaker_kv_max_layers,
-        )
-        if speaker_kv_scale is not None
-        else cond_cache
-    )
     independent_names = ["cond"]
     independent_bundle = cond
     independent_cache = None
-    independent_cache_scaled = None
     joint_uncond = None
     joint_cache = None
     alternating_bundles: dict[str, _ConditionBundle] = {}
@@ -343,15 +333,6 @@ def sample_euler_rf_cfg(
             )
         independent_bundle = _concat_bundles(bundles)
         independent_cache = _build_cache(model, independent_bundle, use_context_kv_cache=use_context_kv_cache)
-        independent_cache_scaled = (
-            scale_speaker_kv_cache(
-                independent_cache,
-                scale=float(speaker_kv_scale),
-                max_layers=speaker_kv_max_layers,
-            )
-            if speaker_kv_scale is not None
-            else independent_cache
-        )
     elif mode in {"joint", "reduced"} and enabled:
         if mode == "joint" and len(enabled) > 1:
             scales = [scale for _name, scale in enabled]
@@ -375,13 +356,18 @@ def sample_euler_rf_cfg(
 
     def _cache_for_t(
         base: list[tuple[mx.array, ...]] | None,
-        scaled: list[tuple[mx.array, ...]] | None,
         t_value: float,
     ) -> list[tuple[mx.array, ...]] | None:
+        if base is None:
+            return None
         if speaker_kv_scale is None:
             return base
         if speaker_kv_min_t is None or t_value >= float(speaker_kv_min_t):
-            return scaled
+            return scale_speaker_kv_cache(
+                base,
+                scale=float(speaker_kv_scale),
+                max_layers=speaker_kv_max_layers,
+            )
         return base
 
     schedule = euler_timestep_schedule(
@@ -396,8 +382,8 @@ def sample_euler_rf_cfg(
         tt = mx.full((batch_size,), t, dtype=x_t.dtype)
         t_value = float(t.item())
         use_cfg = bool(enabled) and (float(cfg_min_t) <= t_value <= float(cfg_max_t))
-        cond_cache_step = _cache_for_t(cond_cache, cond_cache_scaled, t_value)
-        independent_cache_step = _cache_for_t(independent_cache, independent_cache_scaled, t_value)
+        cond_cache_step = _cache_for_t(cond_cache, t_value)
+        independent_cache_step = _cache_for_t(independent_cache, t_value)
 
         if use_cfg and mode == "independent":
             cfg_mult = len(independent_names)
