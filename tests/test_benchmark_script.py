@@ -30,7 +30,7 @@ class BenchmarkScriptTests(unittest.TestCase):
     def test_build_mlx_command_adds_no_reference_and_pythonpath(self):
         args = Namespace(
             weights="weights.npz",
-            reference_wav=None,
+            ref_wav=None,
             text="hello",
             caption="soft voice",
             seconds=5.0,
@@ -49,18 +49,18 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights_revision=None,
         )
         argv, env = benchmark.build_mlx_command(args, Path("/tmp/repo"), Path("/tmp/out.wav"), seconds=5.0, num_steps=40)
-        self.assertIn("--no-reference", argv)
+        self.assertIn("--no-ref", argv)
         self.assertIn("--caption", argv)
         self.assertEqual(argv[argv.index("--caption") + 1], "soft voice")
         self.assertIn("--codec-runtime-mode", argv)
         self.assertEqual(argv[argv.index("--codec-runtime-mode") + 1], "mlx")
         self.assertIn(str(Path("/tmp/upstream").resolve()), env["PYTHONPATH"])
-        self.assertEqual(argv[argv.index("--output") + 1], "/tmp/out.wav")
+        self.assertEqual(argv[argv.index("--output-wav") + 1], "/tmp/out.wav")
 
     def test_build_mlx_command_can_omit_seconds_for_predicted_duration(self):
         args = Namespace(
             weights="weights.npz",
-            reference_wav=None,
+            ref_wav=None,
             text="hello",
             caption=None,
             seconds=5.0,
@@ -109,7 +109,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             num_steps_sweep="20,40",
             repeat=2,
             warmup_runs=1,
-            reference_wav="ref.wav",
+            ref_wav="ref.wav",
             omit_seconds=False,
             case_label="v3-text",
         )
@@ -130,7 +130,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             num_steps_sweep=None,
             repeat=1,
             warmup_runs=0,
-            reference_wav=None,
+            ref_wav=None,
             omit_seconds=False,
             case_label=None,
         )
@@ -146,7 +146,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             num_steps_sweep="20,20",
             repeat=1,
             warmup_runs=0,
-            reference_wav=None,
+            ref_wav=None,
             omit_seconds=False,
             case_label=None,
         )
@@ -164,7 +164,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             num_steps_sweep="8,12",
             repeat=1,
             warmup_runs=0,
-            reference_wav=None,
+            ref_wav=None,
             case_label="v3-text",
         )
         cases = benchmark.build_cases(args)
@@ -182,7 +182,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             num_steps_sweep=None,
             repeat=1,
             warmup_runs=0,
-            reference_wav=None,
+            ref_wav=None,
             case_label=None,
         )
         with self.assertRaises(benchmark.BenchmarkError) as ctx:
@@ -204,7 +204,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             repeat=2,
             dry_run=True,
             weights="weights.npz",
-            reference_wav="ref.wav",
+            ref_wav="ref.wav",
             text="hello",
             caption=None,
             seed=123,
@@ -236,7 +236,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights_dir=None,
             weights_repo="owner/irodori-hosted",
             weights_revision="abc123",
-            reference_wav=None,
+            ref_wav=None,
             text="hello",
             caption=None,
             seconds=5.0,
@@ -264,7 +264,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights_dir="/tmp/layout",
             weights_repo=None,
             weights_revision=None,
-            reference_wav=None,
+            ref_wav=None,
             text="hello",
             caption=None,
             seconds=5.0,
@@ -292,7 +292,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights_dir=None,
             weights_repo="owner/irodori-hosted",
             weights_revision="weights123",
-            reference_wav=None,
+            ref_wav=None,
             text="hello",
             caption=None,
             seconds=5.0,
@@ -324,7 +324,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             weights_dir=None,
             weights_repo=None,
             weights_revision=None,
-            reference_wav=None,
+            ref_wav=None,
             text="hello",
             caption=None,
             seconds=5.0,
@@ -519,7 +519,7 @@ class BenchmarkScriptTests(unittest.TestCase):
             omit_seconds=True,
             num_steps=40,
             num_steps_sweep=None,
-            reference_wav=None,
+            ref_wav=None,
             weights="weights.npz",
             weights_dir=None,
             weights_repo=None,

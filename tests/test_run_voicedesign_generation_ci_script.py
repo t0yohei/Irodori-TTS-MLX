@@ -34,10 +34,10 @@ class RunVoiceDesignGenerationCIScriptTests(unittest.TestCase):
             }
 
             def fake_subprocess_run(command, **kwargs):
-                self.assertIn("--no-reference", command)
+                self.assertIn("--no-ref", command)
                 self.assertIn("--caption", command)
                 metadata_path = Path(command[command.index("--metadata-json") + 1])
-                output_wav = Path(command[command.index("--output") + 1])
+                output_wav = Path(command[command.index("--output-wav") + 1])
                 metadata_path.write_text(json.dumps(generation_payload), encoding="utf-8")
                 output_wav.write_bytes(b"fake wav")
                 return CompletedProcess(

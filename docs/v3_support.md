@@ -28,7 +28,7 @@ without needing repo-local one-off patches.
 | `scripts/inspect_checkpoint.py` | supported | Reads v3 metadata/config and tensor headers without loading the tensor payload. |
 | `scripts/convert_weights.py` | supported | Detects the public v3 family, validates duration-predictor-specific keys/config, and exports MLX `.npz` weights. |
 | `irodori_mlx.model.TextToLatentRFDiT` | supported | Includes the v3 duration predictor path and required weight loading hooks. |
-| `irodori_mlx.runtime.MLXDACVAERuntime` | supported | Uses the duration predictor when `use_duration_predictor=true` and `--seconds` is omitted; manual `--seconds` still wins when provided. |
+| `irodori_mlx.runtime.InferenceRuntime` | supported | Uses the duration predictor when `use_duration_predictor=true` and `--seconds` is omitted; manual `--seconds` still wins when provided. |
 | `scripts/generate_wav.py` | supported | Exposes the runtime semantics directly, including `--duration-scale`, JSON metadata, and manual override behavior. |
 | Hosted Apple Silicon validation | supported | `scripts/run_v3_generation_ci.py` downloads the public checkpoint, converts it, runs generation, and asserts `duration_mode="predicted"`. |
 
@@ -60,8 +60,8 @@ python3 scripts/generate_wav.py \
   --weights /tmp/irodori-v3.npz \
   --model-config-json /path/to/v3-model-config.json \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3.wav \
+  --no-ref \
+  --output-wav /tmp/irodori-v3.wav \
   --num-steps 40 \
   --json > /tmp/irodori-v3-result.json
 ```
@@ -106,15 +106,15 @@ python3 scripts/generate_wav.py \
   --model-config-json /path/to/v3-model-config.json \
   --text "こんにちは。今日は良い天気です。" \
   --ref-latent /tmp/reference-latent.npz \
-  --output /tmp/irodori-v3-ref-latent.wav \
+  --output-wav /tmp/irodori-v3-ref-latent.wav \
   --metadata-json /tmp/irodori-v3-ref-latent.json \
   --preset balanced
 ```
 
 The metadata should report `result.speaker_condition_source ==
 "reference_latent"` and `result.codec_encode_backend == "not-required"`.
-`--ref-latent` is mutually exclusive with `--reference-wav`,
-`--ref-embed`, and `--no-reference`.
+`--ref-latent` is mutually exclusive with `--ref-wav`,
+`--ref-embed`, and `--no-ref`.
 
 ## Hosted CI-assisted validation
 
@@ -139,9 +139,9 @@ This gives the repository a practical regression check that is stronger than doc
 
 The checked-in hosted workflow uses the standard `macos-14` M1 runner, so public-repository coverage avoids larger-runner billing. Queueing and the smaller standard-runner resource envelope still matter.
 
-### 2. The hosted smoke run uses `--no-reference`
+### 2. The hosted smoke run uses `--no-ref`
 
-That keeps the validation path self-contained and avoids committing reference audio assets. It proves the v3 conversion/runtime/duration semantics path, but it is not a speaker-fidelity benchmark. For real speaker-conditioned checks, run the manual workflow with `--reference-wav`.
+That keeps the validation path self-contained and avoids committing reference audio assets. It proves the v3 conversion/runtime/duration semantics path, but it is not a speaker-fidelity benchmark. For real speaker-conditioned checks, run the manual workflow with `--ref-wav`.
 
 ### 3. Watermarking is still best-effort
 

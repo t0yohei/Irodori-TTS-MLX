@@ -80,7 +80,7 @@ class UpstreamParityHarnessDocTests(unittest.TestCase):
         real_v3_section = self.doc.split("## Real v3 Command", 1)[1].split("## Real VoiceDesign Command", 1)[0]
 
         self.assertIn("--scenario v3-reference-predicted", real_v3_section)
-        self.assertIn("--reference-wav /tmp/irodori-parity/v3-reference.wav", real_v3_section)
+        self.assertIn("--ref-wav /tmp/irodori-parity/v3-reference.wav", real_v3_section)
         self.assertIn("this repository does not ship a real speaker sample", real_v3_section)
         self.assertIn("Do not commit this local reference audio", real_v3_section)
 

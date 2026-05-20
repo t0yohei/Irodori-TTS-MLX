@@ -134,7 +134,7 @@ uv run python scripts/run_upstream_parity.py \
   --upstream-root external/Irodori-TTS \
   --mlx-weights /tmp/irodori-quickstart/irodori-v3.npz \
   --mlx-model-config-json /tmp/irodori-quickstart/v3-model-config.json \
-  --reference-wav /tmp/irodori-parity/v3-reference.wav \
+  --ref-wav /tmp/irodori-parity/v3-reference.wav \
   --codec-runtime-mode mlx \
   --codec-path /path/to/dacvae-codec.npz \
   --output-dir parity-runs/v3-real \

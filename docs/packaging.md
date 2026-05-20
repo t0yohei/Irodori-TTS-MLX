@@ -124,9 +124,9 @@ Then run the installed generation command:
 ```bash
 irodori-tts-generate \
   --weights /path/to/irodori-tts-500m-v2.npz \
-  --reference-wav /path/to/reference.wav \
+  --ref-wav /path/to/reference.wav \
   --text "こんにちは。今日は良い天気です。" \
-  --output /tmp/irodori.wav \
+  --output-wav /tmp/irodori.wav \
   --seconds 5 \
   --num-steps 40 \
   --codec-runtime-mode mlx \

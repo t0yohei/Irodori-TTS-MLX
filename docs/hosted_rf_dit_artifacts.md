@@ -46,8 +46,8 @@ Smoke command:
       --weights-revision bf877a3beb7d921dc6bfb2b6812d02be07f39f2a \
       --text "こんにちは。今日は良い天気です。" \
       --caption "落ち着いた女性の声" \
-      --no-reference \
-      --output /tmp/irodori-hosted.wav \
+      --no-ref \
+      --output-wav /tmp/irodori-hosted.wav \
       --preset balanced \
       --json
 
@@ -82,8 +82,8 @@ Smoke command:
       --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
       --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
       --text "こんにちは。今日は良い天気です。" \
-      --no-reference \
-      --output /tmp/irodori-v3-hosted.wav \
+      --no-ref \
+      --output-wav /tmp/irodori-v3-hosted.wav \
       --preset balanced \
       --json
 
@@ -115,8 +115,8 @@ irodori-tts-generate \
   --weights "$WORK/weights.npz" \
   --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output "$WORK/irodori-v3.wav" \
+  --no-ref \
+  --output-wav "$WORK/irodori-v3.wav" \
   --preset balanced
 ```
 

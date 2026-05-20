@@ -190,15 +190,15 @@ The loader should accept both forms and normalize them to the same resolved dire
 irodori-tts-generate \
   --weights-dir /models/Irodori-TTS-MLX-500M-v3 \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3.wav
 
 # Hosted layout after license approval and publication.
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3.wav
 ```
 
 The current CLI exposes this contract through `--weights-dir` and
@@ -216,8 +216,8 @@ irodori-tts-generate \
   --weights /path/to/irodori-v3.npz \
   --model-config-json /path/to/v3-model-config.json \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3.wav
 ```
 
 ## Family-specific notes

@@ -15,31 +15,29 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from irodori_mlx.hosted_artifacts import hosted_dacvae_codec_artifact
+from irodori_mlx.hosted_artifacts import hosted_dacvae_codec_artifact  # noqa: E402
 
 DACVAEBridgeConfig = None
-GenerationRequest = None
-MLXDACVAERuntime = None
+SamplingRequest = None
+InferenceRuntime = None
 MLXRuntimeConfig = None
 describe_codec_capabilities = None
 iter_messages = None
 load_model_config_json = None
 release_mlx_runtime_memory = None
-resolve_weights_layout_source = None
 
 
 def _ensure_runtime_imports() -> None:
     """Import runtime dependencies lazily so --help works before optional setup is complete."""
-    global DACVAEBridgeConfig, GenerationRequest, MLXDACVAERuntime, MLXRuntimeConfig, describe_codec_capabilities, iter_messages, load_model_config_json, release_mlx_runtime_memory, resolve_weights_layout_source
+    global DACVAEBridgeConfig, SamplingRequest, InferenceRuntime, MLXRuntimeConfig, describe_codec_capabilities, iter_messages, load_model_config_json, release_mlx_runtime_memory
     from irodori_mlx import runtime as runtime_module
-    from irodori_mlx.hosted_weights import resolve_weights_layout_source as resolve_layout
 
     if DACVAEBridgeConfig is None:
         DACVAEBridgeConfig = runtime_module.DACVAEBridgeConfig
-    if GenerationRequest is None:
-        GenerationRequest = runtime_module.GenerationRequest
-    if MLXDACVAERuntime is None:
-        MLXDACVAERuntime = runtime_module.MLXDACVAERuntime
+    if SamplingRequest is None:
+        SamplingRequest = runtime_module.SamplingRequest
+    if InferenceRuntime is None:
+        InferenceRuntime = runtime_module.InferenceRuntime
     if MLXRuntimeConfig is None:
         MLXRuntimeConfig = runtime_module.MLXRuntimeConfig
     if describe_codec_capabilities is None:
@@ -50,8 +48,6 @@ def _ensure_runtime_imports() -> None:
         load_model_config_json = runtime_module.load_model_config_json
     if release_mlx_runtime_memory is None:
         release_mlx_runtime_memory = runtime_module.release_mlx_runtime_memory
-    if resolve_weights_layout_source is None:
-        resolve_weights_layout_source = resolve_layout
 
 
 CONFIG_KEYS = {
@@ -59,19 +55,19 @@ CONFIG_KEYS = {
     "weights_dir",
     "weights_repo",
     "weights_revision",
-    "output",
+    "output_wav",
     "text",
     "preset",
-    "reference_wav",
+    "ref_wav",
     "ref_latent",
     "ref_embed",
-    "no_reference",
+    "no_ref",
     "caption",
     "model_config_json",
     "text_tokenizer_repo",
     "caption_tokenizer_repo",
-    "text_max_length",
-    "caption_max_length",
+    "max_text_len",
+    "max_caption_len",
     "codec_repo",
     "codec_path",
     "codec_artifact_dir",
@@ -79,7 +75,7 @@ CONFIG_KEYS = {
     "codec_artifact_revision",
     "codec_device",
     "codec_runtime_mode",
-    "disable_codec_normalize",
+    "ref_normalize_db",
     "enable_watermark",
     "seconds",
     "duration_scale",
@@ -98,8 +94,8 @@ CONFIG_KEYS = {
     "speaker_kv_min_t",
     "speaker_kv_max_layers",
     "seed",
-    "max_reference_seconds",
-    "no_context_kv_cache",
+    "max_ref_seconds",
+    "context_kv_cache",
     "print_boundaries",
     "preflight",
     "metadata_json",
@@ -109,13 +105,13 @@ CONFIG_KEYS = {
 }
 
 REQUEST_KEYS = {
-    "output",
+    "output_wav",
     "text",
     "preset",
-    "reference_wav",
+    "ref_wav",
     "ref_latent",
     "ref_embed",
-    "no_reference",
+    "no_ref",
     "caption",
     "seconds",
     "duration_scale",
@@ -134,16 +130,16 @@ REQUEST_KEYS = {
     "speaker_kv_min_t",
     "speaker_kv_max_layers",
     "seed",
-    "max_reference_seconds",
-    "no_context_kv_cache",
+    "max_ref_seconds",
+    "context_kv_cache",
 }
 
-REQUIRED_STRING_KEYS = {"weights", "output", "text"}
+REQUIRED_STRING_KEYS = {"weights", "output_wav", "text"}
 OPTIONAL_STRING_KEYS = {
     "weights_dir",
     "weights_repo",
     "weights_revision",
-    "reference_wav",
+    "ref_wav",
     "ref_latent",
     "ref_embed",
     "caption",
@@ -160,16 +156,15 @@ OPTIONAL_STRING_KEYS = {
     "requests_json",
 }
 BOOL_KEYS = {
-    "no_reference",
-    "disable_codec_normalize",
+    "no_ref",
     "enable_watermark",
-    "no_context_kv_cache",
+    "context_kv_cache",
     "print_boundaries",
     "preflight",
     "json_output",
     "cleanup_between_requests",
 }
-INT_KEYS = {"text_max_length", "caption_max_length", "num_steps", "seed"}
+INT_KEYS = {"max_text_len", "max_caption_len", "num_steps", "seed"}
 FLOAT_KEYS = {
     "duration_scale",
     "cfg_scale_text",
@@ -178,10 +173,11 @@ FLOAT_KEYS = {
     "cfg_min_t",
     "cfg_max_t",
     "sway_coeff",
-    "max_reference_seconds",
+    "max_ref_seconds",
 }
 NULLABLE_FLOAT_KEYS = {
     "seconds",
+    "ref_normalize_db",
     "rescale_k",
     "rescale_sigma",
     "speaker_kv_scale",
@@ -228,6 +224,21 @@ def _load_json_object(value: str | None, *, label: str) -> dict[str, Any]:
         source = f"inline {label}" if str(value or "").strip().startswith("{") else str(Path(value or "").expanduser())
         raise ValueError(f"{label} must contain a JSON object: {source}")
     return payload
+
+
+def _parse_optional_float(value: str) -> float | None:
+    raw = str(value).strip().lower()
+    if raw in {"none", "null", "off", "disable", "disabled"}:
+        return None
+    try:
+        out = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "Expected float or one of [none, null, off, disable, disabled]."
+        ) from exc
+    if not math.isfinite(out):
+        raise argparse.ArgumentTypeError(f"Expected finite float for value={value!r}.")
+    return out
 
 
 def _validate_generation_config(payload: dict[str, Any]) -> dict[str, Any]:
@@ -439,7 +450,7 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         ),
     )
     parser.add_argument("--weights-revision", default=config.get("weights_revision"), help="Optional Hugging Face revision for --weights-repo.")
-    parser.add_argument("--output", dest="output", default=config.get("output"), help="Output WAV path for one-shot mode, or a default for batch requests.")
+    parser.add_argument("--output-wav", dest="output_wav", default=config.get("output_wav"), help="Output WAV path for one-shot mode, or a default for batch requests.")
     parser.add_argument("--text", default=config.get("text"), help="Text prompt for one-shot mode, or a default for batch requests.")
     parser.add_argument(
         "--preset",
@@ -450,7 +461,7 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
             "fast=12 steps, balanced=24 steps, quality=40 steps. Explicit sampling flags still win."
         ),
     )
-    parser.add_argument("--reference-wav", default=config.get("reference_wav"), help="Speaker/reference audio path for DACVAE encoding.")
+    parser.add_argument("--ref-wav", default=config.get("ref_wav"), help="Speaker/reference audio path for DACVAE encoding.")
     parser.add_argument(
         "--ref-latent",
         dest="ref_latent",
@@ -466,20 +477,18 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         default=config.get("ref_embed"),
         help="Speaker Inversion .speaker.safetensors embedding to use directly for speaker conditioning.",
     )
-    _add_configurable_bool(
-        parser,
-        dest="no_reference",
-        config=config,
-        enable_flag="--no-reference",
-        disable_flag="--use-reference",
-        help_text="Use an unconditional speaker path instead of reference audio.",
+    parser.add_argument(
+        "--no-ref",
+        action="store_true",
+        default=bool(config.get("no_ref", False)),
+        help="Use an unconditional speaker path instead of reference audio.",
     )
     parser.add_argument("--caption", default=config.get("caption"), help="Optional caption/style text for caption-conditioned checkpoints.")
     parser.add_argument("--model-config-json", default=config.get("model_config_json"), help="Optional inline/path JSON for ModelConfig. Defaults to the base v2 config.")
     parser.add_argument("--text-tokenizer-repo", default=config.get("text_tokenizer_repo"), help="Override the text tokenizer repo from ModelConfig.")
     parser.add_argument("--caption-tokenizer-repo", default=config.get("caption_tokenizer_repo"), help="Override the caption tokenizer repo from ModelConfig.")
-    parser.add_argument("--text-max-length", type=int, default=_default(config, "text_max_length", 256), help="Maximum text tokens to encode (default: 256).")
-    parser.add_argument("--caption-max-length", type=int, default=config.get("caption_max_length"), help="Optional caption token limit. Defaults to text-max-length inside the runtime.")
+    parser.add_argument("--max-text-len", type=int, default=_default(config, "max_text_len", 256), help="Maximum text tokens to encode (default: 256).")
+    parser.add_argument("--max-caption-len", type=int, default=config.get("max_caption_len"), help="Optional caption token limit. Defaults to max-text-len inside the runtime.")
     parser.add_argument("--codec-repo", default=_default(config, "codec_repo", "Aratako/Semantic-DACVAE-Japanese-32dim"), help="DACVAE codec repo id.")
     parser.add_argument(
         "--codec-path",
@@ -515,13 +524,14 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
         choices=("mlx",),
         help="How to host DACVAE encode/decode: full MLX hosted/local codec artifact.",
     )
-    _add_configurable_bool(
-        parser,
-        dest="disable_codec_normalize",
-        config=config,
-        enable_flag="--disable-codec-normalize",
-        disable_flag="--codec-normalize",
-        help_text="Disable the default -16 dB codec normalization step.",
+    parser.add_argument(
+        "--ref-normalize-db",
+        type=_parse_optional_float,
+        default=_default(config, "ref_normalize_db", -16.0),
+        help=(
+            "Target loudness for reference audio before DACVAE encode. "
+            "Set to 'none' to disable. Default: -16."
+        ),
     )
     _add_configurable_bool(
         parser,
@@ -563,14 +573,12 @@ def build_parser(config: dict[str, Any] | None = None) -> argparse.ArgumentParse
     parser.add_argument("--speaker-kv-min-t", type=float, default=config.get("speaker_kv_min_t"), help="Apply speaker K/V scaling while t is at or above this threshold. Defaults to 0.9 when --speaker-kv-scale is set.")
     parser.add_argument("--speaker-kv-max-layers", type=int, default=config.get("speaker_kv_max_layers"), help="Apply speaker K/V scaling only to the first N diffusion layers.")
     parser.add_argument("--seed", type=int, default=int(_default(config, "seed", 0)), help="Random seed for latent sampling.")
-    parser.add_argument("--max-reference-seconds", type=float, default=float(_default(config, "max_reference_seconds", 30.0)), help="Trim reference audio to this many seconds before DACVAE encode.")
-    _add_configurable_bool(
-        parser,
-        dest="no_context_kv_cache",
-        config=config,
-        enable_flag="--no-context-kv-cache",
-        disable_flag="--context-kv-cache",
-        help_text="Disable precomputed condition K/V caches in the RF-DiT sampler.",
+    parser.add_argument("--max-ref-seconds", type=float, default=float(_default(config, "max_ref_seconds", 30.0)), help="Trim reference audio to this many seconds before DACVAE encode.")
+    parser.add_argument(
+        "--context-kv-cache",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_default(config, "context_kv_cache", True)),
+        help="Precompute condition K/V projections in the RF-DiT sampler (default: enabled).",
     )
     _add_configurable_bool(
         parser,
@@ -660,18 +668,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if not args.codec_artifact_revision:
             args.codec_artifact_revision = DEFAULT_HOSTED_DACVAE_CODEC_ARTIFACT.revision
     args.duration_scale_explicit = _has_cli_override(argv, "--duration-scale") or "duration_scale" in config
+    if (
+        any(_has_cli_override(argv, option) for option in ("--ref-wav", "--ref-latent", "--ref-embed"))
+        and not _has_cli_override(argv, "--no-ref")
+    ):
+        args.no_ref = False
     selected_reference_inputs = [
         name
         for name, value in (
-            ("--reference-wav", args.reference_wav),
+            ("--ref-wav", args.ref_wav),
             ("--ref-latent", args.ref_latent),
             ("--ref-embed", args.ref_embed),
-            ("--no-reference", args.no_reference),
+            ("--no-ref", args.no_ref),
         )
         if bool(value)
     ]
     if len(selected_reference_inputs) > 1:
-        parser.error("choose only one of --reference-wav, --ref-latent, --ref-embed, or --no-reference")
+        parser.error("choose only one of --ref-wav, --ref-latent, --ref-embed, or --no-ref")
     selected_weights = [value for value in (args.weights, args.weights_dir, args.weights_repo) if value is not None and str(value).strip()]
     if not selected_weights:
         parser.error("choose one of --weights, --weights-dir, or --weights-repo")
@@ -692,8 +705,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if (args.weights_dir or args.weights_repo) and args.model_config_json:
         parser.error("--model-config-json is loaded from --weights-dir/--weights-repo layouts; use --weights for explicit .npz fallback")
     if not args.requests_json and not args.preflight:
-        if args.output is None or not str(args.output).strip():
-            parser.error("--output must not be empty unless --requests-json supplies per-request outputs")
+        if args.output_wav is None or not str(args.output_wav).strip():
+            parser.error("--output-wav must not be empty unless --requests-json supplies per-request outputs")
         if args.text is None or not str(args.text).strip():
             parser.error("--text must not be empty unless --requests-json supplies per-request text")
     if args.seconds is not None and args.seconds <= 0:
@@ -718,12 +731,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--speaker-kv-min-t must be in [0, 1]")
     if args.speaker_kv_max_layers is not None and int(args.speaker_kv_max_layers) < 0:
         parser.error("--speaker-kv-max-layers must be >= 0")
-    if args.text_max_length <= 0:
-        parser.error("--text-max-length must be > 0")
-    if args.caption_max_length is not None and int(args.caption_max_length) <= 0:
-        parser.error("--caption-max-length must be > 0 when provided")
-    if args.max_reference_seconds <= 0:
-        parser.error("--max-reference-seconds must be > 0")
+    if args.max_text_len <= 0:
+        parser.error("--max-text-len must be > 0")
+    if args.max_caption_len is not None and int(args.max_caption_len) <= 0:
+        parser.error("--max-caption-len must be > 0 when provided")
+    if args.max_ref_seconds <= 0:
+        parser.error("--max-ref-seconds must be > 0")
     return args
 
 
@@ -820,7 +833,7 @@ def _preflight_source_payload(source: Any) -> dict[str, Any] | None:
 def _preflight_request_count(args: argparse.Namespace, request_overrides: list[dict[str, Any]]) -> int:
     if request_overrides:
         return len(request_overrides)
-    if args.text or args.output:
+    if args.text or args.output_wav:
         return 1
     return 0
 
@@ -849,7 +862,6 @@ def load_model_config_json_for_preflight(value: str | Path | None) -> Any:
 def describe_codec_capabilities_for_preflight(*, args: argparse.Namespace, model_config: Any) -> dict[str, Any]:
     mode = args.codec_runtime_mode
     uses_speaker = bool(model_config.use_speaker_condition)
-    needs_reference_encode = uses_speaker
     messages: list[str] = []
     report: dict[str, Any] = {
         "runtime_mode": mode,
@@ -922,8 +934,8 @@ def build_preflight_payload(
             "codec_runtime_mode": args.codec_runtime_mode,
             "text_tokenizer_repo": text_tokenizer_repo,
             "caption_tokenizer_repo": caption_tokenizer_repo if model_config.use_caption_condition else None,
-            "text_max_length": int(args.text_max_length),
-            "caption_max_length": args.caption_max_length,
+            "max_text_len": int(args.max_text_len),
+            "max_caption_len": args.max_caption_len,
         },
         "weights": weights_payload,
         "codec": codec_payload,
@@ -988,7 +1000,7 @@ def _result_to_dict(result: Any) -> dict[str, Any]:
 
 
 def build_result_payload(
-    *, result: Any, request: GenerationRequest, runtime: MLXDACVAERuntime, args: argparse.Namespace
+    *, result: Any, request: SamplingRequest, runtime: InferenceRuntime, args: argparse.Namespace
 ) -> dict[str, Any]:
     return {
         "result": _result_to_dict(result),
@@ -1013,15 +1025,15 @@ def build_runtime_config(args: argparse.Namespace, model_config: Any) -> MLXRunt
         weights_path=args.weights,
         text_tokenizer_repo=args.text_tokenizer_repo,
         caption_tokenizer_repo=args.caption_tokenizer_repo,
-        text_max_length=int(args.text_max_length),
-        caption_max_length=args.caption_max_length,
+        max_text_len=int(args.max_text_len),
+        max_caption_len=args.max_caption_len,
         codec=DACVAEBridgeConfig(
             codec_repo=args.codec_repo,
             codec_path=args.codec_path,
             codec_device=args.codec_device,
             runtime_mode=args.codec_runtime_mode,
             enable_watermark=bool(args.enable_watermark),
-            normalize_db=None if args.disable_codec_normalize else -16.0,
+            normalize_db=args.ref_normalize_db,
         ),
     )
 
@@ -1043,31 +1055,31 @@ def _merged_request_preset_value(
     return _merged_request_value(args, overrides, key)
 
 
-def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any] | None = None) -> GenerationRequest:
+def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any] | None = None) -> SamplingRequest:
     _ensure_runtime_imports()
     overrides = dict(overrides or {})
     text = _merged_request_value(args, overrides, "text")
-    output = _merged_request_value(args, overrides, "output")
+    output_wav = _merged_request_value(args, overrides, "output_wav")
     if text is None or not str(text).strip():
         raise ValueError("generation request requires a non-empty text field")
-    if output is None or not str(output).strip():
+    if output_wav is None or not str(output_wav).strip():
         raise ValueError("generation request requires a non-empty output field")
-    reference_wav = _merged_request_value(args, overrides, "reference_wav")
+    ref_wav = _merged_request_value(args, overrides, "ref_wav")
     ref_latent = _merged_request_value(args, overrides, "ref_latent")
     ref_embed = _merged_request_value(args, overrides, "ref_embed")
-    no_reference = bool(_merged_request_value(args, overrides, "no_reference"))
+    no_ref = bool(_merged_request_value(args, overrides, "no_ref"))
     selected_reference_inputs = [
         name
         for name, value in (
-            ("reference_wav", reference_wav),
+            ("ref_wav", ref_wav),
             ("ref_latent", ref_latent),
             ("ref_embed", ref_embed),
-            ("no_reference", no_reference),
+            ("no_ref", no_ref),
         )
         if bool(value)
     ]
     if len(selected_reference_inputs) > 1:
-        raise ValueError("generation request can set only one of reference_wav, ref_latent, ref_embed, or no_reference")
+        raise ValueError("generation request can set only one of ref_wav, ref_latent, ref_embed, or no_ref")
     preset = _merged_request_value(args, overrides, "preset")
     preset_defaults = PRESET_DEFAULTS.get(preset, {}) if preset else {}
     num_steps = int(_merged_request_preset_value(args, overrides, preset_defaults, preset, "num_steps"))
@@ -1090,7 +1102,7 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
     if preset == "ultra-fast" and seconds is None and not duration_scale_explicit:
         max_auto_seconds = ULTRA_FAST_SHORT_PROMPT_MAX_AUTO_SECONDS
         max_auto_estimate_seconds = ULTRA_FAST_SHORT_PROMPT_MAX_ESTIMATE_SECONDS
-    max_reference_seconds = _merged_request_value(args, overrides, "max_reference_seconds")
+    max_ref_seconds = _merged_request_value(args, overrides, "max_ref_seconds")
     if seconds is not None and float(seconds) <= 0:
         raise ValueError("seconds must be > 0 when provided")
     if duration_scale <= 0:
@@ -1116,15 +1128,15 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         raise ValueError("speaker_kv_min_t must be in [0, 1]")
     if speaker_kv_max_layers is not None and int(speaker_kv_max_layers) < 0:
         raise ValueError("speaker_kv_max_layers must be >= 0")
-    if max_reference_seconds is not None and float(max_reference_seconds) <= 0:
-        raise ValueError("max_reference_seconds must be > 0 when provided")
-    return GenerationRequest(
+    if max_ref_seconds is not None and float(max_ref_seconds) <= 0:
+        raise ValueError("max_ref_seconds must be > 0 when provided")
+    return SamplingRequest(
         text=str(text),
-        output_wav=str(output),
-        reference_wav=reference_wav,
+        output_wav=str(output_wav),
+        ref_wav=ref_wav,
         ref_latent=ref_latent,
         ref_embed=ref_embed,
-        no_reference=no_reference,
+        no_ref=no_ref,
         caption=_merged_request_value(args, overrides, "caption"),
         seconds=None if seconds is None else float(seconds),
         duration_scale=duration_scale,
@@ -1145,8 +1157,8 @@ def build_generation_request(args: argparse.Namespace, overrides: dict[str, Any]
         speaker_kv_min_t=None if speaker_kv_min_t is None else float(speaker_kv_min_t),
         speaker_kv_max_layers=None if speaker_kv_max_layers is None else int(speaker_kv_max_layers),
         seed=int(_merged_request_value(args, overrides, "seed")),
-        max_reference_seconds=max_reference_seconds,
-        use_context_kv_cache=not bool(_merged_request_value(args, overrides, "no_context_kv_cache")),
+        max_ref_seconds=max_ref_seconds,
+        context_kv_cache=bool(_merged_request_value(args, overrides, "context_kv_cache")),
     )
 
 
@@ -1160,25 +1172,25 @@ def validate_checkpoint_family_request(
     family = model_config.checkpoint_family
     family_label = model_config.checkpoint_family_label
     capabilities = ", ".join(model_config.checkpoint_capabilities)
-    reference_wav = _request_value(args, overrides, "reference_wav")
+    ref_wav = _request_value(args, overrides, "ref_wav")
     ref_latent = _request_value(args, overrides, "ref_latent")
     ref_embed = _request_value(args, overrides, "ref_embed")
-    no_reference = bool(_request_value(args, overrides, "no_reference"))
+    no_ref = bool(_request_value(args, overrides, "no_ref"))
     caption = _request_value(args, overrides, "caption")
     seconds = _request_value(args, overrides, "seconds")
     selected_reference_inputs = [
         name
         for name, value in (
-            ("reference_wav", reference_wav),
+            ("ref_wav", ref_wav),
             ("ref_latent", ref_latent),
             ("ref_embed", ref_embed),
-            ("no_reference", no_reference),
+            ("no_ref", no_ref),
         )
         if bool(value)
     ]
     if len(selected_reference_inputs) > 1:
         raise SystemExit(
-            f"error: generation request #{index}: choose only one of --reference-wav, --ref-latent, --ref-embed, or --no-reference"
+            f"error: generation request #{index}: choose only one of --ref-wav, --ref-latent, --ref-embed, or --no-ref"
         )
 
     if caption is not None and str(caption).strip() and not model_config.use_caption_condition:
@@ -1187,10 +1199,10 @@ def validate_checkpoint_family_request(
             f"selected family is {family} ({family_label}; capabilities: {capabilities})"
         )
     if model_config.use_caption_condition:
-        if reference_wav:
+        if ref_wav:
             raise SystemExit(
                 f"error: generation request #{index}: {family_label} is caption/no-reference only; "
-                "remove --reference-wav and provide --caption"
+                "remove --ref-wav and provide --caption"
             )
         if ref_embed:
             raise SystemExit(
@@ -1206,9 +1218,9 @@ def validate_checkpoint_family_request(
             raise SystemExit(
                 f"error: generation request #{index}: {family_label} requires --caption because speaker reference audio is not supported"
             )
-    elif model_config.use_speaker_condition and not no_reference and not reference_wav and not ref_latent and not ref_embed:
+    elif model_config.use_speaker_condition and not no_ref and not ref_wav and not ref_latent and not ref_embed:
         raise SystemExit(
-            f"error: generation request #{index}: {family_label} requires --reference-wav, --ref-latent, or --ref-embed unless --no-reference is true "
+            f"error: generation request #{index}: {family_label} requires --ref-wav, --ref-latent, or --ref-embed unless --no-ref is true "
             f"(capabilities: {capabilities})"
         )
 
@@ -1251,24 +1263,24 @@ def main() -> int:
     codec_layout = resolve_codec_artifact_args(args)
     if args.requests_json:
         request_overrides = load_generation_requests_json(args.requests_json)
-    elif getattr(args, "preflight", False) and not (args.text or args.output):
+    elif getattr(args, "preflight", False) and not (args.text or args.output_wav):
         request_overrides = []
     else:
         request_overrides = [{}]
     for index, item in enumerate(request_overrides, start=1):
-        request_reference = item.get("reference_wav", args.reference_wav)
+        request_reference = item.get("ref_wav", args.ref_wav)
         request_ref_latent = item.get("ref_latent", args.ref_latent)
         request_ref_embed = item.get("ref_embed", args.ref_embed)
-        request_no_reference = bool(item.get("no_reference", args.no_reference))
+        request_no_reference = bool(item.get("no_ref", args.no_ref))
         request_caption = item.get("caption", args.caption)
         if layout_runtime is not None:
             if layout_runtime.get("requires_reference_audio") and not (request_reference or request_ref_latent or request_ref_embed):
                 raise SystemExit(
-                    f"error: generation request #{index}: selected weights layout requires reference_wav, ref_latent, or ref_embed"
+                    f"error: generation request #{index}: selected weights layout requires ref_wav, ref_latent, or ref_embed"
                 )
             if not layout_runtime.get("supports_no_reference", False) and request_no_reference:
                 raise SystemExit(
-                    f"error: generation request #{index}: selected weights layout does not support no_reference"
+                    f"error: generation request #{index}: selected weights layout does not support no_ref"
                 )
             if (
                 "supports_caption" in layout_runtime
@@ -1295,7 +1307,7 @@ def main() -> int:
         return 0
 
     runtime_config = build_runtime_config(args, model_config)
-    runtime = MLXDACVAERuntime(config=runtime_config)
+    runtime = InferenceRuntime(config=runtime_config)
     if args.print_boundaries:
         print(
             json.dumps(runtime.describe_boundaries(), indent=2, sort_keys=True, default=str),

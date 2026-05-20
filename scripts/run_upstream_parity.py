@@ -39,8 +39,8 @@ class Scenario:
     checkpoint_family: str
     checkpoint: str
     text: str
-    no_reference: bool
-    reference_wav: str | None
+    no_ref: bool
+    ref_wav: str | None
     caption: str | None
     seconds: float | None
     duration_scale: float
@@ -51,8 +51,8 @@ class Scenario:
     codec_repo: str
     text_tokenizer_repo: str | None
     caption_tokenizer_repo: str | None
-    text_max_length: int
-    caption_max_length: int | None
+    max_text_len: int
+    max_caption_len: int | None
     cfg_scale_text: float
     cfg_scale_caption: float
     cfg_scale_speaker: float
@@ -67,8 +67,8 @@ def _scenario_presets() -> dict[str, dict[str, Any]]:
             "checkpoint_family": "v3",
             "checkpoint": "Aratako/Irodori-TTS-500M-v3",
             "text": DEFAULT_TEXT,
-            "no_reference": True,
-            "reference_wav": None,
+            "no_ref": True,
+            "ref_wav": None,
             "caption": None,
             "seconds": None,
             "duration_scale": 1.0,
@@ -79,8 +79,8 @@ def _scenario_presets() -> dict[str, dict[str, Any]]:
             "checkpoint_family": "v3",
             "checkpoint": "Aratako/Irodori-TTS-500M-v3",
             "text": V3_REFERENCE_TEXT,
-            "no_reference": False,
-            "reference_wav": V3_REFERENCE_WAV,
+            "no_ref": False,
+            "ref_wav": V3_REFERENCE_WAV,
             "caption": None,
             "seconds": None,
             "duration_scale": 1.0,
@@ -91,8 +91,8 @@ def _scenario_presets() -> dict[str, dict[str, Any]]:
             "checkpoint_family": "voicedesign",
             "checkpoint": "Aratako/Irodori-TTS-500M-v2-VoiceDesign",
             "text": DEFAULT_TEXT,
-            "no_reference": True,
-            "reference_wav": None,
+            "no_ref": True,
+            "ref_wav": None,
             "caption": DEFAULT_CAPTION,
             "seconds": 2.0,
             "duration_scale": 1.0,
@@ -103,8 +103,8 @@ def _scenario_presets() -> dict[str, dict[str, Any]]:
             "checkpoint_family": "voicedesign",
             "checkpoint": "Aratako/Irodori-TTS-500M-v2-VoiceDesign",
             "text": VOICEDESIGN_CONTRAST_TEXT,
-            "no_reference": True,
-            "reference_wav": None,
+            "no_ref": True,
+            "ref_wav": None,
             "caption": VOICEDESIGN_CONTRAST_CAPTION,
             "seconds": 2.0,
             "duration_scale": 1.0,
@@ -135,8 +135,8 @@ def build_scenario(args: argparse.Namespace) -> Scenario:
             "codec_repo": args.codec_repo,
             "text_tokenizer_repo": args.text_tokenizer_repo,
             "caption_tokenizer_repo": args.caption_tokenizer_repo,
-            "text_max_length": args.text_max_length,
-            "caption_max_length": args.caption_max_length,
+            "max_text_len": args.max_text_len,
+            "max_caption_len": args.max_caption_len,
             "cfg_scale_text": args.cfg_scale_text,
             "cfg_scale_caption": args.cfg_scale_caption,
             "cfg_scale_speaker": args.cfg_scale_speaker,
@@ -145,26 +145,26 @@ def build_scenario(args: argparse.Namespace) -> Scenario:
             "cfg_max_t": args.cfg_max_t,
         }
     )
-    for key in ("text", "caption", "seconds", "num_steps", "seed", "checkpoint", "reference_wav"):
+    for key in ("text", "caption", "seconds", "num_steps", "seed", "checkpoint", "ref_wav"):
         value = getattr(args, key)
         if value is not None:
             payload[key] = value
-    if args.no_reference:
-        payload["no_reference"] = True
-        payload["reference_wav"] = None
-    if payload.get("reference_wav"):
-        payload["no_reference"] = False
+    if args.no_ref:
+        payload["no_ref"] = True
+        payload["ref_wav"] = None
+    if payload.get("ref_wav"):
+        payload["no_ref"] = False
     if payload.get("checkpoint_family") == "voicedesign" and not payload.get("caption"):
         raise ValueError("VoiceDesign scenarios require caption text")
-    if not payload.get("no_reference") and not payload.get("reference_wav"):
-        raise ValueError("scenario must set no_reference=true or provide reference_wav")
+    if not payload.get("no_ref") and not payload.get("ref_wav"):
+        raise ValueError("scenario must set no_ref=true or provide ref_wav")
     return Scenario(**payload)
 
 
 def _reference_wav_path(scenario: Scenario) -> Path | None:
-    if not scenario.reference_wav:
+    if not scenario.ref_wav:
         return None
-    path = Path(scenario.reference_wav).expanduser()
+    path = Path(scenario.ref_wav).expanduser()
     return path if path.is_absolute() else ROOT / path
 
 
@@ -194,8 +194,8 @@ def _upstream_command(scenario: Scenario, output_wav: Path) -> list[str]:
         str(scenario.seed),
         "--show-timings",
     ]
-    reference_wav = _reference_wav_path(scenario)
-    command.extend(["--no-ref"] if scenario.no_reference else ["--ref-wav", str(reference_wav)])
+    ref_wav = _reference_wav_path(scenario)
+    command.extend(["--no-ref"] if scenario.no_ref else ["--ref-wav", str(ref_wav)])
     if scenario.caption:
         command.extend(["--caption", scenario.caption])
     return command
@@ -210,7 +210,7 @@ def _mlx_command(scenario: Scenario, args: argparse.Namespace, output_wav: Path,
         str(Path(weights).expanduser()) if args.mlx_weights else weights,
         "--text",
         scenario.text,
-        "--output",
+        "--output-wav",
         str(output_wav),
         "--num-steps",
         str(scenario.num_steps),
@@ -234,8 +234,8 @@ def _mlx_command(scenario: Scenario, args: argparse.Namespace, output_wav: Path,
         str(scenario.cfg_min_t),
         "--cfg-max-t",
         str(scenario.cfg_max_t),
-        "--text-max-length",
-        str(scenario.text_max_length),
+        "--max-text-len",
+        str(scenario.max_text_len),
         "--metadata-json",
         str(metadata_json),
         "--json",
@@ -253,8 +253,8 @@ def _mlx_command(scenario: Scenario, args: argparse.Namespace, output_wav: Path,
     model_config = args.mlx_model_config_json or ("/path/to/model-config.json" if not args.mlx_weights else None)
     if model_config:
         command.extend(["--model-config-json", str(Path(model_config).expanduser()) if args.mlx_model_config_json else model_config])
-    reference_wav = _reference_wav_path(scenario)
-    command.extend(["--no-reference"] if scenario.no_reference else ["--reference-wav", str(reference_wav)])
+    ref_wav = _reference_wav_path(scenario)
+    command.extend(["--no-ref"] if scenario.no_ref else ["--ref-wav", str(ref_wav)])
     if scenario.caption:
         command.extend(["--caption", scenario.caption])
     if scenario.seconds is not None:
@@ -263,8 +263,8 @@ def _mlx_command(scenario: Scenario, args: argparse.Namespace, output_wav: Path,
         command.extend(["--text-tokenizer-repo", scenario.text_tokenizer_repo])
     if scenario.caption_tokenizer_repo:
         command.extend(["--caption-tokenizer-repo", scenario.caption_tokenizer_repo])
-    if scenario.caption_max_length is not None:
-        command.extend(["--caption-max-length", str(scenario.caption_max_length)])
+    if scenario.max_caption_len is not None:
+        command.extend(["--max-caption-len", str(scenario.max_caption_len)])
     return command
 
 
@@ -567,14 +567,14 @@ def _fixture_side(name: str, output_wav: Path, command: list[str], *, duration_m
     }
 
 
-def _missing_reference_report(name: str, command: list[str], output_wav: Path, reference_wav: Path) -> dict[str, Any]:
+def _missing_reference_report(name: str, command: list[str], output_wav: Path, ref_wav: Path) -> dict[str, Any]:
     return _side_report(
         name,
         "unavailable",
         command,
         output_wav,
         reason="missing_reference_wav",
-        detail=f"Reference WAV does not exist: {reference_wav}",
+        detail=f"Reference WAV does not exist: {ref_wav}",
     )
 
 
@@ -583,8 +583,8 @@ def _metadata_axes(scenario: Scenario) -> dict[str, Any]:
         "tokenizer": {
             "text_tokenizer_repo": scenario.text_tokenizer_repo,
             "caption_tokenizer_repo": scenario.caption_tokenizer_repo,
-            "text_max_length": scenario.text_max_length,
-            "caption_max_length": scenario.caption_max_length,
+            "max_text_len": scenario.max_text_len,
+            "max_caption_len": scenario.max_caption_len,
             "caption_enabled": bool(scenario.caption),
         },
         "duration": {
@@ -605,8 +605,8 @@ def _metadata_axes(scenario: Scenario) -> dict[str, Any]:
         "codec": {
             "codec_repo": scenario.codec_repo,
             "codec_device": scenario.codec_device,
-            "reference_wav": scenario.reference_wav,
-            "no_reference": scenario.no_reference,
+            "ref_wav": scenario.ref_wav,
+            "no_ref": scenario.no_ref,
         },
     }
 
@@ -692,8 +692,8 @@ def _mlx_intermediates_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]
         sampling["latent_shape"] = [1, int(latent_steps), int(latent_dim)]
     return {
         "tokenizer": {
-            "text_max_length": request.get("text_max_length"),
-            "caption_max_length": request.get("caption_max_length"),
+            "max_text_len": request.get("max_text_len"),
+            "max_caption_len": request.get("max_caption_len"),
             "caption_enabled": bool(request.get("caption")),
         },
         "duration": {
@@ -727,7 +727,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     upstream_command = _upstream_command(scenario, upstream_wav)
     mlx_command = _mlx_command(scenario, args, mlx_wav, mlx_metadata)
     duration_mode = "manual" if scenario.seconds is not None else "predicted"
-    reference_wav = _reference_wav_path(scenario)
+    ref_wav = _reference_wav_path(scenario)
 
     if args.fixture:
         upstream = _fixture_side("upstream", upstream_wav, upstream_command, duration_mode=duration_mode, seed=scenario.seed)
@@ -736,8 +736,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         upstream = _side_report("upstream", "not_run", upstream_command, upstream_wav, reason="not_requested")
         mlx = _side_report("mlx", "not_run", mlx_command, mlx_wav, reason="not_requested")
         if args.run_upstream:
-            if reference_wav and not reference_wav.exists():
-                upstream = _missing_reference_report("upstream", upstream_command, upstream_wav, reference_wav)
+            if ref_wav and not ref_wav.exists():
+                upstream = _missing_reference_report("upstream", upstream_command, upstream_wav, ref_wav)
             elif not args.upstream_root:
                 upstream = _side_report(
                     "upstream",
@@ -752,8 +752,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 upstream["availability"] = {"state": upstream["status"], "reason": None, "detail": None}
                 upstream["audio"] = wav_properties(upstream_wav)
         if args.run_mlx:
-            if reference_wav and not reference_wav.exists():
-                mlx = _missing_reference_report("mlx", mlx_command, mlx_wav, reference_wav)
+            if ref_wav and not ref_wav.exists():
+                mlx = _missing_reference_report("mlx", mlx_command, mlx_wav, ref_wav)
             elif not args.mlx_weights:
                 mlx = _side_report(
                     "mlx",
@@ -807,8 +807,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--checkpoint")
     parser.add_argument("--text")
     parser.add_argument("--caption")
-    parser.add_argument("--reference-wav")
-    parser.add_argument("--no-reference", action="store_true")
+    parser.add_argument("--ref-wav")
+    parser.add_argument("--no-ref", action="store_true")
     parser.add_argument("--seconds", type=float)
     parser.add_argument("--num-steps", type=int)
     parser.add_argument("--seed", type=int)
@@ -822,8 +822,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--codec-repo", default=DEFAULT_CODEC_REPO)
     parser.add_argument("--text-tokenizer-repo")
     parser.add_argument("--caption-tokenizer-repo")
-    parser.add_argument("--text-max-length", type=int, default=256)
-    parser.add_argument("--caption-max-length", type=int)
+    parser.add_argument("--max-text-len", type=int, default=256)
+    parser.add_argument("--max-caption-len", type=int)
     parser.add_argument("--cfg-scale-text", type=float, default=3.0)
     parser.add_argument("--cfg-scale-caption", type=float, default=3.0)
     parser.add_argument("--cfg-scale-speaker", type=float, default=5.0)

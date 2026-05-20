@@ -55,8 +55,8 @@ irodori-tts-generate \
   --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
   --text "こんにちは。" \
-  --no-reference \
-  --output /tmp/irodori-v3-hosted-codec.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3-hosted-codec.wav
 ```
 
 ## Validation evidence

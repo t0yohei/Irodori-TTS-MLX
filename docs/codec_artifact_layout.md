@@ -41,6 +41,6 @@ The capability report covers:
 - `has_executable_mlx_decode=true` and `has_executable_mlx_encode=true`;
 - `runtime_status.mlx_encoder_execution=available_unvalidated`;
 - `available_unvalidated` status until local validation evidence is attached;
-- `--no-reference` no-reference requests where encode is not required.
+- `--no-ref` no-reference requests where encode is not required.
 
 Encode parity remains owned by local validation reports such as `scripts/check_dacvae_decode_parity.py` and issue #184. Those checks are evidence collection tools; they are not runtime fallback modes.

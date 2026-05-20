@@ -63,7 +63,7 @@ class CodecArtifactLayoutDocTests(unittest.TestCase):
             "available_unvalidated",
             "scripts/check_dacvae_decode_parity.py",
             "issue #184",
-            "--no-reference",
+            "--no-ref",
             "runtime_status.mlx_encoder_execution=available_unvalidated",
             "Encode parity remains owned by",
             "not runtime fallback modes",

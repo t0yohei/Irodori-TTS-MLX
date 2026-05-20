@@ -9,7 +9,7 @@ This document is the v0.1 contract for prompt text preprocessing in `irodori-tts
 1. normalize prompt text with the same small policy used by upstream `irodori_tts.inference_runtime`;
 2. tokenize prompt text with the configured Hugging Face tokenizer;
 3. prepend the configured BOS token when `ModelConfig.text_add_bos` is true;
-4. right-pad or truncate to `MLXRuntimeConfig.text_max_length`;
+4. right-pad or truncate to `MLXRuntimeConfig.max_text_len`;
 5. build the boolean text mask consumed by MLX encoders and the duration predictor.
 
 The repository still does **not** own upstream checkpoint assets, tokenizer assets, or the PyTorch DACVAE codec. Those remain external runtime dependencies. The text tokenizer defaults to `ModelConfig.text_tokenizer_repo` (`sbintuitions/sarashina2.2-0.5b` unless checkpoint config overrides it), and caption-conditioned checkpoints use `caption_tokenizer_repo_resolved`.

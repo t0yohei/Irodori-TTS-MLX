@@ -178,7 +178,7 @@ def _to_numpy_array(value: Any) -> Any:
     if hasattr(value, "numpy"):
         value = value.numpy()
     array = np.asarray(value)
-    if not array.dtype.kind in {"f", "i", "u", "b"}:
+    if array.dtype.kind not in {"f", "i", "u", "b"}:
         raise DACVAEDecoderConversionError(f"Unsupported tensor dtype for DACVAE decoder conversion: {array.dtype}")
     if array.dtype.kind == "f" and array.dtype.itemsize > 4:
         array = array.astype("float32")

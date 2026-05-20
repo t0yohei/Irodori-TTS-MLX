@@ -20,7 +20,7 @@ The current generation boundary is:
 5. Decode the full latent sequence through DACVAE.
 6. Serialize the decoded audio to a WAV path.
 
-The key implementation point is that `MLXDACVAERuntime.generate()` calls `sample_euler_rf_cfg()` once for the full sequence, evaluates the full latent tensor, and then calls `bridge.decode_to_wav(...)`. The public timing field `decode_dacvae` currently measures the decode-to-WAV boundary as one inclusive stage, so it includes DACVAE decode plus WAV serialization/write time.
+The key implementation point is that `InferenceRuntime.generate()` calls `sample_euler_rf_cfg()` once for the full sequence, evaluates the full latent tensor, and then calls `bridge.decode_to_wav(...)`. The public timing field `decode_dacvae` currently measures the decode-to-WAV boundary as one inclusive stage, so it includes DACVAE decode plus WAV serialization/write time.
 
 ## Evidence Summary
 

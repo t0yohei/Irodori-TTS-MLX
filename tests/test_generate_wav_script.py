@@ -30,7 +30,7 @@ class _FakeRuntime:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake wav")
         decode_backend = "mlx"
-        if request.no_reference or request.ref_embed or request.ref_latent or not self.config.model_config.use_speaker_condition:
+        if request.no_ref or request.ref_embed or request.ref_latent or not self.config.model_config.use_speaker_condition:
             encode_backend = "not-required"
         else:
             encode_backend = "mlx"
@@ -159,19 +159,19 @@ class GenerateWavScriptTests(unittest.TestCase):
             weights_dir=None,
             weights_repo=None,
             weights_revision=None,
-            output=output_wav,
+            output_wav=output_wav,
             text="hello",
             preset=None,
-            reference_wav=None,
+            ref_wav=None,
             ref_latent=None,
             ref_embed=None,
-            no_reference=False,
+            no_ref=False,
             caption="calm",
             model_config_json='{"use_caption_condition": true}',
             text_tokenizer_repo=None,
             caption_tokenizer_repo=None,
-            text_max_length=256,
-            caption_max_length=None,
+            max_text_len=256,
+            max_caption_len=None,
             codec_repo="Aratako/Semantic-DACVAE-Japanese-32dim",
             codec_path=None,
             codec_artifact_dir=None,
@@ -179,7 +179,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             codec_artifact_revision=None,
             codec_device="cpu",
             codec_runtime_mode="mlx",
-            disable_codec_normalize=False,
+            ref_normalize_db=-16.0,
             enable_watermark=False,
             seconds=0.1,
             duration_scale=1.0,
@@ -199,8 +199,8 @@ class GenerateWavScriptTests(unittest.TestCase):
             speaker_kv_min_t=None,
             speaker_kv_max_layers=None,
             seed=0,
-            max_reference_seconds=30.0,
-            no_context_kv_cache=False,
+            max_ref_seconds=30.0,
+            context_kv_cache=True,
             print_boundaries=False,
             preflight=False,
             config_json=None,
@@ -221,7 +221,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args = self._args(str(Path(td) / "out.wav"))
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "iter_messages", return_value=iter([])
             ):
                 rc = generate_wav.main()
@@ -230,8 +230,8 @@ class GenerateWavScriptTests(unittest.TestCase):
         runtime = runtime_holder["runtime"]
         self.assertEqual(len(runtime.requests), 1)
         request = runtime.requests[0]
-        self.assertIsNone(request.reference_wav)
-        self.assertFalse(request.no_reference)
+        self.assertIsNone(request.ref_wav)
+        self.assertFalse(request.no_ref)
         self.assertEqual(runtime.config.codec.runtime_mode, "mlx")
 
     def test_build_runtime_config_accepts_mlx_codec_artifact_path(self):
@@ -251,7 +251,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 json.dumps(
                     {
                         "weights": "weights.npz",
-                        "output": "out.wav",
+                        "output_wav": "out.wav",
                         "text": "hello",
                         "codec_runtime_mode": "mlx",
                         "codec_path": "codec.npz",
@@ -269,7 +269,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -290,7 +290,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 json.dumps(
                     {
                         "weights": "weights.npz",
-                        "output": "out.wav",
+                        "output_wav": "out.wav",
                         "text": "hello",
                         "t_schedule_mode": "sway",
                         "sway_coeff": -1.0,
@@ -308,7 +308,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             json.dumps(
                 [
                     {
-                        "output": "out.wav",
+                        "output_wav": "out.wav",
                         "text": "hello",
                         "t_schedule_mode": "sway",
                         "sway_coeff": -1.0,
@@ -325,7 +325,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -355,7 +355,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 json.dumps(
                     {
                         "weights": "weights.npz",
-                        "output": "out.wav",
+                        "output_wav": "out.wav",
                         "text": "hello",
                         "rescale_k": 2.0,
                         "rescale_sigma": 0.5,
@@ -381,7 +381,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 json.dumps(
                     {
                         "weights": "weights.npz",
-                        "output": "out.wav",
+                        "output_wav": "out.wav",
                         "text": "hello",
                         "rescale_k": None,
                         "rescale_sigma": None,
@@ -404,14 +404,14 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "rescale_k": "2.0", "rescale_sigma": 0.5}',
+                '{"weights": "weights.npz", "output_wav": "out.wav", "text": "hello", "rescale_k": "2.0", "rescale_sigma": 0.5}',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit):
                 generate_wav.parse_args(["--config-json", str(cfg_path)])
 
             cfg_path.write_text(
-                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "speaker_kv_max_layers": 1.5}',
+                '{"weights": "weights.npz", "output_wav": "out.wav", "text": "hello", "speaker_kv_max_layers": 1.5}',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit):
@@ -423,7 +423,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -436,7 +436,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -449,7 +449,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -465,7 +465,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             json.dumps(
                 [
                     {
-                        "output": "out.wav",
+                        "output_wav": "out.wav",
                         "text": "hello",
                         "rescale_k": 2.0,
                         "rescale_sigma": 0.5,
@@ -488,11 +488,11 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights-repo",
                 "t0yohei/Irodori-TTS-MLX-500M-v3",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
-                "--no-reference",
+                "--no-ref",
             ]
         )
 
@@ -507,7 +507,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -521,7 +521,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -538,7 +538,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -558,7 +558,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -576,7 +576,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 json.dumps(
                     {
                         "weights": "weights.npz",
-                        "output": "out.wav",
+                        "output_wav": "out.wav",
                         "text": "hello",
                         "codec_path": "from-config-codec.npz",
                         "codec_artifact_revision": "from-config-revision",
@@ -606,7 +606,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -627,7 +627,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -644,20 +644,20 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "seconds": 1.5, "num_steps": 8}',
+                '{"weights": "from-config.npz", "output_wav": "from-config.wav", "text": "hello", "seconds": 1.5, "num_steps": 8}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args([
                 "--config-json",
                 str(cfg_path),
-                "--output",
+                "--output-wav",
                 str(Path(td) / "override.wav"),
                 "--seconds",
                 "2.5",
             ])
 
         self.assertEqual(args.weights, "from-config.npz")
-        self.assertTrue(str(args.output).endswith("override.wav"))
+        self.assertTrue(str(args.output_wav).endswith("override.wav"))
         self.assertEqual(args.text, "hello")
         self.assertEqual(args.seconds, 2.5)
         self.assertEqual(args.num_steps, 8)
@@ -667,7 +667,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights-dir",
                 "converted-layout",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -682,7 +682,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "from-config.npz", "model_config_json": "config-model.json", "text_tokenizer_repo": "current/text", "caption_tokenizer_repo": "current/caption", "output": "from-config.wav", "text": "hello"}',
+                '{"weights": "from-config.npz", "model_config_json": "config-model.json", "text_tokenizer_repo": "current/text", "caption_tokenizer_repo": "current/caption", "output_wav": "from-config.wav", "text": "hello"}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(["--config-json", str(cfg_path), "--weights-dir", "converted-layout"])
@@ -702,7 +702,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 "custom/text",
                 "--caption-tokenizer-repo",
                 "custom/caption",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -721,7 +721,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                     "converted-layout",
                     "--model-config-json",
                     "model.json",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -732,7 +732,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights_repo": "owner/old", "weights_revision": "oldrev", "output": "from-config.wav", "text": "hello"}',
+                '{"weights_repo": "owner/old", "weights_revision": "oldrev", "output_wav": "from-config.wav", "text": "hello"}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(["--config-json", str(cfg_path), "--weights-repo", "owner/new"])
@@ -748,7 +748,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                     "weights.npz",
                     "--weights-revision",
                     "abc123",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -778,7 +778,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             )()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "resolve_weights_layout_source", return_value=resolved
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "iter_messages", return_value=iter([])
             ):
                 rc = generate_wav.main()
@@ -797,14 +797,14 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             metadata_path = Path(td) / "metadata.json"
             args = self._args(str(Path(td) / "out.wav"))
-            args.no_reference = True
+            args.no_ref = True
             args.caption = None
             args.codec_runtime_mode = "mlx"
             args.codec_path = "codec.npz"
             args.metadata_json = str(metadata_path)
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "iter_messages", return_value=iter([])
             ):
                 rc = generate_wav.main()
@@ -825,13 +825,13 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             metadata_path = Path(td) / "metadata.json"
             args = self._args(str(Path(td) / "out.wav"))
-            args.reference_wav = str(Path(td) / "reference.wav")
+            args.ref_wav = str(Path(td) / "reference.wav")
             args.caption = None
             args.codec_runtime_mode = "mlx"
             args.metadata_json = str(metadata_path)
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig()
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "iter_messages", return_value=iter([])
             ):
                 rc = generate_wav.main()
@@ -858,7 +858,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args.metadata_json = str(metadata_path)
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "iter_messages", return_value=iter([])
             ):
                 rc = generate_wav.main()
@@ -886,7 +886,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args.metadata_json = str(metadata_path)
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "iter_messages", return_value=iter([])
             ):
                 rc = generate_wav.main()
@@ -908,7 +908,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             metadata_path = Path(td) / "metadata.json"
             args = self._args(str(Path(td) / "out.wav"))
-            args.no_reference = True
+            args.no_ref = True
             args.caption = None
             args.codec_runtime_mode = "mlx"
             args.codec_path = "codec.npz"
@@ -920,7 +920,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args.speaker_kv_max_layers = 6
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "iter_messages", return_value=iter([])
             ):
                 rc = generate_wav.main()
@@ -941,7 +941,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args = self._args(str(Path(td) / "out.wav"))
             args.weights = None
             args.weights_dir = str(Path(td) / "layout")
-            args.no_reference = True
+            args.no_ref = True
             resolved = type(
                 "ResolvedLayout",
                 (),
@@ -953,7 +953,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             )()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "resolve_weights_layout_source", return_value=resolved
-            ), self.assertRaisesRegex(SystemExit, "requires reference_wav, ref_latent, or ref_embed"):
+            ), self.assertRaisesRegex(SystemExit, "requires ref_wav, ref_latent, or ref_embed"):
                 generate_wav.main()
 
     def test_parse_args_applies_preset_num_steps(self):
@@ -961,7 +961,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -978,7 +978,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -997,7 +997,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -1018,7 +1018,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -1048,7 +1048,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             [
                 "--weights",
                 "weights.npz",
-                "--output",
+                "--output-wav",
                 "out.wav",
                 "--text",
                 "hello",
@@ -1063,7 +1063,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "preset": "quality"}',
+                '{"weights": "from-config.npz", "output_wav": "from-config.wav", "text": "hello", "preset": "quality"}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(["--config-json", str(cfg_path)])
@@ -1075,7 +1075,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "num_steps": 8}',
+                '{"weights": "from-config.npz", "output_wav": "from-config.wav", "text": "hello", "num_steps": 8}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(["--config-json", str(cfg_path), "--preset", "balanced"])
@@ -1087,7 +1087,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             requests_path = Path(td) / "requests.json"
             requests_path.write_text(
-                '[{"text": "first", "output": "first.wav"}, {"text": "second", "output": "second.wav"}]',
+                '[{"text": "first", "output_wav": "first.wav"}, {"text": "second", "output_wav": "second.wav"}]',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(
@@ -1101,13 +1101,13 @@ class GenerateWavScriptTests(unittest.TestCase):
 
         self.assertEqual(args.weights, "weights.npz")
         self.assertIsNone(args.text)
-        self.assertIsNone(args.output)
+        self.assertIsNone(args.output_wav)
         self.assertEqual(args.requests_json, str(requests_path))
 
     def test_load_generation_requests_json_validates_request_keys(self):
         with tempfile.TemporaryDirectory() as td:
             requests_path = Path(td) / "requests.json"
-            requests_path.write_text('[{"text": "hello", "output": "out.wav", "unexpected": true}]', encoding="utf-8")
+            requests_path.write_text('[{"text": "hello", "output_wav": "out.wav", "unexpected": true}]', encoding="utf-8")
             with self.assertRaises(ValueError):
                 generate_wav.load_generation_requests_json(str(requests_path))
 
@@ -1118,10 +1118,10 @@ class GenerateWavScriptTests(unittest.TestCase):
             args,
             {
                 "text": "override",
-                "output": "override.wav",
+                "output_wav": "override.wav",
                 "preset": "fast",
                 "seed": 123,
-                "no_context_kv_cache": True,
+                "context_kv_cache": True,
             },
         )
 
@@ -1129,7 +1129,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertEqual(request.output_wav, "override.wav")
         self.assertEqual(request.num_steps, 12)
         self.assertEqual(request.seed, 123)
-        self.assertFalse(request.use_context_kv_cache)
+        self.assertTrue(request.context_kv_cache)
 
     def test_build_generation_request_applies_quality_knob_overrides(self):
         args = self._args("default.wav")
@@ -1137,7 +1137,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args,
             {
                 "text": "override",
-                "output": "override.wav",
+                "output_wav": "override.wav",
                 "rescale_k": 2.0,
                 "rescale_sigma": 0.5,
                 "speaker_kv_scale": 1.25,
@@ -1165,7 +1165,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args,
             {
                 "text": "override",
-                "output": "override.wav",
+                "output_wav": "override.wav",
                 "preset": "ultra-fast",
                 "seed": 123,
             },
@@ -1187,7 +1187,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args,
             {
                 "text": "override",
-                "output": "override.wav",
+                "output_wav": "override.wav",
                 "preset": "ultra-fast",
                 "duration_scale": 0.75,
             },
@@ -1208,7 +1208,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args,
             {
                 "text": "override",
-                "output": "override.wav",
+                "output_wav": "override.wav",
                 "preset": "fast",
             },
         )
@@ -1232,7 +1232,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             args,
             {
                 "text": "override",
-                "output": "override.wav",
+                "output_wav": "override.wav",
                 "preset": "fast",
             },
         )
@@ -1247,7 +1247,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "seconds": null, "duration_scale": 1.2}',
+                '{"weights": "from-config.npz", "output_wav": "from-config.wav", "text": "hello", "seconds": null, "duration_scale": 1.2}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(["--config-json", str(cfg_path)])
@@ -1259,29 +1259,25 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "from-config.npz", "output": "from-config.wav", "text": "hello", "no_reference": true}',
+                '{"weights": "from-config.npz", "output_wav": "from-config.wav", "text": "hello", "no_ref": true}',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(
                 [
                     "--config-json",
                     str(cfg_path),
-                    "--use-reference",
-                    "--reference-wav",
+                    "--ref-wav",
                     "ref.wav",
                 ]
             )
 
-        self.assertFalse(args.no_reference)
-        self.assertEqual(args.reference_wav, "ref.wav")
+        self.assertFalse(args.no_ref)
+        self.assertEqual(args.ref_wav, "ref.wav")
 
     def test_parse_args_hidden_negative_bool_flags_stay_out_of_help(self):
         help_text = generate_wav.build_parser().format_help()
         hidden_flags = [
-            "--use-reference",
-            "--codec-normalize",
             "--disable-watermark",
-            "--context-kv-cache",
             "--no-preflight",
             "--no-json",
             "--no-print-boundaries",
@@ -1296,13 +1292,13 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
-                    "--reference-wav",
+                    "--ref-wav",
                     "ref.wav",
-                    "--no-reference",
+                    "--no-ref",
                 ]
             )
         with self.assertRaises(SystemExit):
@@ -1310,11 +1306,11 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
-                    "--reference-wav",
+                    "--ref-wav",
                     "ref.wav",
                     "--ref-embed",
                     "voice.speaker.safetensors",
@@ -1325,11 +1321,11 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
-                    "--reference-wav",
+                    "--ref-wav",
                     "ref.wav",
                     "--ref-latent",
                     "reference-latent.npz",
@@ -1351,7 +1347,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 encoding="utf-8",
             )
             requests_path.write_text(
-                '[{"text": "hello", "output": "out.wav", "ref_latent": "request-reference-latent.npz"}]',
+                '[{"text": "hello", "output_wav": "out.wav", "ref_latent": "request-reference-latent.npz"}]',
                 encoding="utf-8",
             )
             args = generate_wav.parse_args(["--config-json", str(cfg_path)])
@@ -1364,7 +1360,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "no_reference": "false"}',
+                '{"weights": "weights.npz", "output_wav": "out.wav", "text": "hello", "no_ref": "false"}',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit):
@@ -1374,7 +1370,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "seconds": "fast"}',
+                '{"weights": "weights.npz", "output_wav": "out.wav", "text": "hello", "seconds": "fast"}',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit):
@@ -1384,7 +1380,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": null, "output": "out.wav", "text": "hello"}',
+                '{"weights": null, "output_wav": "out.wav", "text": "hello"}',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit):
@@ -1396,7 +1392,7 @@ class GenerateWavScriptTests(unittest.TestCase):
                 [
                     "--weights",
                     "weights.npz",
-                    "--output",
+                    "--output-wav",
                     "out.wav",
                     "--text",
                     "hello",
@@ -1409,7 +1405,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "generate.json"
             cfg_path.write_text(
-                '{"weights": "weights.npz", "output": "out.wav", "text": "hello", "metadata_json": true}',
+                '{"weights": "weights.npz", "output_wav": "out.wav", "text": "hello", "metadata_json": true}',
                 encoding="utf-8",
             )
             with self.assertRaises(SystemExit):
@@ -1422,26 +1418,26 @@ class GenerateWavScriptTests(unittest.TestCase):
         self.assertNotIn("--model ", help_text)
         self.assertIn("converted .npz fallback", help_text)
 
-        args = generate_wav.parse_args(["--weights-repo", "org/repo", "--output", "out.wav", "--text", "hello"])
+        args = generate_wav.parse_args(["--weights-repo", "org/repo", "--output-wav", "out.wav", "--text", "hello"])
 
         self.assertIsNone(args.weights)
         self.assertEqual(args.weights_repo, "org/repo")
 
         with self.assertRaises(SystemExit):
-            generate_wav.parse_args(["--model", "org/repo", "--output", "out.wav", "--text", "hello"])
+            generate_wav.parse_args(["--model", "org/repo", "--output-wav", "out.wav", "--text", "hello"])
 
     def test_parse_args_preflight_does_not_require_text_or_output(self):
         args = generate_wav.parse_args(["--weights", "weights.npz", "--preflight"])
 
         self.assertTrue(args.preflight)
         self.assertIsNone(args.text)
-        self.assertIsNone(args.output)
+        self.assertIsNone(args.output_wav)
 
     def test_main_preflight_reports_runtime_without_generation(self):
         with tempfile.TemporaryDirectory() as td:
             metadata_path = Path(td) / "preflight.json"
             args = self._args("")
-            args.output = None
+            args.output_wav = None
             args.text = None
             args.preflight = True
             args.json_output = True
@@ -1451,7 +1447,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "_ensure_runtime_imports", side_effect=AssertionError("preflight must not import runtime")
             ), patch.object(
-                generate_wav, "MLXDACVAERuntime", side_effect=AssertionError("preflight must not construct runtime")
+                generate_wav, "InferenceRuntime", side_effect=AssertionError("preflight must not construct runtime")
             ), redirect_stdout(stdout):
                 rc = generate_wav.main()
 
@@ -1491,7 +1487,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             with patch.object(
                 generate_wav, "_ensure_runtime_imports", side_effect=AssertionError("preflight must not import runtime")
             ), patch.object(
-                generate_wav, "MLXDACVAERuntime", side_effect=AssertionError("preflight must not construct runtime")
+                generate_wav, "InferenceRuntime", side_effect=AssertionError("preflight must not construct runtime")
             ), redirect_stdout(stdout):
                 with patch.object(generate_wav, "parse_args", return_value=args):
                     rc = generate_wav.main()
@@ -1654,11 +1650,11 @@ class GenerateWavScriptTests(unittest.TestCase):
             args = generate_wav.parse_args([
                 "--weights-repo",
                 "org/repo",
-                "--output",
+                "--output-wav",
                 out_wav,
                 "--text",
                 "hello",
-                "--no-reference",
+                "--no-ref",
                 "--json",
             ])
             stdout = StringIO()
@@ -1667,7 +1663,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             ), patch.object(
                 generate_wav, "_download_codec_repo_snapshot", return_value=codec_root
             ), patch.object(generate_wav, "load_model_config_json", return_value=ModelConfig(use_duration_predictor=True)), patch.object(
-                generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory
+                generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory
             ), redirect_stdout(stdout):
                 rc = generate_wav.main()
 
@@ -1692,7 +1688,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             stdout = StringIO()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
                 rc = generate_wav.main()
 
             payload = json.loads(stdout.getvalue())
@@ -1719,21 +1715,21 @@ class GenerateWavScriptTests(unittest.TestCase):
             requests_path.write_text(
                 json.dumps(
                     [
-                        {"text": "first", "output": first_wav, "preset": "fast"},
-                        {"text": "second", "output": second_wav, "num_steps": 7, "seed": 42},
+                        {"text": "first", "output_wav": first_wav, "preset": "fast"},
+                        {"text": "second", "output_wav": second_wav, "num_steps": 7, "seed": 42},
                     ]
                 ),
                 encoding="utf-8",
             )
             args = self._args("")
-            args.output = None
+            args.output_wav = None
             args.text = None
             args.requests_json = str(requests_path)
             args.json_output = True
             stdout = StringIO()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
                 rc = generate_wav.main()
 
             payload = json.loads(stdout.getvalue())
@@ -1762,14 +1758,14 @@ class GenerateWavScriptTests(unittest.TestCase):
             requests_path.write_text(
                 json.dumps(
                     [
-                        {"text": "first", "output": first_wav},
-                        {"text": "second", "output": second_wav},
+                        {"text": "first", "output_wav": first_wav},
+                        {"text": "second", "output_wav": second_wav},
                     ]
                 ),
                 encoding="utf-8",
             )
             args = self._args("")
-            args.output = None
+            args.output_wav = None
             args.text = None
             args.requests_json = str(requests_path)
             args.cleanup_between_requests = True
@@ -1778,7 +1774,7 @@ class GenerateWavScriptTests(unittest.TestCase):
             stdout = StringIO()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), patch.object(
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), patch.object(
                 generate_wav, "release_mlx_runtime_memory", side_effect=lambda: cleanup_calls.append("cleanup")
             ), redirect_stdout(stdout):
                 rc = generate_wav.main()
@@ -1794,7 +1790,7 @@ class GenerateWavScriptTests(unittest.TestCase):
         args = generate_wav.parse_args(
             [
                 "--config-json",
-                '{"weights":"weights.npz","output":"out.wav","text":"hello","cleanup_between_requests":true}',
+                '{"weights":"weights.npz","output_wav":"out.wav","text":"hello","cleanup_between_requests":true}',
                 "--no-cleanup-between-requests",
             ]
         )
@@ -1810,16 +1806,16 @@ class GenerateWavScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             requests_path = Path(td) / "requests.json"
             output_wav = str(Path(td) / "only.wav")
-            requests_path.write_text(json.dumps([{"text": "only", "output": output_wav}]), encoding="utf-8")
+            requests_path.write_text(json.dumps([{"text": "only", "output_wav": output_wav}]), encoding="utf-8")
             args = self._args("")
-            args.output = None
+            args.output_wav = None
             args.text = None
             args.requests_json = str(requests_path)
             args.json_output = True
             stdout = StringIO()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout):
                 rc = generate_wav.main()
 
             payload = json.loads(stdout.getvalue())
@@ -1843,13 +1839,13 @@ class GenerateWavScriptTests(unittest.TestCase):
             stderr = StringIO()
             with patch.object(generate_wav, "parse_args", return_value=args), patch.object(
                 generate_wav, "load_model_config_json", return_value=ModelConfig(use_caption_condition=True)
-            ), patch.object(generate_wav, "MLXDACVAERuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout), redirect_stderr(stderr):
+            ), patch.object(generate_wav, "InferenceRuntime", side_effect=fake_runtime_factory), redirect_stdout(stdout), redirect_stderr(stderr):
                 rc = generate_wav.main()
 
         payload = json.loads(stdout.getvalue())
         boundaries = json.loads(stderr.getvalue())
         self.assertEqual(rc, 0)
-        self.assertEqual(payload["result"]["output_wav"], args.output)
+        self.assertEqual(payload["result"]["output_wav"], args.output_wav)
         self.assertEqual(boundaries, {"ok": True})
 
 

@@ -222,7 +222,7 @@ python3 scripts/benchmark.py \
   --mode upstream \
   --upstream-root /path/to/Irodori-TTS \
   --upstream-python /path/to/Irodori-TTS/.venv/bin/python \
-  --reference-wav /path/to/reference.wav \
+  --ref-wav /path/to/reference.wav \
   --output-dir benchmark-runs \
   --report docs/benchmark-latest.md
 ```
@@ -239,14 +239,14 @@ python3 scripts/benchmark.py \
   --mode mlx \
   --weights /path/to/irodori-tts-500m-v2.npz \
   --upstream-root /path/to/Irodori-TTS \
-  --reference-wav /path/to/reference.wav \
+  --ref-wav /path/to/reference.wav \
   --codec-device cpu \
   --codec-runtime-mode persistent \
   --output-dir benchmark-runs \
   --report docs/benchmark-latest.md
 ```
 
-For no-reference benchmarking, omit `--reference-wav`.
+For no-reference benchmarking, omit `--ref-wav`.
 
 Hosted/pre-converted repo example:
 
@@ -297,7 +297,7 @@ python3 scripts/benchmark.py \
   --mode mlx \
   --weights /path/to/irodori-tts-500m-v2.npz \
   --upstream-root /path/to/Irodori-TTS \
-  --reference-wav /path/to/reference.wav \
+  --ref-wav /path/to/reference.wav \
   --repeat 3 \
   --warmup-runs 1 \
   --output-dir benchmark-runs \
@@ -321,7 +321,7 @@ python3 scripts/benchmark.py \
   --upstream-root /path/to/Irodori-TTS \
   --upstream-python /path/to/Irodori-TTS/.venv/bin/python \
   --weights /path/to/irodori-tts-500m-v2.npz \
-  --reference-wav /path/to/reference.wav \
+  --ref-wav /path/to/reference.wav \
   --num-steps-sweep 20,40,60 \
   --repeat 2
 ```
@@ -383,7 +383,7 @@ python3 scripts/benchmark.py \
   --upstream-root /path/to/Irodori-TTS \
   --upstream-python /path/to/Irodori-TTS/.venv/bin/python \
   --weights /path/to/irodori-tts-500m-v2.npz \
-  --reference-wav /path/to/reference.wav \
+  --ref-wav /path/to/reference.wav \
   --output-dir benchmark-runs \
   --report docs/benchmark-latest.md
 ```
