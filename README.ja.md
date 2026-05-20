@@ -186,7 +186,7 @@ alpha 期間中に stable-ish な対象:
 まだ stable ではないもの:
 
 - `irodori_mlx` import、top-level export、`scripts.*` module を public Python API として使うこと
-- arbitrary third-party / fine-tuned / quantized / LoRA / renamed / architecture-modified checkpoint
+- arbitrary third-party / unmerged LoRA adapter / dynamic LoRA adapter loading / quantized / renamed / architecture-modified checkpoint
 - hosted demo、training、fine-tuning、watermark guarantee、generated / converted artifact 公開に対する自動的な法務承認
 
 ## ドキュメント

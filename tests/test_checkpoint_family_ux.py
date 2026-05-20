@@ -89,6 +89,24 @@ class CheckpointFamilyUXTests(unittest.TestCase):
             with self.subTest(term=term):
                 self.assertIn(term, doc)
 
+    def test_checkpoint_family_docs_cover_merged_lora_boundary(self):
+        doc = (Path(__file__).resolve().parents[1] / "docs" / "checkpoint_support.md").read_text(encoding="utf-8")
+
+        for term in (
+            "Upstream-merged LoRA export, layout-compatible",
+            "Merged LoRA checkpoints are **experimental** and layout-bound",
+            "not dynamic `--lora-adapter` inference",
+            "scripts/inspect_checkpoint.py \"$MERGED\" --json",
+            "scripts/convert_weights.py \"$MERGED\" \"$WORK/weights.npz\" --dry-run --json",
+            "scripts/generate_wav.py",
+            "# VoiceDesign v2 merged exports:",
+            "--caption \"落ち着いた女性の声\"",
+            "missing keys, unexpected keys, shape mismatches, dtype mismatches, or config errors",
+            "dynamic LoRA adapter inference",
+        ):
+            with self.subTest(term=term):
+                self.assertIn(term, doc)
+
 
 if __name__ == "__main__":
     unittest.main()

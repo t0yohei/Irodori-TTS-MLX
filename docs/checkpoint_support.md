@@ -15,7 +15,8 @@ The support labels are intentionally conservative:
 | Base v2 speaker-conditioned | `Aratako/Irodori-TTS-500M-v2` | Supported via `scripts/inspect_checkpoint.py` | Supported via `scripts/convert_weights.py`; detected as `base_v2` | Experimental via `scripts/generate_wav.py` with a reference WAV or explicit no-reference path | Manual Apple Silicon benchmark/generation notes exist, but there is no dedicated hosted v0.1 generation gate for this family yet | **Experimental** |
 | VoiceDesign v2 caption-conditioned | `Aratako/Irodori-TTS-500M-v2-VoiceDesign` | Supported | Supported; detected as `voicedesign` | Supported for the inspected public VoiceDesign family through `--caption`, caption CFG, and optional `--no-reference` | Hosted Apple Silicon real-checkpoint inspect/conversion and full `generate_wav.py --caption ...` generation workflows exist | **Supported** |
 | v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported; detected as `v3` | Supported through the MLX bridge runtime. Omit `--seconds` to use predicted duration; manual `--seconds` remains an override | Hosted Apple Silicon generation workflow downloads, converts, runs generation, and asserts predicted-duration metadata | **Supported** |
-| Other historical, fine-tuned, LoRA, architecture-modified, or renamed Irodori-TTS checkpoints | Any checkpoint whose tensor layout/config does not match one of the families above | Best-effort metadata inspection only if the file is a readable `.safetensors` checkpoint | Unsupported | Unsupported | No compatibility guarantee | **Unsupported** |
+| Upstream-merged LoRA export, layout-compatible | A LoRA fine-tune that upstream Irodori-TTS has merged/exported back into a normal inference `.safetensors` checkpoint matching Base v2, VoiceDesign v2, or v3 | Supported via `scripts/inspect_checkpoint.py`; `metadata.config_json` must identify one of the supported families | Experimental via `scripts/convert_weights.py` because conversion is accepted only when the merged export has the same tensor names, shapes, dtype class, and config contract as the detected family | Experimental through the same generation path as the detected family | Lightweight docs/test coverage only; users should run the manual recipe below with their local merged export | **Experimental** |
+| Other historical, unmerged LoRA adapters, dynamic LoRA adapter loading, fine-tuned, architecture-modified, quantized, or renamed Irodori-TTS checkpoints | Any checkpoint or adapter whose tensor layout/config does not match one of the families above | Best-effort metadata inspection only if the file is a readable `.safetensors` checkpoint | Unsupported | Unsupported | No compatibility guarantee | **Unsupported** |
 
 ## Family boundaries
 
@@ -77,6 +78,61 @@ python scripts/generate_wav.py \
   --metadata-json /tmp/irodori-v3-metadata.json \
   --json
 ```
+
+### Upstream-merged LoRA exports
+
+Merged LoRA checkpoints are **experimental** and layout-bound. The supported path is not MLX-side LoRA training and not dynamic `--lora-adapter` inference. It is only the optimized inference workflow where upstream Irodori-TTS fine-tunes and validates a LoRA, merges/exports the adapter into a normal inference `.safetensors` checkpoint, and the merged export still looks exactly like one of the existing MLX-supported checkpoint families.
+
+The converter/runtime do not need special LoRA handling when all of these are true:
+
+- `scripts/inspect_checkpoint.py` can read the merged `.safetensors` header.
+- `metadata.config_json` identifies Base v2, VoiceDesign v2, or v3 using the same config fields as the public family.
+- `scripts/convert_weights.py --dry-run` accepts the tensor names, shapes, and float dtype class without missing or unexpected keys.
+- Generation uses the same CLI requirements as the detected family: Base v2 and v3 use `--reference-wav` or `--no-reference`; VoiceDesign v2 uses `--caption` with `--no-reference`.
+
+Manual validation recipe:
+
+```bash
+MERGED=/path/to/upstream-merged-lora/model.safetensors
+WORK=/tmp/irodori-merged-lora
+mkdir -p "$WORK"
+
+python scripts/inspect_checkpoint.py "$MERGED" --json > "$WORK/checkpoint-inspect.json"
+python - "$WORK/checkpoint-inspect.json" > "$WORK/model_config.json" <<'PY'
+import json
+import sys
+from dataclasses import fields
+from irodori_mlx.config import ModelConfig
+
+payload = json.load(open(sys.argv[1]))
+allowed = {field.name for field in fields(ModelConfig)}
+print(json.dumps({k: v for k, v in payload["config"].items() if k in allowed}, ensure_ascii=False, indent=2, sort_keys=True))
+PY
+
+python scripts/convert_weights.py "$MERGED" "$WORK/weights.npz" --dry-run --json
+python scripts/convert_weights.py "$MERGED" "$WORK/weights.npz"
+
+# Base v2 or v3 merged exports:
+python scripts/generate_wav.py \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
+  --text "こんにちは。今日は良い天気です。" \
+  --no-reference \
+  --output "$WORK/irodori-merged-lora.wav" \
+  --metadata-json "$WORK/irodori-merged-lora-metadata.json"
+
+# VoiceDesign v2 merged exports:
+python scripts/generate_wav.py \
+  --weights "$WORK/weights.npz" \
+  --model-config-json "$WORK/model_config.json" \
+  --text "こんにちは。今日は良い天気です。" \
+  --caption "落ち着いた女性の声" \
+  --no-reference \
+  --output "$WORK/irodori-merged-lora-voicedesign.wav" \
+  --metadata-json "$WORK/irodori-merged-lora-voicedesign-metadata.json"
+```
+
+If `convert_weights.py --dry-run` reports missing keys, unexpected keys, shape mismatches, dtype mismatches, or config errors, the merged export is outside this path. Record the concrete converter error and open follow-up scope for either a new checkpoint-family contract or dynamic LoRA adapter inference. Do not describe that checkpoint as supported until the converter/runtime contract is extended and tested.
 
 ### Unsupported and best-effort families
 

@@ -53,7 +53,7 @@ class PublicDocsSanitizedTests(unittest.TestCase):
             "local Gradio UI",
             "local conversion",
             "stable public Python API",
-            "arbitrary third-party, fine-tuned, quantized, LoRA, renamed, or architecture-modified checkpoints",
+            "arbitrary third-party, unmerged LoRA adapters, dynamic LoRA adapter loading, quantized, renamed, or architecture-modified checkpoints",
         ]
         for term in required_terms:
             with self.subTest(term=term):
