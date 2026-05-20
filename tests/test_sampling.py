@@ -712,7 +712,7 @@ class SamplingTests(unittest.TestCase):
         self.assertTrue(all(call["cached"] for call in model.calls))
 
     @require_mlx
-    def test_sampler_leaves_joint_uncond_speaker_cache_unscaled(self):
+    def test_sampler_scales_joint_uncond_speaker_cache(self):
         model = CacheSpeakerScaleSamplerModel()
         out = sample_euler_rf_cfg(
             model,
@@ -733,7 +733,33 @@ class SamplingTests(unittest.TestCase):
 
         init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(7))
         v_cond = 31.0
-        v_uncond = 10.0
+        v_uncond = 30.0
+        expected = init + (v_cond + 2.0 * (v_cond - v_uncond)) * (0.0 - 0.999)
+        np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
+
+    @require_mlx
+    def test_sampler_scales_alternating_uncond_speaker_cache(self):
+        model = CacheSpeakerScaleSamplerModel()
+        out = sample_euler_rf_cfg(
+            model,
+            text_input_ids=mx.array([[1]], dtype=mx.int32),
+            text_mask=mx.array([[True]]),
+            ref_latent=mx.ones((1, 1, 2), dtype=mx.float32),
+            ref_mask=mx.array([[True]]),
+            sequence_length=1,
+            num_steps=1,
+            cfg_scale_text=2.0,
+            cfg_scale_caption=0.0,
+            cfg_scale_speaker=0.0,
+            cfg_guidance_mode="alternating",
+            seed=7,
+            use_context_kv_cache=False,
+            speaker_kv_scale=3.0,
+        )
+
+        init = mx.random.normal((1, 1, 2), dtype=mx.float32, key=mx.random.key(7))
+        v_cond = 31.0
+        v_uncond = 30.0
         expected = init + (v_cond + 2.0 * (v_cond - v_uncond)) * (0.0 - 0.999)
         np.testing.assert_allclose(to_np(out), to_np(expected), rtol=1e-6, atol=1e-6)
 

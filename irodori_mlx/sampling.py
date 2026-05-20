@@ -340,8 +340,10 @@ def sample_euler_rf_cfg(
     independent_cache_is_scaled = False
     joint_uncond = None
     joint_cache = None
+    joint_cache_is_scaled = False
     alternating_bundles: dict[str, _ConditionBundle] = {}
     alternating_caches: dict[str, list[tuple[mx.array, ...]] | None] = {}
+    alternating_cache_is_scaled: dict[str, bool] = {}
 
     if mode == "independent" and enabled:
         bundles = [cond]
@@ -377,6 +379,7 @@ def sample_euler_rf_cfg(
             )
             alternating_bundles[name] = bundle
             alternating_caches[name] = _build_cache(model, bundle, use_context_kv_cache=use_context_kv_cache)
+            alternating_cache_is_scaled[name] = False
 
     def _set_cache_scale_for_t(
         cache: list[tuple[mx.array, ...]] | None,
@@ -415,6 +418,17 @@ def sample_euler_rf_cfg(
             is_scaled=independent_cache_is_scaled,
             t_value=t_value,
         )
+        joint_cache_is_scaled = _set_cache_scale_for_t(
+            joint_cache,
+            is_scaled=joint_cache_is_scaled,
+            t_value=t_value,
+        )
+        for name, cache in alternating_caches.items():
+            alternating_cache_is_scaled[name] = _set_cache_scale_for_t(
+                cache,
+                is_scaled=alternating_cache_is_scaled[name],
+                t_value=t_value,
+            )
 
         if use_cfg and mode == "independent":
             cfg_mult = len(independent_names)
