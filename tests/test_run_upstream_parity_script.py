@@ -95,7 +95,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                 "unused",
                 "--caption-tokenizer-repo",
                 "caption/repo",
-                "--caption-max-length",
+                "--max-caption-len",
                 "128",
             ]
         )
@@ -127,14 +127,14 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
 
         self.assertEqual(report["scenario"]["checkpoint_family"], "v3")
         self.assertEqual(report["scenario"]["name"], "v3-reference-predicted")
-        self.assertFalse(report["scenario"]["no_reference"])
-        self.assertEqual(report["scenario"]["reference_wav"], "tests/fixtures/v3-reference.wav")
+        self.assertFalse(report["scenario"]["no_ref"])
+        self.assertEqual(report["scenario"]["ref_wav"], "tests/fixtures/v3-reference.wav")
         self.assertIsNone(report["scenario"]["seconds"])
         self.assertEqual(report["metadata_axes"]["duration"]["expected_mode"], "predicted_or_upstream_default")
-        self.assertEqual(report["metadata_axes"]["codec"]["reference_wav"], "tests/fixtures/v3-reference.wav")
+        self.assertEqual(report["metadata_axes"]["codec"]["ref_wav"], "tests/fixtures/v3-reference.wav")
         self.assertEqual(report["metadata_axes"]["sampling"]["seed"], 20260519)
         self.assertIn("--ref-wav", report["upstream"]["command"]["argv"])
-        self.assertIn("--reference-wav", report["mlx"]["command"]["argv"])
+        self.assertIn("--ref-wav", report["mlx"]["command"]["argv"])
         self.assertNotIn("--seconds", report["mlx"]["command"]["argv"])
         self.assertEqual(report["mlx"]["metadata"]["result"]["duration_mode"], "predicted")
         self.assertIsNone(report["mlx"]["metadata"]["result"]["requested_seconds"])
@@ -232,7 +232,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                     "v3-reference-predicted",
                     "--output-dir",
                     td,
-                    "--reference-wav",
+                    "--ref-wav",
                     "/tmp/reference.wav",
                     "--mlx-weights",
                     "/tmp/irodori-v3.npz",
@@ -336,7 +336,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
 
             def fake_run(command: list[str], *, cwd: Path, timeout_seconds: int) -> dict[str, object]:
                 self.assertEqual(cwd, run_upstream_parity.ROOT)
-                output_wav = Path(command[command.index("--output") + 1])
+                output_wav = Path(command[command.index("--output-wav") + 1])
                 metadata_json = Path(command[command.index("--metadata-json") + 1])
                 self.assertTrue(output_wav.is_absolute())
                 self.assertTrue(metadata_json.is_absolute())
@@ -358,7 +358,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
                                 "patched_steps": 24,
                                 "seed": 20260516,
                             },
-                            "request": {"text_max_length": 256, "caption_max_length": None, "caption": None},
+                            "request": {"max_text_len": 256, "max_caption_len": None, "caption": None},
                             "boundaries": {"config": {"model_config": {"latent_dim": 32}}},
                         }
                     ),
@@ -380,7 +380,7 @@ class RunUpstreamParityScriptTests(unittest.TestCase):
             with mock.patch.object(run_upstream_parity, "_run", side_effect=fake_run):
                 report = run_upstream_parity.build_report(args)
 
-        mlx_wav = Path(report["mlx"]["command"]["argv"][report["mlx"]["command"]["argv"].index("--output") + 1])
+        mlx_wav = Path(report["mlx"]["command"]["argv"][report["mlx"]["command"]["argv"].index("--output-wav") + 1])
         self.assertTrue(mlx_wav.is_absolute())
         self.assertEqual(report["mlx"]["audio"]["path"], str(mlx_wav))
         self.assertEqual(report["mlx"]["audio"]["sample_rate"], 24000)

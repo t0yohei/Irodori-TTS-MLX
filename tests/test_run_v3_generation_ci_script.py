@@ -38,10 +38,10 @@ class RunV3GenerationCIScriptTests(unittest.TestCase):
             }
 
             def fake_subprocess_run(command, **kwargs):
-                self.assertIn("--no-reference", command)
+                self.assertIn("--no-ref", command)
                 self.assertNotIn("--seconds", command)
                 metadata_path = Path(command[command.index("--metadata-json") + 1])
-                output_wav = Path(command[command.index("--output") + 1])
+                output_wav = Path(command[command.index("--output-wav") + 1])
                 metadata_path.write_text(json.dumps(generation_payload), encoding="utf-8")
                 output_wav.write_bytes(b"fake wav")
                 return CompletedProcess(
@@ -191,7 +191,7 @@ class RunV3GenerationCIScriptTests(unittest.TestCase):
 
             def fake_subprocess_run(command, **kwargs):
                 metadata_path = Path(command[command.index("--metadata-json") + 1])
-                output_wav = Path(command[command.index("--output") + 1])
+                output_wav = Path(command[command.index("--output-wav") + 1])
                 metadata_path.write_text(json.dumps(generation_payload), encoding="utf-8")
                 output_wav.write_bytes(b"fake wav")
                 return CompletedProcess(args=command, returncode=0, stdout=json.dumps(generation_payload), stderr="")

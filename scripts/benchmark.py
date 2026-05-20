@@ -113,7 +113,7 @@ def parse_args() -> argparse.Namespace:
         default="auto",
         help="Label cache state for each run. 'auto' uses invocation order heuristics to separate first-run vs steady-state behavior.",
     )
-    parser.add_argument("--reference-wav", help="Reference audio path. Optional for both modes.")
+    parser.add_argument("--ref-wav", help="Reference audio path. Optional for both modes.")
     parser.add_argument("--upstream-root", help="Path to upstream Irodori-TTS checkout.")
     parser.add_argument("--upstream-python", default="python3", help="Python executable for upstream benchmark.")
     parser.add_argument("--mlx-python", default="python3", help="Python executable for MLX benchmark.")
@@ -251,7 +251,7 @@ def build_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
     if args.mode in {"upstream", "both"} and args.seconds_sweep:
         raise BenchmarkError("--seconds-sweep is only supported for --mode mlx because upstream infer.py has no output-length flag")
 
-    reference_mode = "reference" if args.reference_wav else "no-reference"
+    reference_mode = "reference" if args.ref_wav else "no-reference"
     case_label = slug_token(args.case_label) if getattr(args, "case_label", None) else "base"
     cases: list[BenchmarkCase] = []
 
@@ -332,10 +332,10 @@ def build_upstream_command(args: argparse.Namespace, output_wav: Path, *, num_st
         str(args.seed),
         "--show-timings",
     ]
-    if args.reference_wav:
+    if args.ref_wav:
         argv.extend([
             "--ref-wav",
-            args.reference_wav,
+            args.ref_wav,
             "--max-ref-seconds",
             "30",
             "--ref-normalize-db",
@@ -366,7 +366,7 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
         "scripts/generate_wav.py",
         weight_flag,
         str(weight_value),
-        "--output",
+        "--output-wav",
         str(output_wav),
         "--text",
         args.text,
@@ -395,10 +395,10 @@ def build_mlx_command(args: argparse.Namespace, repo_root: Path, output_wav: Pat
         argv.extend(["--weights-revision", args.weights_revision])
     if seconds is not None:
         argv.extend(["--seconds", str(seconds)])
-    if args.reference_wav:
-        argv.extend(["--reference-wav", args.reference_wav])
+    if args.ref_wav:
+        argv.extend(["--ref-wav", args.ref_wav])
     else:
-        argv.append("--no-reference")
+        argv.append("--no-ref")
     if args.caption:
         argv.extend(["--caption", args.caption])
     if args.model_config_json:
@@ -808,7 +808,7 @@ def write_json_summary(results: list[BenchmarkResult], path: Path, *, args: argp
             "omit_seconds": bool(args.omit_seconds),
             "num_steps": args.num_steps,
             "num_steps_sweep": args.num_steps_sweep,
-            "reference_wav": args.reference_wav,
+            "ref_wav": args.ref_wav,
             "weights": args.weights,
             "weights_dir": args.weights_dir,
             "weights_repo": args.weights_repo,

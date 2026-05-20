@@ -35,7 +35,7 @@ or docs explicitly describe manifests, checksums, metadata, and allowed files.
 No `irodori_mlx` module, class, function, dataclass, or top-level
 `irodori_mlx.__all__` export is currently supported as a stable public Python
 API. That includes runtime helpers such as `MLXRuntimeConfig`,
-`GenerationRequest`, `load_mlx_model`, sampler/model/layer classes, DACVAE
+`SamplingRequest`, `load_mlx_model`, sampler/model/layer classes, DACVAE
 helpers, hosted artifact helpers, and repository `scripts.*` modules.
 
 Downstream integrations may experiment with those imports, but they should

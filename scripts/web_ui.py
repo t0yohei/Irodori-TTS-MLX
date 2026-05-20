@@ -26,7 +26,7 @@ ARTIFACT_PRESETS = {
         "weights_repo": VOICE_DESIGN_WEIGHTS_REPO,
         "weights_revision": VOICE_DESIGN_WEIGHTS_REVISION,
         "caption": "落ち着いた女性の声",
-        "no_reference": True,
+        "no_ref": True,
         "force_no_reference": True,
         "supports_caption": True,
     },
@@ -34,7 +34,7 @@ ARTIFACT_PRESETS = {
         "weights_repo": V3_WEIGHTS_REPO,
         "weights_revision": V3_WEIGHTS_REVISION,
         "caption": "",
-        "no_reference": True,
+        "no_ref": True,
         "force_no_reference": False,
         "supports_caption": False,
     },
@@ -50,8 +50,8 @@ class WebGenerationConfig:
     weights: str = ""
     text: str = "こんにちは。今日は良い天気です。"
     caption: str = "落ち着いた女性の声"
-    reference_wav: str | None = None
-    no_reference: bool = True
+    ref_wav: str | None = None
+    no_ref: bool = True
     preset: str = "balanced"
     num_steps: int | None = None
     seed: int = 0
@@ -108,7 +108,7 @@ def _with_artifact_preset(config: WebGenerationConfig) -> WebGenerationConfig:
             "weights_repo": config.weights_repo or str(preset["weights_repo"]),
             "weights_revision": config.weights_revision or str(preset["weights_revision"] or ""),
             "caption": config.caption if preset["supports_caption"] and config.caption else str(preset["caption"]),
-            "no_reference": True if preset["force_no_reference"] else bool(config.no_reference),
+            "no_ref": True if preset["force_no_reference"] else bool(config.no_ref),
         }
     )
 
@@ -137,12 +137,12 @@ def build_generate_argv(config: WebGenerationConfig, *, output_wav: str, metadat
 
     if not _clean_text(config.text):
         raise ValueError("Text is required.")
-    argv.extend(["--output", output_wav, "--text", _clean_text(config.text)])
+    argv.extend(["--output-wav", output_wav, "--text", _clean_text(config.text)])
     _add_optional(argv, "--caption", config.caption)
-    if config.no_reference:
-        argv.append("--no-reference")
+    if config.no_ref:
+        argv.append("--no-ref")
     else:
-        _add_optional(argv, "--reference-wav", config.reference_wav)
+        _add_optional(argv, "--ref-wav", config.ref_wav)
     _add_optional(argv, "--preset", config.preset)
     if config.num_steps is not None:
         argv.extend(["--num-steps", str(int(config.num_steps))])
@@ -232,8 +232,8 @@ def build_ui() -> Any:
         text = gr.Textbox(label="Text", value="こんにちは。今日は良い天気です。", lines=3)
         caption = gr.Textbox(label="Caption / style text", value="落ち着いた女性の声")
         with gr.Row():
-            reference_wav = gr.Audio(label="Reference audio", type="filepath")
-            no_reference = gr.Checkbox(label="No reference", value=True)
+            ref_wav = gr.Audio(label="Reference audio", type="filepath")
+            no_ref = gr.Checkbox(label="No reference", value=True)
         with gr.Row():
             preset = gr.Dropdown(["ultra-fast", "fast", "balanced", "quality"], value="balanced", label="Generation preset")
             num_steps = gr.Textbox(label="Override num steps")
@@ -269,8 +269,8 @@ def build_ui() -> Any:
                 weights=_clean_text(values[4]),
                 text=_clean_text(values[5]),
                 caption=_clean_text(values[6]),
-                reference_wav=values[7],
-                no_reference=bool(values[8]),
+                ref_wav=values[7],
+                no_ref=bool(values[8]),
                 preset=_clean_text(values[9]),
                 num_steps=_optional_int(values[10]),
                 seed=_int_or_default(values[11], 0),
@@ -300,8 +300,8 @@ def build_ui() -> Any:
             weights,
             text,
             caption,
-            reference_wav,
-            no_reference,
+            ref_wav,
+            no_ref,
             preset,
             num_steps,
             seed,

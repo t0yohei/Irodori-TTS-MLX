@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cfg-scale-text", type=float, default=3.0)
     parser.add_argument("--cfg-scale-caption", type=float)
     parser.add_argument("--cfg-scale-speaker", type=float)
-    parser.add_argument("--reference-wav")
+    parser.add_argument("--ref-wav")
     parser.add_argument("--upstream-root")
     parser.add_argument("--mlx-python", default="python3")
     parser.add_argument("--weights")
@@ -174,7 +174,7 @@ def build_request_overrides(args: argparse.Namespace, output_dir: Path) -> list[
     for index in range(1, total + 1):
         item: dict[str, Any] = {
             "text": args.text,
-            "output": str(output_dir / f"{slug}.request-{index:02d}.wav"),
+            "output_wav": str(output_dir / f"{slug}.request-{index:02d}.wav"),
             "num_steps": int(args.num_steps),
             "cfg_guidance_mode": args.cfg_guidance_mode,
             "cfg_scale_text": float(args.cfg_scale_text),
@@ -186,12 +186,12 @@ def build_request_overrides(args: argparse.Namespace, output_dir: Path) -> list[
                 item["cfg_scale_caption"] = float(args.cfg_scale_caption)
         else:
             item["cfg_scale_caption"] = 0.0 if args.cfg_scale_caption is None else float(args.cfg_scale_caption)
-        if args.reference_wav:
-            item["reference_wav"] = args.reference_wav
+        if args.ref_wav:
+            item["ref_wav"] = args.ref_wav
             if args.cfg_scale_speaker is not None:
                 item["cfg_scale_speaker"] = float(args.cfg_scale_speaker)
         else:
-            item["no_reference"] = True
+            item["no_ref"] = True
             item["cfg_scale_speaker"] = 0.0 if args.cfg_scale_speaker is None else float(args.cfg_scale_speaker)
         if not args.omit_seconds:
             item["seconds"] = float(args.seconds)
@@ -208,7 +208,7 @@ def effective_cfg_scale_caption(args: argparse.Namespace) -> float:
 def effective_cfg_scale_speaker(args: argparse.Namespace) -> float:
     if args.cfg_scale_speaker is not None:
         return float(args.cfg_scale_speaker)
-    return DEFAULT_CFG_SCALE_SPEAKER if args.reference_wav else 0.0
+    return DEFAULT_CFG_SCALE_SPEAKER if args.ref_wav else 0.0
 
 
 def build_command(args: argparse.Namespace, requests_json: Path, metadata_json: Path) -> tuple[list[str], dict[str, str]]:
@@ -426,7 +426,7 @@ def build_json_summary(result: BatchRunResult, *, args: argparse.Namespace) -> d
             "cfg_scale_text": args.cfg_scale_text,
             "cfg_scale_caption": effective_cfg_scale_caption(args),
             "cfg_scale_speaker": effective_cfg_scale_speaker(args),
-            "reference_wav": args.reference_wav,
+            "ref_wav": args.ref_wav,
             "weights": args.weights,
             "weights_dir": args.weights_dir,
             "weights_repo": args.weights_repo,
@@ -618,7 +618,7 @@ def run_self_test() -> int:
         process_setup_overhead_ms=process_setup_overhead_ms(2.0, parsed),
         requests=parsed,
     )
-    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, cfg_guidance_mode="independent", cfg_scale_text=3.0, cfg_scale_caption=None, cfg_scale_speaker=None, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
+    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, cfg_guidance_mode="independent", cfg_scale_text=3.0, cfg_scale_caption=None, cfg_scale_speaker=None, ref_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
     report = build_report(result, args=args)
     assert "Persistent Batch Benchmark Report" in report
     assert "Measured generation throughput" in report

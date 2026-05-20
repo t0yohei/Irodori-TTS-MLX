@@ -26,7 +26,7 @@ So the current support statement is:
 | `irodori_mlx.config.ModelConfig` | supported | Resolves caption tokenizer/dim/layer defaults for `use_caption_condition=true`. |
 | `irodori_mlx.encoders.ConditionEncoders` | supported | Builds caption encoder/norm path and optional caption masks. |
 | `irodori_mlx.model.TextToLatentRFDiT` | supported | RF-DiT blocks include `wk_caption` / `wv_caption` projections when caption conditioning is enabled. |
-| `irodori_mlx.runtime.MLXDACVAERuntime` | partially supported | Loads a caption tokenizer and can run without speaker reference audio because VoiceDesign disables the speaker path. |
+| `irodori_mlx.runtime.InferenceRuntime` | partially supported | Loads a caption tokenizer and can run without speaker reference audio because VoiceDesign disables the speaker path. |
 | `scripts/generate_wav.py` | partially supported | Exposes `--caption`, caption tokenizer overrides, and caption guidance controls. |
 | `scripts/convert_weights.py` | supported for the inspected family | Detects base-v2 vs VoiceDesign for caption-conditioned checkpoints, validates family-specific tensor/config layouts, exports caption-conditioned `.npz` archives, and also recognizes the public `Aratako/Irodori-TTS-500M-v3` schema intentionally. |
 | Reproducible end-to-end VoiceDesign smoke test | supported for the inspected family | The manual inspect → convert → `generate_wav.py --caption ...` path is documented, the lightweight hosted workflow exercises inspect + converter validation, and a separate GitHub-hosted Apple Silicon workflow now runs the full generation path. |
@@ -124,7 +124,7 @@ python3 scripts/generate_wav.py \
   --model-config-json '{"use_caption_condition": true, "caption_vocab_size": 99574, "caption_tokenizer_repo": "llm-jp/llm-jp-3-150m", "caption_add_bos": true, "caption_dim": 512, "caption_layers": 10, "caption_heads": 8, "caption_mlp_ratio": 2.6}' \
   --text "こんにちは。" \
   --caption "落ち着いた女性の声で、近い距離感でやわらかく自然に読み上げてください。" \
-  --output /tmp/irodori-voicedesign.wav
+  --output-wav /tmp/irodori-voicedesign.wav
 ```
 
 Check the `checkpoint_family` field in the dry-run JSON/text report before running the full conversion. A valid inspected VoiceDesign checkpoint should report `checkpoint_family: voicedesign`.

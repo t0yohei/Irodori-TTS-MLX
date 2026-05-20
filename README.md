@@ -52,8 +52,8 @@ irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
-  --no-reference \
-  --output /tmp/irodori-voicedesign.wav \
+  --no-ref \
+  --output-wav /tmp/irodori-voicedesign.wav \
   --preset balanced \
   --json
 ~~~
@@ -65,8 +65,8 @@ irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3.wav \
+  --no-ref \
+  --output-wav /tmp/irodori-v3.wav \
   --preset balanced \
   --metadata-json /tmp/irodori-v3-metadata.json
 ~~~
@@ -79,8 +79,8 @@ irodori-tts-generate \
   --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3-pinned-codec.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3-pinned-codec.wav
 ~~~
 
 For local or staged codec artifacts, use `--codec-artifact-dir` or `--codec-path`.
@@ -91,14 +91,14 @@ Upstream-validated low-step recipes that use Sway Sampling can be carried into t
 
 Upstream-validated temporal and speaker quality recipes can also pass through `--rescale-k`, `--rescale-sigma`, `--speaker-kv-scale`, `--speaker-kv-min-t`, and `--speaker-kv-max-layers`. These controls are intended for carrying known upstream recipes into MLX inference; keep primary tuning and validation in upstream Irodori-TTS before relying on a recipe in this optimized runtime.
 
-Speaker Inversion embeddings trained and validated with upstream Irodori-TTS can be reused for MLX inference with `--ref-embed`. The embedding must be a `.speaker.safetensors` file containing one speaker-state tensor with shape `(speaker_dim)`, `(sequence, speaker_dim)`, or `(1, sequence, speaker_dim)`. `--ref-embed` is mutually exclusive with `--reference-wav` and `--no-reference`; it bypasses DACVAE reference encoding and records `speaker_condition_source: "embedding"` in JSON metadata.
+Speaker Inversion embeddings trained and validated with upstream Irodori-TTS can be reused for MLX inference with `--ref-embed`. The embedding must be a `.speaker.safetensors` file containing one speaker-state tensor with shape `(speaker_dim)`, `(sequence, speaker_dim)`, or `(1, sequence, speaker_dim)`. `--ref-embed` is mutually exclusive with `--ref-wav` and `--no-ref`; it bypasses DACVAE reference encoding and records `speaker_condition_source: "embedding"` in JSON metadata.
 
 ~~~bash
 irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --text "こんにちは。今日は良い天気です。" \
   --ref-embed /path/to/voice.speaker.safetensors \
-  --output /tmp/irodori-v3-speaker.wav \
+  --output-wav /tmp/irodori-v3-speaker.wav \
   --preset balanced \
   --json
 ~~~
@@ -152,8 +152,8 @@ irodori-tts-generate \
   --weights "$WORK/weights.npz" \
   --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output "$WORK/irodori-local.wav"
+  --no-ref \
+  --output-wav "$WORK/irodori-local.wav"
 ~~~
 
 Direct local v3 hosted-layout smoke path:
@@ -163,8 +163,8 @@ irodori-tts-generate \
   --weights /path/to/converted-v3/weights.npz \
   --model-config-json /path/to/converted-v3/model_config.json \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3-local.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3-local.wav
 ~~~
 
 `mlx-audio` adaptation:

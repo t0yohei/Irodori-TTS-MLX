@@ -19,7 +19,6 @@ from .dacvae import (
     load_semantic_dacvae_encoder_artifact,
     semantic_dacvae_decoder_config_from_metadata,
     semantic_dacvae_decoder_expected_shapes,
-    semantic_dacvae_decoder_required_keys,
     semantic_dacvae_encoder_config_from_metadata,
     semantic_dacvae_encoder_expected_shapes,
 )
@@ -61,18 +60,19 @@ class MLXRuntimeConfig:
     weights_path: str
     text_tokenizer_repo: str | None = None
     caption_tokenizer_repo: str | None = None
-    text_max_length: int = 256
-    caption_max_length: int | None = None
+    max_text_len: int = 256
+    max_caption_len: int | None = None
     codec: DACVAEBridgeConfig = DACVAEBridgeConfig()
 
 
 @dataclass(frozen=True)
-class GenerationRequest:
+class SamplingRequest:
     text: str
     output_wav: str
-    reference_wav: str | None = None
+    ref_wav: str | None = None
     ref_latent: str | None = None
-    no_reference: bool = False
+    ref_embed: str | None = None
+    no_ref: bool = False
     caption: str | None = None
     seconds: float | None = None
     duration_scale: float = 1.0
@@ -93,13 +93,12 @@ class GenerationRequest:
     speaker_kv_min_t: float | None = None
     speaker_kv_max_layers: int | None = None
     seed: int = 0
-    max_reference_seconds: float | None = 30.0
-    use_context_kv_cache: bool = True
-    ref_embed: str | None = None
+    max_ref_seconds: float | None = 30.0
+    context_kv_cache: bool = True
 
 
 @dataclass(frozen=True)
-class GenerationResult:
+class SamplingResult:
     output_wav: str
     sample_rate: int
     samples: int
@@ -568,7 +567,6 @@ def describe_codec_capabilities(
     mode = codec.runtime_mode
     family = model_config.checkpoint_family if model_config is not None else None
     uses_speaker = bool(model_config.use_speaker_condition) if model_config is not None else None
-    needs_reference_encode = uses_speaker is not False
     report: dict[str, object] = {
         "runtime_mode": mode,
         "checkpoint_family": family,
@@ -987,7 +985,7 @@ def save_wav_numpy(path: str | Path, samples, sample_rate: int) -> Path:
 
 
 
-class MLXDACVAERuntime:
+class InferenceRuntime:
     """End-to-end prototype: MLX RF-DiT latent generation + selectable DACVAE decode."""
 
     def __init__(
@@ -1032,7 +1030,7 @@ class MLXDACVAERuntime:
                     f"Failed to initialize caption tokenizer for repo {caption_repo!r}: {exc}"
                 ) from exc
 
-    def generate(self, request: GenerationRequest) -> GenerationResult:
+    def generate(self, request: SamplingRequest) -> SamplingResult:
         messages: list[str] = []
         timings_ms: dict[str, float] = {}
         total_started = time.perf_counter()
@@ -1072,23 +1070,23 @@ class MLXDACVAERuntime:
                     f"speaker_kv_max_layers must be >= 0 when specified, got {speaker_kv_max_layers}"
                 )
         ref_latent_path = request.ref_latent or None
-        if request.ref_embed and (request.reference_wav is not None or ref_latent_path is not None or request.no_reference):
-            raise ValueError("Specify only one of ref_embed, ref_latent, reference_wav, or no_reference.")
+        if request.ref_embed and (request.ref_wav is not None or ref_latent_path is not None or request.no_ref):
+            raise ValueError("Specify only one of ref_embed, ref_latent, ref_wav, or no_ref.")
         if request.ref_embed and not self.config.model_config.use_speaker_condition:
             raise ValueError("ref_embed requires a speaker-conditioned checkpoint.")
         if ref_latent_path and not self.config.model_config.use_speaker_condition:
             raise ValueError("ref_latent requires a speaker-conditioned checkpoint.")
-        if ref_latent_path and (request.reference_wav is not None or request.no_reference):
-            raise ValueError("Specify only one of ref_latent, reference_wav, or no_reference.")
+        if ref_latent_path and (request.ref_wav is not None or request.no_ref):
+            raise ValueError("Specify only one of ref_latent, ref_wav, or no_ref.")
         if (
-            request.reference_wav is None
+            request.ref_wav is None
             and ref_latent_path is None
             and request.ref_embed is None
-            and not request.no_reference
+            and not request.no_ref
             and self.config.model_config.use_speaker_condition
         ):
             raise ValueError(
-                "Specify reference_wav, ref_latent, ref_embed, or set no_reference=True for an unconditional speaker path."
+                "Specify ref_wav, ref_latent, ref_embed, or set no_ref=True for an unconditional speaker path."
             )
 
         normalized_text = normalize_text(request.text).strip()
@@ -1098,13 +1096,13 @@ class MLXDACVAERuntime:
         started = time.perf_counter()
         text_ids, text_mask = self.tokenizer.encode(
             normalized_text,
-            max_length=int(self.config.text_max_length),
+            max_length=int(self.config.max_text_len),
         )
         caption_ids = caption_mask = None
         caption_text: str | None = None
         if self.config.model_config.use_caption_condition:
             caption_text = "" if request.caption is None else str(request.caption)
-            caption_max = self.config.caption_max_length or self.config.text_max_length
+            caption_max = self.config.max_caption_len or self.config.max_text_len
             assert self.caption_tokenizer is not None
             caption_ids, caption_mask = self.caption_tokenizer.encode(caption_text, max_length=int(caption_max))
             if caption_text.strip() == "":
@@ -1118,7 +1116,7 @@ class MLXDACVAERuntime:
         speaker_condition_source = "none"
         started = time.perf_counter()
         if self.config.model_config.use_speaker_condition:
-            if request.no_reference:
+            if request.no_ref:
                 ref_len = max(1, int(self.config.model_config.speaker_patch_size))
                 ref_latent = mx.zeros(
                     (1, ref_len, int(self.config.model_config.patched_latent_dim)),
@@ -1160,18 +1158,18 @@ class MLXDACVAERuntime:
                     f"tensor={reference_latent_metadata['tensor_key']} shape={reference_latent_metadata['shape']}"
                 )
             else:
-                assert request.reference_wav is not None
+                assert request.ref_wav is not None
                 encode_started = time.perf_counter()
                 raw_ref = self.bridge.encode_reference(
-                    request.reference_wav,
-                    max_seconds=request.max_reference_seconds,
+                    request.ref_wav,
+                    max_seconds=request.max_ref_seconds,
                     normalize_db=self.config.codec.normalize_db,
                     ensure_max=True,
                 )
                 timings_ms["encode_dacvae"] = (time.perf_counter() - encode_started) * 1000.0
                 ref_latent = patch_latents_drop_tail(raw_ref, int(self.config.model_config.latent_patch_size))
                 ref_mask = mx.ones((1, ref_latent.shape[1]), dtype=mx.bool_)
-                speaker_condition_source = "reference_wav"
+                speaker_condition_source = "ref_wav"
         timings_ms["prepare_reference_condition"] = (time.perf_counter() - started) * 1000.0
 
         duration_mode = "fallback"
@@ -1193,7 +1191,7 @@ class MLXDACVAERuntime:
             duration_features = build_duration_features(
                 [normalized_text],
                 token_counts=text_mask.sum(axis=1),
-                max_text_len=int(self.config.text_max_length),
+                max_text_len=int(self.config.max_text_len),
                 has_speaker=has_speaker,
             )
             encoded = self.model.encode_conditions(
@@ -1311,7 +1309,7 @@ class MLXDACVAERuntime:
             speaker_kv_min_t=speaker_kv_min_t,
             speaker_kv_max_layers=speaker_kv_max_layers,
             seed=int(request.seed),
-            use_context_kv_cache=bool(request.use_context_kv_cache),
+            use_context_kv_cache=bool(request.context_kv_cache),
         )
         z = unpatch_latents(z_patched, int(self.config.model_config.latent_patch_size))[:, :latent_steps]
         mx.eval(z)
@@ -1330,13 +1328,13 @@ class MLXDACVAERuntime:
         codec_boundaries = self.describe_boundaries()["codec"]
         codec_encode_backend = (
             "not-required"
-            if request.no_reference
+            if request.no_ref
             or request.ref_embed is not None
             or ref_latent_path is not None
             or not self.config.model_config.use_speaker_condition
             else str(codec_boundaries["encode_backend"])
         )
-        return GenerationResult(
+        return SamplingResult(
             output_wav=str(output),
             sample_rate=int(self.bridge.sample_rate),
             samples=target_samples,
@@ -1397,7 +1395,7 @@ class MLXDACVAERuntime:
         }
 
 
-def iter_messages(result: GenerationResult) -> Iterable[str]:
+def iter_messages(result: SamplingResult) -> Iterable[str]:
     yield f"wrote: {result.output_wav}"
     yield f"sample_rate: {result.sample_rate}"
     yield f"samples: {result.samples}"

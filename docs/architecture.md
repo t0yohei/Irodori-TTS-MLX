@@ -84,8 +84,8 @@ CLI shape:
 irodori-tts-generate \
   --weights path/to/weights.npz \
   --text "今日はいい天気ですね。" \
-  --reference-wav reference.wav \
-  --output output.wav
+  --ref-wav reference.wav \
+  --output-wav output.wav
 ```
 
 No stable Python API should be promised until a separate design issue names the

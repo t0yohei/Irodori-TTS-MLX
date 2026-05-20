@@ -41,8 +41,8 @@ irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
-  --no-reference \
-  --output /tmp/irodori-hosted.wav \
+  --no-ref \
+  --output-wav /tmp/irodori-hosted.wav \
   --preset balanced \
   --metadata-json /tmp/irodori-hosted-metadata.json \
   --json
@@ -62,8 +62,8 @@ irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --weights-revision 078ffb11ffad92e6dde237a6abef730f4341b359 \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3-hosted.wav \
+  --no-ref \
+  --output-wav /tmp/irodori-v3-hosted.wav \
   --preset balanced
 ```
 
@@ -78,8 +78,8 @@ irodori-tts-generate \
   --codec-artifact-repo t0yohei/Irodori-TTS-MLX-DACVAE-Codec \
   --codec-artifact-revision bb89840af0deb729cc7a8e4ba5ebddb49e2b3e78 \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3-hosted-codec.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3-hosted-codec.wav
 ```
 
 The CLI validates `irodori_dacvae_codec_manifest.json`, the declared
@@ -98,8 +98,8 @@ irodori-tts-generate \
   --weights-dir /models/Irodori-TTS-MLX-500M-v2-VoiceDesign \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
-  --no-reference \
-  --output /tmp/irodori-local-layout.wav
+  --no-ref \
+  --output-wav /tmp/irodori-local-layout.wav
 ```
 
 A local directory may be useful even when `license_review.status` is `pending`, but do not publish it or document it as a public model until the review is approved. Local-only use does not remove your obligation to follow the upstream terms.
@@ -122,7 +122,7 @@ For mlx-audio artifacts such as `mlx-community/Irodori-TTS-500M-v2-fp16`, do not
 
 ```bash
 irodori-tts-adapt-mlx-audio /path/to/mlx-audio-snapshot /tmp/irodori-mlx-audio-hosted --source-repo mlx-community/Irodori-TTS-500M-v2-fp16 --source-revision <commit-sha>
-irodori-tts-generate --weights-dir /tmp/irodori-mlx-audio-hosted --text "こんにちは。今日は良い天気です。" --reference-wav /path/to/reference.wav --output /tmp/irodori-local.wav
+irodori-tts-generate --weights-dir /tmp/irodori-mlx-audio-hosted --text "こんにちは。今日は良い天気です。" --ref-wav /path/to/reference.wav --output-wav /tmp/irodori-local.wav
 ```
 
 The adapter rejects 4-bit/8-bit mlx-audio repos with an explicit quantization error. Quantized artifacts remain local-conversion-only or unsupported until this runtime has a designed quantized MLX loading path.
@@ -153,16 +153,16 @@ python scripts/generate_wav.py \
   --weights "$WORK/weights.npz" \
   --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
-  --reference-wav /path/to/reference.wav \
-  --output "$WORK/irodori-local.wav" \
+  --ref-wav /path/to/reference.wav \
+  --output-wav "$WORK/irodori-local.wav" \
   --preset balanced
 ```
 
-For v3, verify that `$WORK/model_config.json` includes `"use_duration_predictor": true`, then use `--no-reference` and omit `--seconds` when you want predicted duration. For VoiceDesign, verify that it includes `"use_caption_condition": true`, add the `--caption` argument described in [caption_condition_support.md](caption_condition_support.md), and omit `--seconds` to use the bounded text-length fallback unless you need a manual duration override.
+For v3, verify that `$WORK/model_config.json` includes `"use_duration_predictor": true`, then use `--no-ref` and omit `--seconds` when you want predicted duration. For VoiceDesign, verify that it includes `"use_caption_condition": true`, add the `--caption` argument described in [caption_condition_support.md](caption_condition_support.md), and omit `--seconds` to use the bounded text-length fallback unless you need a manual duration override.
 
 For repeated generation with the same reference speaker, cache DACVAE encoder
 latents into a small MLX `.npz` artifact and pass `--ref-latent` instead of
-`--reference-wav`:
+`--ref-wav`:
 
 ```bash
 python - <<'PY'
@@ -177,7 +177,7 @@ python scripts/generate_wav.py \
   --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
   --ref-latent /tmp/reference-latent.npz \
-  --output "$WORK/irodori-local-cached-reference.wav" \
+  --output-wav "$WORK/irodori-local-cached-reference.wav" \
   --metadata-json "$WORK/irodori-local-cached-reference.json" \
   --preset balanced
 ```

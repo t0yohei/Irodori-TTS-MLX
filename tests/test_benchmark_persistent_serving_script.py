@@ -21,7 +21,7 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
             seconds=2.0,
             omit_seconds=False,
             num_steps=12,
-            reference_wav=None,
+            ref_wav=None,
             upstream_root="/tmp/upstream",
             mlx_python="python3",
             weights=None,
@@ -48,8 +48,8 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
             requests = bench.build_request_overrides(args, Path(td))
         self.assertEqual(len(requests), 3)
         self.assertEqual([item["seed"] for item in requests], [10, 11, 12])
-        self.assertTrue(all(item["no_reference"] for item in requests))
-        self.assertTrue(requests[0]["output"].endswith("serving-test.request-01.wav"))
+        self.assertTrue(all(item["no_ref"] for item in requests))
+        self.assertTrue(requests[0]["output_wav"].endswith("serving-test.request-01.wav"))
         self.assertEqual(requests[1]["num_steps"], 12)
 
     def test_build_worker_command_forwards_runtime_inputs(self):
@@ -75,14 +75,14 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
             def validate_checkpoint_family_request(**kwargs):
                 raise AssertionError("family validation should not run after layout rejection")
 
-        args = argparse.Namespace(reference_wav=None, no_reference=False, caption=None)
+        args = argparse.Namespace(ref_wav=None, no_ref=False, caption=None)
         with self.assertRaises(SystemExit):
             bench.validate_worker_request(
                 FakeGen,
                 model_config=object(),
                 gen_args=args,
                 layout_runtime={"supports_no_reference": False},
-                overrides={"no_reference": True},
+                overrides={"no_ref": True},
                 index=1,
             )
 
@@ -94,14 +94,14 @@ class PersistentServingBenchmarkScriptTests(unittest.TestCase):
             def validate_checkpoint_family_request(**kwargs):
                 calls.append(kwargs)
 
-        args = argparse.Namespace(reference_wav=None, no_reference=True, caption=None)
+        args = argparse.Namespace(ref_wav=None, no_ref=True, caption=None)
         model_config = object()
         bench.validate_worker_request(
             FakeGen,
             model_config=model_config,
             gen_args=args,
             layout_runtime={"supports_no_reference": True},
-            overrides={"no_reference": True},
+            overrides={"no_ref": True},
             index=2,
         )
         self.assertEqual(calls[0]["model_config"], model_config)

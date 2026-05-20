@@ -23,7 +23,7 @@ class WebUiScriptTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--weights-repo") + 1], web_ui.VOICE_DESIGN_WEIGHTS_REPO)
         self.assertEqual(argv[argv.index("--weights-revision") + 1], web_ui.VOICE_DESIGN_WEIGHTS_REVISION)
         self.assertIn("--caption", argv)
-        self.assertIn("--no-reference", argv)
+        self.assertIn("--no-ref", argv)
         self.assertIn("--preset", argv)
         self.assertEqual(argv[argv.index("--preset") + 1], "balanced")
         self.assertIn("--metadata-json", argv)
@@ -51,16 +51,16 @@ class WebUiScriptTests(unittest.TestCase):
             web_ui.WebGenerationConfig(
                 artifact_preset="v3 hosted",
                 caption="",
-                no_reference=False,
-                reference_wav="/tmp/ref.wav",
+                no_ref=False,
+                ref_wav="/tmp/ref.wav",
             ),
             output_wav="/tmp/out.wav",
             metadata_json="/tmp/meta.json",
         )
 
-        self.assertIn("--reference-wav", argv)
-        self.assertEqual(argv[argv.index("--reference-wav") + 1], "/tmp/ref.wav")
-        self.assertNotIn("--no-reference", argv)
+        self.assertIn("--ref-wav", argv)
+        self.assertEqual(argv[argv.index("--ref-wav") + 1], "/tmp/ref.wav")
+        self.assertNotIn("--no-ref", argv)
 
     def test_custom_config_requires_exactly_one_weight_source(self):
         with self.assertRaisesRegex(ValueError, "exactly one weights source"):

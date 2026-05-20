@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,7 +24,7 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
             cfg_scale_text=3.0,
             cfg_scale_caption=None,
             cfg_scale_speaker=None,
-            reference_wav=None,
+            ref_wav=None,
             upstream_root="/tmp/upstream",
             mlx_python="python3",
             weights=None,
@@ -52,24 +51,24 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
             requests = bench.build_request_overrides(args, Path(td))
         self.assertEqual(len(requests), 3)
         self.assertEqual([item["seed"] for item in requests], [10, 11, 12])
-        self.assertTrue(all(item["no_reference"] for item in requests))
+        self.assertTrue(all(item["no_ref"] for item in requests))
         self.assertTrue(all(item["cfg_guidance_mode"] == "independent" for item in requests))
         self.assertTrue(all(item["cfg_scale_text"] == 3.0 for item in requests))
         self.assertTrue(all(item["cfg_scale_caption"] == 0.0 for item in requests))
         self.assertTrue(all(item["cfg_scale_speaker"] == 0.0 for item in requests))
-        self.assertTrue(requests[0]["output"].endswith("batch-test.request-01.wav"))
+        self.assertTrue(requests[0]["output_wav"].endswith("batch-test.request-01.wav"))
         self.assertEqual(requests[1]["seconds"], 2.0)
 
     def test_build_request_overrides_forwards_explicit_companion_cfg_scales(self):
         args = self._args()
-        args.reference_wav = "/tmp/ref.wav"
+        args.ref_wav = "/tmp/ref.wav"
         args.caption = "calm"
         args.cfg_scale_caption = 1.0
         args.cfg_scale_speaker = 1.0
         with tempfile.TemporaryDirectory() as td:
             requests = bench.build_request_overrides(args, Path(td))
 
-        self.assertEqual(requests[0]["reference_wav"], "/tmp/ref.wav")
+        self.assertEqual(requests[0]["ref_wav"], "/tmp/ref.wav")
         self.assertEqual(requests[0]["caption"], "calm")
         self.assertEqual(requests[0]["cfg_scale_caption"], 1.0)
         self.assertEqual(requests[0]["cfg_scale_speaker"], 1.0)
@@ -77,7 +76,7 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
     def test_build_report_shows_effective_default_companion_cfg_scales(self):
         args = self._args()
         args.caption = "calm"
-        args.reference_wav = "/tmp/ref.wav"
+        args.ref_wav = "/tmp/ref.wav"
         result = bench.BatchRunResult(
             command="python ...",
             cwd="/tmp/repo",
@@ -103,7 +102,7 @@ class PersistentBatchBenchmarkScriptTests(unittest.TestCase):
     def test_build_json_summary_persists_effective_default_companion_cfg_scales(self):
         args = self._args()
         args.caption = "calm"
-        args.reference_wav = "/tmp/ref.wav"
+        args.ref_wav = "/tmp/ref.wav"
         result = bench.BatchRunResult(
             command="python ...",
             cwd="/tmp/repo",

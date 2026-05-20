@@ -13,7 +13,7 @@ The support labels are intentionally conservative:
 | Checkpoint family | Example checkpoint | Inspection | Conversion | Generation | Validation status | v0.1 status |
 | --- | --- | --- | --- | --- | --- | --- |
 | Base v2 speaker-conditioned | `Aratako/Irodori-TTS-500M-v2` | Supported via `scripts/inspect_checkpoint.py` | Supported via `scripts/convert_weights.py`; detected as `base_v2` | Experimental via `scripts/generate_wav.py` with a reference WAV or explicit no-reference path | Manual Apple Silicon benchmark/generation notes exist, but there is no dedicated hosted v0.1 generation gate for this family yet | **Experimental** |
-| VoiceDesign v2 caption-conditioned | `Aratako/Irodori-TTS-500M-v2-VoiceDesign` | Supported | Supported; detected as `voicedesign` | Supported for the inspected public VoiceDesign family through `--caption`, caption CFG, and optional `--no-reference` | Hosted Apple Silicon real-checkpoint inspect/conversion and full `generate_wav.py --caption ...` generation workflows exist | **Supported** |
+| VoiceDesign v2 caption-conditioned | `Aratako/Irodori-TTS-500M-v2-VoiceDesign` | Supported | Supported; detected as `voicedesign` | Supported for the inspected public VoiceDesign family through `--caption`, caption CFG, and optional `--no-ref` | Hosted Apple Silicon real-checkpoint inspect/conversion and full `generate_wav.py --caption ...` generation workflows exist | **Supported** |
 | v3 speaker-conditioned / duration-predictor | `Aratako/Irodori-TTS-500M-v3` | Supported | Supported; detected as `v3` | Supported through the MLX bridge runtime. Omit `--seconds` to use predicted duration; manual `--seconds` remains an override | Hosted Apple Silicon generation workflow downloads, converts, runs generation, and asserts predicted-duration metadata | **Supported** |
 | Upstream-merged LoRA export, layout-compatible | A LoRA fine-tune that upstream Irodori-TTS has merged/exported back into a normal inference `.safetensors` checkpoint matching Base v2, VoiceDesign v2, or v3 | Supported via `scripts/inspect_checkpoint.py`; `metadata.config_json` must identify one of the supported families | Experimental via `scripts/convert_weights.py` because conversion is accepted only when the merged export has the same tensor names, shapes, dtype class, and config contract as the detected family | Experimental through the same generation path as the detected family | Lightweight docs/test coverage only; users should run the manual recipe below with their local merged export | **Experimental** |
 | Other historical, unmerged LoRA adapters, dynamic LoRA adapter loading, fine-tuned, architecture-modified, quantized, or renamed Irodori-TTS checkpoints | Any checkpoint or adapter whose tensor layout/config does not match one of the families above | Best-effort metadata inspection only if the file is a readable `.safetensors` checkpoint | Unsupported | Unsupported | No compatibility guarantee | **Unsupported** |
@@ -22,9 +22,9 @@ The support labels are intentionally conservative:
 
 The generation CLI reports `checkpoint_family` and `checkpoint_capabilities` in `--json` / `--metadata-json` output and in the human-readable summary. Treat those fields as the first check when a run behaves differently than expected:
 
-- `base_v2`: speaker/reference family. Use `--reference-wav` for normal generation, or `--no-reference` for the unconditional speaker path. `--caption` is rejected. Omit `--seconds` only if the fixed fallback duration is acceptable.
-- `voicedesign`: VoiceDesign v2 caption family. Use `--caption` with `--no-reference`. `--reference-wav` is rejected because this family does not use speaker/reference conditioning in this runtime.
-- `v3`: speaker/reference family with duration predictor. Use `--reference-wav` or `--no-reference`. Omit `--seconds` to use predicted duration, or pass `--seconds` for a manual override. `--caption` is rejected.
+- `base_v2`: speaker/reference family. Use `--ref-wav` for normal generation, or `--no-ref` for the unconditional speaker path. `--caption` is rejected. Omit `--seconds` only if the fixed fallback duration is acceptable.
+- `voicedesign`: VoiceDesign v2 caption family. Use `--caption` with `--no-ref`. `--ref-wav` is rejected because this family does not use speaker/reference conditioning in this runtime.
+- `v3`: speaker/reference family with duration predictor. Use `--ref-wav` or `--no-ref`. Omit `--seconds` to use predicted duration, or pass `--seconds` for a manual override. `--caption` is rejected.
 
 ### Base v2 speaker-conditioned
 
@@ -37,9 +37,9 @@ python scripts/generate_wav.py \
   --weights /path/to/base-v2.npz \
   --model-config-json /path/to/base-v2-model-config.json \
   --text "こんにちは。今日は良い天気です。" \
-  --reference-wav /path/to/reference.wav \
+  --ref-wav /path/to/reference.wav \
   --seconds 5.0 \
-  --output /tmp/irodori-base-v2.wav \
+  --output-wav /tmp/irodori-base-v2.wav \
   --preset balanced \
   --metadata-json /tmp/irodori-base-v2-metadata.json
 ```
@@ -56,9 +56,9 @@ python scripts/generate_wav.py \
   --model-config-json /path/to/voicedesign-v2-model-config.json \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
-  --no-reference \
+  --no-ref \
   --seconds 5.0 \
-  --output /tmp/irodori-voicedesign-v2.wav \
+  --output-wav /tmp/irodori-voicedesign-v2.wav \
   --preset balanced \
   --metadata-json /tmp/irodori-voicedesign-v2-metadata.json
 ```
@@ -72,8 +72,8 @@ python scripts/generate_wav.py \
   --weights /path/to/v3.npz \
   --model-config-json /path/to/v3-model-config.json \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3.wav \
+  --no-ref \
+  --output-wav /tmp/irodori-v3.wav \
   --preset balanced \
   --metadata-json /tmp/irodori-v3-metadata.json \
   --json
@@ -88,7 +88,7 @@ The converter/runtime do not need special LoRA handling when all of these are tr
 - `scripts/inspect_checkpoint.py` can read the merged `.safetensors` header.
 - `metadata.config_json` identifies Base v2, VoiceDesign v2, or v3 using the same config fields as the public family.
 - `scripts/convert_weights.py --dry-run` accepts the tensor names, shapes, and float dtype class without missing or unexpected keys.
-- Generation uses the same CLI requirements as the detected family: Base v2 and v3 use `--reference-wav` or `--no-reference`; VoiceDesign v2 uses `--caption` with `--no-reference`.
+- Generation uses the same CLI requirements as the detected family: Base v2 and v3 use `--ref-wav` or `--no-ref`; VoiceDesign v2 uses `--caption` with `--no-ref`.
 
 Manual validation recipe:
 
@@ -117,8 +117,8 @@ python scripts/generate_wav.py \
   --weights "$WORK/weights.npz" \
   --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output "$WORK/irodori-merged-lora.wav" \
+  --no-ref \
+  --output-wav "$WORK/irodori-merged-lora.wav" \
   --metadata-json "$WORK/irodori-merged-lora-metadata.json"
 
 # VoiceDesign v2 merged exports:
@@ -127,8 +127,8 @@ python scripts/generate_wav.py \
   --model-config-json "$WORK/model_config.json" \
   --text "こんにちは。今日は良い天気です。" \
   --caption "落ち着いた女性の声" \
-  --no-reference \
-  --output "$WORK/irodori-merged-lora-voicedesign.wav" \
+  --no-ref \
+  --output-wav "$WORK/irodori-merged-lora-voicedesign.wav" \
   --metadata-json "$WORK/irodori-merged-lora-voicedesign-metadata.json"
 ```
 

@@ -119,7 +119,7 @@ uv run --python 3.11 python scripts/run_upstream_parity.py \
   --upstream-root /path/to/Irodori-TTS \
   --mlx-weights /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/weights.npz \
   --mlx-model-config-json /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-500M-v3/078ffb11ffad92e6dde237a6abef730f4341b359/model_config.json \
-  --reference-wav /path/to/local/reference.wav \
+  --ref-wav /path/to/local/reference.wav \
   --codec-runtime-mode mlx \
   --codec-path /path/to/hf-cache/t0yohei/Irodori-TTS-MLX-DACVAE-Codec/16d64e0978afe79c46b971405bba4f464cc743f8/dacvae-codec.npz \
   --output-dir /tmp/irodori-issue-189-parity/v3-reference-predicted-mlx-codec \

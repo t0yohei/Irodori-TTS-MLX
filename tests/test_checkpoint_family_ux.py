@@ -13,11 +13,11 @@ class CheckpointFamilyUXTests(unittest.TestCase):
         return generate_wav.parse_args([
             "--weights",
             "weights.npz",
-            "--output",
+            "--output-wav",
             "out.wav",
             "--text",
             "hello",
-            "--no-reference",
+            "--no-ref",
         ])
 
     def test_model_config_reports_family_and_capabilities(self):
@@ -47,8 +47,8 @@ class CheckpointFamilyUXTests(unittest.TestCase):
 
     def test_voicedesign_rejects_reference_wav_no_reference_only_flow(self):
         args = self._args()
-        args.no_reference = False
-        args.reference_wav = "ref.wav"
+        args.no_ref = False
+        args.ref_wav = "ref.wav"
         args.caption = "calm voice"
 
         with self.assertRaisesRegex(SystemExit, "VoiceDesign v2 caption.*no-reference only"):
@@ -83,7 +83,7 @@ class CheckpointFamilyUXTests(unittest.TestCase):
             "--weights /path/to/voicedesign-v2.npz",
             "--weights /path/to/v3.npz",
             "--caption \"落ち着いた女性の声\"",
-            "--reference-wav /path/to/reference.wav",
+            "--ref-wav /path/to/reference.wav",
             "Omit `--seconds` to use predicted duration",
         ):
             with self.subTest(term=term):

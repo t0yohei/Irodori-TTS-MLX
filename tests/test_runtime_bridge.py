@@ -18,9 +18,9 @@ try:
     from irodori_mlx.text_normalization import normalize_text
     from irodori_mlx.runtime import (
         DACVAEBridgeConfig,
-        GenerationRequest,
+        SamplingRequest,
         MLXDACVAEBridge,
-        MLXDACVAERuntime,
+        InferenceRuntime,
         MLXRuntimeConfig,
         PretrainedTextTokenizer,
         describe_codec_capabilities,
@@ -974,20 +974,20 @@ class RuntimeBridgeTests(unittest.TestCase):
             with patch.object(builtins, "__import__", side_effect=guarded_import), patch(
                 "irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample
             ):
-                runtime = MLXDACVAERuntime(
+                runtime = InferenceRuntime(
                     config=MLXRuntimeConfig(
                         model_config=cfg,
                         weights_path="unused.npz",
-                        text_max_length=4,
+                        max_text_len=4,
                         codec=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path), normalize_db=None),
                     ),
                     model=FakeModel(cfg),
                     tokenizer=FakeTokenizer(),
                 )
                 result = runtime.generate(
-                    GenerationRequest(
+                    SamplingRequest(
                         text="こんにちは",
-                        reference_wav=str(ref_path),
+                        ref_wav=str(ref_path),
                         output_wav=str(Path(td) / "out.wav"),
                         seconds=0.001,
                         num_steps=1,
@@ -1056,14 +1056,14 @@ class RuntimeBridgeTests(unittest.TestCase):
                 {"tensor_key": "speaker_state", "shape": [1, 2, cfg.speaker_dim]},
             ),
         ), patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
-            runtime = MLXDACVAERuntime(
-                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            runtime = InferenceRuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
                 model=FakeModel(cfg),
                 bridge=bridge,
                 tokenizer=FakeTokenizer(),
             )
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
                     ref_embed=str(Path(td) / "voice.speaker.safetensors"),
@@ -1105,14 +1105,14 @@ class RuntimeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
             path = Path(td) / "reference-latent.npz"
             np.savez(path, reference_latent=np.ones((1, 5, cfg.latent_dim), dtype=np.float32))
-            runtime = MLXDACVAERuntime(
-                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            runtime = InferenceRuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
                 model=FakeModel(cfg),
                 bridge=bridge,
                 tokenizer=FakeTokenizer(),
             )
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
                     ref_latent=str(path),
@@ -1141,17 +1141,17 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
             ref_path = Path(td) / "ref.wav"
-            runtime = MLXDACVAERuntime(
-                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+            runtime = InferenceRuntime(
+                config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
                 model=FakeModel(cfg),
                 bridge=bridge,
                 tokenizer=FakeTokenizer(),
             )
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
-                    reference_wav=str(ref_path),
+                    ref_wav=str(ref_path),
                     ref_latent="",
                     seconds=0.02,
                     num_steps=1,
@@ -1162,14 +1162,14 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         self.assertEqual(bridge.encoded, [(str(ref_path), 30.0, -16.0, True)])
         self.assertEqual(tuple(captured["ref_latent"].shape), (1, 3, cfg.patched_latent_dim))
-        self.assertEqual(result.speaker_condition_source, "reference_wav")
+        self.assertEqual(result.speaker_condition_source, "ref_wav")
         self.assertEqual(result.codec_encode_backend, "mlx")
 
     @require_mlx
     def test_runtime_rejects_ref_embed_for_caption_checkpoint(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
             model=FakeModel(cfg),
             bridge=FakeBridge(),
             tokenizer=FakeTokenizer(),
@@ -1177,7 +1177,7 @@ class RuntimeBridgeTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as td, self.assertRaisesRegex(ValueError, "ref_embed requires"):
             runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
                     ref_embed=str(Path(td) / "voice.speaker.safetensors"),
@@ -1190,8 +1190,8 @@ class RuntimeBridgeTests(unittest.TestCase):
     @require_mlx
     def test_runtime_rejects_ref_latent_for_caption_checkpoint(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
             model=FakeModel(cfg),
             bridge=FakeBridge(),
             tokenizer=FakeTokenizer(),
@@ -1199,7 +1199,7 @@ class RuntimeBridgeTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as td, self.assertRaisesRegex(ValueError, "ref_latent requires"):
             runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
                     ref_latent=str(Path(td) / "reference-latent.npz"),
@@ -1215,11 +1215,11 @@ class RuntimeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             codec_path = Path(td) / "codec.npz"
             write_executable_semantic_codec(codec_path)
-            runtime = MLXDACVAERuntime(
+            runtime = InferenceRuntime(
                 config=MLXRuntimeConfig(
                     model_config=cfg,
                     weights_path="unused.npz",
-                    text_max_length=4,
+                    max_text_len=4,
                     codec=DACVAEBridgeConfig(runtime_mode="mlx", codec_path=str(codec_path)),
                 ),
                 model=FakeModel(cfg),
@@ -1227,10 +1227,10 @@ class RuntimeBridgeTests(unittest.TestCase):
             )
 
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="こんにちは",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=0.001,
                     num_steps=1,
                     cfg_scale_text=0.0,
@@ -1299,8 +1299,8 @@ class RuntimeBridgeTests(unittest.TestCase):
             captured_duration_features.append((list(texts), kwargs))
             return mx.zeros((1, int(cfg.duration_aux_dim)), dtype=mx.float32)
 
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=4),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=4),
             model=model,
             bridge=bridge,
             tokenizer=tokenizer,
@@ -1310,10 +1310,10 @@ class RuntimeBridgeTests(unittest.TestCase):
             "irodori_mlx.runtime.build_duration_features", side_effect=fake_build_duration_features
         ):
             runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="（今日は　いい天気ですね！）",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=None,
                     num_steps=1,
                     cfg_scale_text=0.0,
@@ -1327,8 +1327,8 @@ class RuntimeBridgeTests(unittest.TestCase):
     @require_mlx
     def test_runtime_rejects_prompt_that_normalizes_to_empty(self):
         cfg = tiny_config()
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
             model=FakeModel(cfg),
             bridge=FakeBridge(),
             tokenizer=FakeTokenizer(),
@@ -1336,10 +1336,10 @@ class RuntimeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             with self.assertRaisesRegex(ValueError, "text became empty after normalization"):
                 runtime.generate(
-                    GenerationRequest(
+                    SamplingRequest(
                         text="[n]\t　",
                         output_wav=str(Path(td) / "out.wav"),
-                        no_reference=True,
+                        no_ref=True,
                         seconds=0.02,
                         num_steps=1,
                         cfg_scale_text=0.0,
@@ -1351,11 +1351,11 @@ class RuntimeBridgeTests(unittest.TestCase):
     def test_runtime_encodes_reference_samples_mlx_latents_and_decodes_wav(self):
         cfg = tiny_config()
         bridge = FakeBridge()
-        runtime = MLXDACVAERuntime(
+        runtime = InferenceRuntime(
             config=MLXRuntimeConfig(
                 model_config=cfg,
                 weights_path="unused.npz",
-                text_max_length=4,
+                max_text_len=4,
                 codec=DACVAEBridgeConfig(normalize_db=None),
             ),
             model=FakeModel(cfg),
@@ -1365,9 +1365,9 @@ class RuntimeBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "out.wav"
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
-                    reference_wav="ref.wav",
+                    ref_wav="ref.wav",
                     output_wav=str(out),
                     seconds=0.04,
                     num_steps=1,
@@ -1402,18 +1402,18 @@ class RuntimeBridgeTests(unittest.TestCase):
     def test_no_reference_builds_unconditional_speaker_mask(self):
         cfg = tiny_config()
         bridge = FakeBridge()
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
             model=FakeModel(cfg),
             bridge=bridge,
             tokenizer=FakeTokenizer(),
         )
         with tempfile.TemporaryDirectory() as td:
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=0.02,
                     num_steps=1,
                     cfg_scale_text=0.0,
@@ -1427,18 +1427,18 @@ class RuntimeBridgeTests(unittest.TestCase):
     def test_iter_messages_includes_timing_lines(self):
         cfg = tiny_config()
         bridge = FakeBridge()
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
             model=FakeModel(cfg),
             bridge=bridge,
             tokenizer=FakeTokenizer(),
         )
         with tempfile.TemporaryDirectory() as td:
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=0.02,
                     num_steps=1,
                     cfg_scale_text=0.0,
@@ -1455,8 +1455,8 @@ class RuntimeBridgeTests(unittest.TestCase):
     def test_runtime_forces_mlx_eval_before_finishing_sample_timing(self):
         cfg = tiny_config()
         bridge = FakeBridge()
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
             model=FakeModel(cfg),
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1468,10 +1468,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.mx.eval", side_effect=fake_eval):
             runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=0.02,
                     num_steps=1,
                     cfg_scale_text=0.0,
@@ -1494,8 +1494,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         )
         bridge = FakeBridge()
         model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(3.0)))
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=4),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=4),
             model=model,
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1503,10 +1503,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=None,
                     duration_scale=2.0,
                     num_steps=1,
@@ -1536,8 +1536,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         )
         bridge = FakeBridge()
         model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(300.0)))
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=16),
             model=model,
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1545,10 +1545,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="こんにちは。今日は良い天気です。",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=None,
                     duration_scale=1.0,
                     num_steps=1,
@@ -1577,8 +1577,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         )
         bridge = FakeBridge()
         model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(300.0)))
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=16),
             model=model,
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1586,10 +1586,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="今日はいい天気ですね。",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=None,
                     duration_scale=1.0,
                     max_auto_seconds=2.5,
@@ -1619,8 +1619,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         )
         bridge = FakeBridge()
         model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(300.0)))
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=64),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=64),
             model=model,
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1628,10 +1628,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="今日は音声生成のテストです。" * 8,
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=None,
                     duration_scale=1.0,
                     max_auto_seconds=2.5,
@@ -1652,8 +1652,8 @@ class RuntimeBridgeTests(unittest.TestCase):
     def test_runtime_estimates_fallback_duration_when_predictor_is_unavailable(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
         bridge = FakeBridge()
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=16),
             model=FakeModel(cfg),
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1662,10 +1662,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             short = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="こんにちは。",
                     output_wav=str(Path(td) / "short.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     caption="落ち着いた自然な女性の声",
                     seconds=None,
                     num_steps=1,
@@ -1674,10 +1674,10 @@ class RuntimeBridgeTests(unittest.TestCase):
                 )
             )
             smoke = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="こんにちは。私はいろどりです。今日は音声生成のテストをしています。",
                     output_wav=str(Path(td) / "smoke.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     caption="落ち着いた自然な女性の声",
                     seconds=None,
                     num_steps=1,
@@ -1699,8 +1699,8 @@ class RuntimeBridgeTests(unittest.TestCase):
     def test_runtime_applies_duration_scale_to_voicedesign_estimate(self):
         cfg = replace(tiny_config(), use_caption_condition=True)
         bridge = FakeBridge()
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=16),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=16),
             model=FakeModel(cfg),
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1709,10 +1709,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             normal = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="こんにちは。今日は良い天気です。",
                     output_wav=str(Path(td) / "normal.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     caption="自然な声",
                     seconds=None,
                     duration_scale=1.0,
@@ -1722,10 +1722,10 @@ class RuntimeBridgeTests(unittest.TestCase):
                 )
             )
             shorter = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="こんにちは。今日は良い天気です。",
                     output_wav=str(Path(td) / "shorter.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     caption="自然な声",
                     seconds=None,
                     duration_scale=0.75,
@@ -1735,10 +1735,10 @@ class RuntimeBridgeTests(unittest.TestCase):
                 )
             )
             minimum = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="こんにちは。今日は良い天気です。",
                     output_wav=str(Path(td) / "minimum.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     caption="自然な声",
                     seconds=None,
                     duration_scale=0.000001,
@@ -1769,8 +1769,8 @@ class RuntimeBridgeTests(unittest.TestCase):
         )
         bridge = FakeBridge()
         model = FakeDurationModel(cfg, predicted_log_frames=float(np.log1p(3.0)))
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=4),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=4),
             model=model,
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1778,10 +1778,10 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             result = runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     output_wav=str(Path(td) / "out.wav"),
-                    no_reference=True,
+                    no_ref=True,
                     seconds=0.04,
                     duration_scale=3.0,
                     num_steps=1,
@@ -1844,7 +1844,7 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with patch("irodori_mlx.runtime.PretrainedTextTokenizer.from_pretrained", side_effect=fail_tokenizer):
             with self.assertRaisesRegex(RuntimeError, "Failed to initialize caption tokenizer") as ctx:
-                MLXDACVAERuntime(
+                InferenceRuntime(
                     config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz"),
                     model=FakeModel(cfg),
                     bridge=FakeBridge(),
@@ -1883,7 +1883,7 @@ class RuntimeBridgeTests(unittest.TestCase):
             caption_mlp_ratio=1.5,
         )
         with patch("irodori_mlx.runtime.PretrainedTextTokenizer.from_pretrained", side_effect=[FakeTokenizer(), FakeTokenizer()]) as mocked:
-            runtime = MLXDACVAERuntime(
+            runtime = InferenceRuntime(
                 config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_tokenizer_repo="example/text-tokenizer"),
                 model=FakeModel(cfg),
                 bridge=FakeBridge(),
@@ -1910,8 +1910,8 @@ class RuntimeBridgeTests(unittest.TestCase):
             caption_mlp_ratio=1.5,
         )
         bridge = FakeBridge()
-        runtime = MLXDACVAERuntime(
-            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", text_max_length=3),
+        runtime = InferenceRuntime(
+            config=MLXRuntimeConfig(model_config=cfg, weights_path="unused.npz", max_text_len=3),
             model=FakeModel(cfg),
             bridge=bridge,
             tokenizer=FakeTokenizer(),
@@ -1925,7 +1925,7 @@ class RuntimeBridgeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td, patch("irodori_mlx.runtime.sample_euler_rf_cfg", side_effect=fake_sample):
             runtime.generate(
-                GenerationRequest(
+                SamplingRequest(
                     text="hello",
                     caption="   ",
                     output_wav=str(Path(td) / "out.wav"),

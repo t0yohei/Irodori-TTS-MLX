@@ -11,8 +11,8 @@ irodori-tts-generate \
   --weights-repo t0yohei/Irodori-TTS-MLX-500M-v3 \
   --codec-runtime-mode mlx \
   --text "こんにちは。今日は良い天気です。" \
-  --no-reference \
-  --output /tmp/irodori-v3.wav
+  --no-ref \
+  --output-wav /tmp/irodori-v3.wav
 ```
 
 The CLI defaults to the approved hosted codec artifact. Use `--codec-artifact-dir` for a local hosted-layout artifact or `--codec-path /path/to/dacvae-codec.npz` for a direct local artifact.

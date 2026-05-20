@@ -73,7 +73,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seconds", type=float, default=5.0)
     parser.add_argument("--omit-seconds", action="store_true")
     parser.add_argument("--num-steps", type=int, default=12)
-    parser.add_argument("--reference-wav")
+    parser.add_argument("--ref-wav")
     parser.add_argument("--upstream-root")
     parser.add_argument("--mlx-python", default=sys.executable)
     parser.add_argument("--weights")
@@ -142,16 +142,16 @@ def build_request_overrides(args: argparse.Namespace, output_dir: Path) -> list[
     for index in range(1, total + 1):
         item: dict[str, Any] = {
             "text": args.text,
-            "output": str(output_dir / f"{slug}.request-{index:02d}.wav"),
+            "output_wav": str(output_dir / f"{slug}.request-{index:02d}.wav"),
             "num_steps": int(args.num_steps),
             "seed": int(args.seed) + index - 1,
         }
         if args.caption:
             item["caption"] = args.caption
-        if args.reference_wav:
-            item["reference_wav"] = args.reference_wav
+        if args.ref_wav:
+            item["ref_wav"] = args.ref_wav
         else:
-            item["no_reference"] = True
+            item["no_ref"] = True
         if not args.omit_seconds:
             item["seconds"] = float(args.seconds)
         requests.append(item)
@@ -223,14 +223,14 @@ def validate_worker_request(
     overrides: dict[str, Any],
     index: int,
 ) -> None:
-    request_reference = overrides.get("reference_wav", gen_args.reference_wav)
-    request_no_reference = bool(overrides.get("no_reference", gen_args.no_reference))
+    request_reference = overrides.get("ref_wav", gen_args.ref_wav)
+    request_no_reference = bool(overrides.get("no_ref", gen_args.no_ref))
     request_caption = overrides.get("caption", gen_args.caption)
     if layout_runtime is not None:
         if layout_runtime.get("requires_reference_audio") and not request_reference:
-            raise SystemExit(f"error: generation request #{index}: selected weights layout requires reference_wav")
+            raise SystemExit(f"error: generation request #{index}: selected weights layout requires ref_wav")
         if not layout_runtime.get("supports_no_reference", False) and request_no_reference:
-            raise SystemExit(f"error: generation request #{index}: selected weights layout does not support no_reference")
+            raise SystemExit(f"error: generation request #{index}: selected weights layout does not support no_ref")
         if (
             "supports_caption" in layout_runtime
             and not layout_runtime.get("supports_caption", False)
@@ -264,7 +264,7 @@ def run_worker(args: argparse.Namespace) -> int:
         model_config = gen.load_model_config_json(gen_args.model_config_json)
         layout_runtime = None
     gen.resolve_codec_artifact_args(gen_args)
-    runtime = gen.MLXDACVAERuntime(config=gen.build_runtime_config(gen_args, model_config))
+    runtime = gen.InferenceRuntime(config=gen.build_runtime_config(gen_args, model_config))
     print(json.dumps({"type": "ready", "boundaries": runtime.describe_boundaries()}, ensure_ascii=False), flush=True)
     for raw in sys.stdin:
         raw = raw.strip()
@@ -465,7 +465,7 @@ def build_json_summary(result: ServingRunResult, *, args: argparse.Namespace) ->
             "seconds": args.seconds,
             "omit_seconds": bool(args.omit_seconds),
             "num_steps": args.num_steps,
-            "reference_wav": args.reference_wav,
+            "ref_wav": args.ref_wav,
             "weights": args.weights,
             "weights_dir": args.weights_dir,
             "weights_repo": args.weights_repo,
@@ -591,7 +591,7 @@ def run_self_test() -> int:
         RequestResult(3, "measured", "/tmp/3.wav", "three", 3, 12, 170.0, 166.0, 0.2, {"sample_rf": 100.0, "decode_dacvae": 45.0, "decode_dacvae_model": 38.0, "audio_write": 7.0, "total_to_decode": 160.0}, None, "mlx"),
     )
     result = ServingRunResult("python scripts/benchmark_persistent_serving.py ...", "/tmp/repo", 3, 1, 2, "/tmp/requests.json", "/tmp/stderr.log", "passed", 1000.0, 1234, requests)
-    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, reference_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
+    args = argparse.Namespace(case_label="self-test", text=DEFAULT_TEXT, caption=None, seed=1, requests=2, warmup_requests=1, seconds=5.0, omit_seconds=False, num_steps=12, ref_wav=None, weights=None, weights_dir=None, weights_repo="repo", weights_revision=None, codec_runtime_mode="mlx", codec_path=None, codec_artifact_dir=None, codec_artifact_repo="codec", codec_artifact_revision=None, cleanup_between_requests=False)
     summary = build_json_summary(result, args=args)
     assert summary["aggregates"]["measured_persistent_request_latency_ms"]["median"] == 150.0
     assert summary["aggregates"]["measured_audio_write_ms"]["median"] == 6.0
