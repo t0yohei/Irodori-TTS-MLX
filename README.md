@@ -188,7 +188,7 @@ Stable-ish during alpha:
 Not stable yet:
 
 - `irodori_mlx` imports, top-level exports, and `scripts.*` modules as a public Python API
-- arbitrary third-party, fine-tuned, quantized, LoRA, renamed, or architecture-modified checkpoints
+- arbitrary third-party, unmerged LoRA adapters, dynamic LoRA adapter loading, quantized, renamed, or architecture-modified checkpoints
 - hosted demos, training, fine-tuning, watermark guarantees, or automatic legal approval for generated/converted artifacts
 
 ## Documentation
